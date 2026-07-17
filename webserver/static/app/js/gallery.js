@@ -8,7 +8,7 @@
 // and the canvas paint → <img src=/thumbnail>.
 
 import { state, subscribe } from "./state.js";
-import { thumbnailUrl } from "./api.js";
+import { thumbnailUrl, ditheredUrl } from "./api.js";
 import { $, $$, esc, frameColor } from "./ui.js";
 
 const root = document.documentElement;
@@ -28,19 +28,29 @@ const tileCache = new Map();
 let lastStructural = "";   // gate: only rebuild DOM + re-justify when structure changes
 
 // ── per-entry derivations from the live status payload ──
+// which connected frames are currently displaying this image
+function framesShowing(name) {
+  const screens = state.status?.screens || {};
+  return Object.keys(screens).filter((s) => screens[s].last_served === name);
+}
+// a photo currently ON a frame shows its DITHERED panel preview in the gallery (the true
+// "on the wall" look) — so its tile takes the panel's shape rather than the photo's own.
+function showsDithered(e) { return e.status === "ok" && framesShowing(e.name).length > 0; }
+function panelAr(e) {
+  const p = state.config?.panel;
+  const w = (p && p.visual_w) || 1600, h = (p && p.visual_h) || 1200;
+  return e.native_orientation === "portrait" ? h / w : w / h;
+}
 function arOf(e) {
+  if (showsDithered(e)) return panelAr(e);
   return e.image_width && e.image_height ? e.image_width / e.image_height : 4 / 3;
 }
 function dimText(e) {
   if (e.image_width && e.image_height) return `${e.image_width}×${e.image_height}`;
   return e.status === "pending" ? "converting" : "—";
 }
-// which connected frames are currently displaying this image
 function badgesFor(name) {
-  const screens = state.status?.screens || {};
-  return Object.keys(screens)
-    .filter((s) => screens[s].last_served === name)
-    .map((s) => ({ name: s, color: frameColor(s) }));
+  return framesShowing(name).map((s) => ({ name: s, color: frameColor(s) }));
 }
 
 // ── one tile: built once, then updated in place by paintTile() ──
@@ -86,9 +96,10 @@ function paintTile(el, entry) {
     + (badges.length ? ", showing on " + badges.map((b) => b.name).join(" and ") : "")
     + (conv ? ", converting" : "");
 
-  // thumbnail: only (re)assign src when the cache-bust key changes, so identical
-  // images are NOT re-fetched on every poll (prevents flicker + wasted bandwidth)
-  const url = thumbnailUrl(entry);
+  // thumbnail: the DITHERED panel preview when this photo is on a frame (mirrors the
+  // wall), else the normal thumbnail. Only (re)assign src when the cache-bust key
+  // changes, so identical images are NOT re-fetched on every poll (no flicker).
+  const url = showsDithered(entry) ? ditheredUrl(entry) : thumbnailUrl(entry);
   if (el.dataset.thumb !== url) { el.dataset.thumb = url; img.src = url; }
 }
 

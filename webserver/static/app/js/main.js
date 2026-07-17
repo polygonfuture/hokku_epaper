@@ -38,7 +38,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllDr
 // One observer watches every full-screen surface's `hidden` attribute, so it stays in
 // sync no matter which module opens/closes what. Desktop anchored menus are excluded —
 // they intentionally close on scroll instead.
-const LOCK_SURFACES = ["#detail", "#ctx", "#settings-modal", "#dither-modal", "#frame-modal", "#server-modal", "#failed-modal"];
+const LOCK_SURFACES = ["#detail", "#ctx", "#settings-modal", "#dither-modal", "#frame-modal", "#server-modal", "#failed-modal", "#pedit-overlay"];
 let scrollLocked = false, savedScrollY = 0;
 function syncScrollLock() {
   const open = LOCK_SURFACES.some((sel) => { const el = $(sel); return el && !el.hidden; });

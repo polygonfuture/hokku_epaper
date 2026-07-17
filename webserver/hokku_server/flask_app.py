@@ -438,12 +438,29 @@ def create_app(
         decision = state.classifier.decision_for(path, rec.original_sha1)
         obs = state.classifier.observations_for(rec.original_sha1)
         face_bboxes = [[b.x, b.y, b.w, b.h] for b in (obs.face_bboxes or ())]
+        # Which of the three pipelines the classifier landed on. Mirrors
+        # ImageClassifier._classify's B&W > Face > Default order, read from the cached
+        # observations + current config, so the editor can show the auto-decision.
+        cfg = state.config
+        if cfg.classifier_bw_detect_enabled and obs.is_bw:
+            pipeline = "bw"
+        elif cfg.classifier_face_detect_enabled and obs.face_bboxes:
+            pipeline = "face"
+        else:
+            pipeline = "default"
         return jsonify(
             {
                 "image_config": asdict(decision.image_config),
                 "crop_to_fill_threshold": decision.crop_to_fill_threshold,
                 "is_bw": obs.is_bw,
                 "face_bboxes": face_bboxes,
+                "pipeline": pipeline,
+                "faces_protected": bool(decision.clahe_keepout_bboxes),
+                # the per-image editor's SAVED edit (None if never edited) so re-opening
+                # restores the user's config + crop. image_config above stays the
+                # classifier's live "Auto" baseline (the Reset/Auto target).
+                "edit_image_config": rec.edit_image_config,
+                "edit_crop": rec.edit_crop,
                 "orientation": orientation_from_dims(w, h).value,
                 "source_w": w,
                 "source_h": h,

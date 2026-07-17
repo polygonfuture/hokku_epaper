@@ -360,6 +360,12 @@
   .mdns-host { margin-right: 8px; }   /* breathing room before the mDNS toggle */
   /* footer action set apart with a divider + breathing room (avoids accidental clicks) */
   .danger-row { display: flex; margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--hair); }
+  /* reset-to-defaults footer on the Detection + Image settings pages */
+  .set-reset { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--hair); }
+  .set-reset-btn { background: none; border: 1px solid var(--hair); color: var(--dim); font: inherit; font-size: .82rem; font-weight: 500; padding: 8px 14px; border-radius: 9px; cursor: pointer; transition: .15s; flex: none; }
+  .set-reset-btn:hover { border-color: var(--faint); color: var(--text); }
+  .set-reset-btn.armed { border-color: #E9836F; color: #E9836F; }
+  .set-reset-hint { font-size: .77rem; color: var(--faint); line-height: 1.4; }
   .danger-btn { border: 1px solid color-mix(in srgb, #ff9d8d 45%, transparent); background: color-mix(in srgb, #ff9d8d 8%, transparent); color: #ff9d8d; font: inherit; font-size: .82rem; font-weight: 500; padding: 9px 14px; border-radius: 10px; cursor: pointer; transition: .15s; }
   .danger-btn:hover { background: color-mix(in srgb, #ff9d8d 14%, transparent); }
   .danger-btn.armed { background: color-mix(in srgb, #ff9d8d 20%, transparent); font-weight: 600; }
@@ -672,8 +678,9 @@
   .pedit-card [hidden]{display:none!important}   /* an author `display` otherwise beats the UA [hidden] rule */
   .pedit-card,.pedit-card button,.pedit-card input,.pedit-card select{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
   @keyframes rise{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
-  .m-head{position:relative;display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;background:linear-gradient(#141419,#0B0C10);border-bottom:1px solid rgba(255,255,255,.07);z-index:6}
-  .m-head .hl,.m-head .hr{display:flex;align-items:center;gap:1rem}
+  .m-head{position:relative;display:flex;align-items:center;justify-content:flex-end;padding:.85rem 1.1rem;background:linear-gradient(#141419,#0B0C10);border-bottom:1px solid rgba(255,255,255,.07);z-index:6}
+  .m-head .m-toolbar{display:flex;align-items:center;gap:1rem}
+  .m-head .hr{display:flex;align-items:center;gap:1rem}
   .m-head button{background:none;border:0;color:#F3F2EF;font-size:.9rem;cursor:pointer;font-weight:500;padding:.25rem .2rem}
   .m-head .ed-title{position:absolute;left:50%;transform:translateX(-50%);font-size:.82rem;letter-spacing:.2em;text-transform:uppercase;color:#F3F2EF;font-weight:600;pointer-events:none}
   .more-btn{color:#F3F2EF;font-size:1.15rem;letter-spacing:1px;line-height:1;min-width:40px;text-align:center}
@@ -685,12 +692,39 @@
   .mm-item{display:block;width:100%;text-align:left;background:none;border:0;color:#F3F2EF;font-size:.86rem;padding:.62rem .6rem;border-radius:8px;cursor:pointer}
   .mm-item:hover{background:rgba(255,255,255,.06)}
   .mm-div{height:1px;background:rgba(255,255,255,.10);margin:.3rem .4rem}
+  /* classifier auto-decision badge: which pipeline the server picked (B&W / Face /
+     Default) so the editor's starting point is visible. DESKTOP shows it at the top of
+     the controls panel (#edClassifierPanel, next to the sliders); MOBILE shows the
+     header strip (.ed-subbar). editor.js fills both; the media queries pick one. */
+  .ed-subbar{display:flex;align-items:center;gap:.45rem;flex:none;padding:.4rem 1.1rem;background:#0F0F13;border-bottom:1px solid rgba(255,255,255,.06);font-size:.72rem;color:#8C8B87;cursor:default}
+  /* desktop: the classifier/preset badge and its ••• preset button share a row (••• on the
+     right), with the divider under both */
+  .ed-badge-row{display:flex;align-items:center;gap:.25rem;margin-bottom:.55rem;padding-bottom:.5rem;border-bottom:1px solid rgba(255,255,255,.08)}
+  .ed-panel-badge{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;flex:1;min-width:0;padding:.1rem .35rem;font-size:.78rem;color:#8C8B87;cursor:default}
+  /* flat like the Submit button — explicit reset so it never picks up the UA button chrome
+     (this button is outside .m-head, so the .m-head button reset does not reach it) */
+  #edMorePanel{flex:none;font-size:1.05rem;line-height:1;min-width:34px;padding:.3rem .45rem;background:none;border:1px solid rgba(237,235,229,.32);border-radius:8px;color:#F3F2EF;cursor:pointer;box-shadow:none;transition:background .15s}
+  #edMorePanel:hover{background:rgba(237,235,229,.09)}
+  .edc-dot{width:8px;height:8px;border-radius:50%;background:#8C8B87;flex:none}
+  .edc-default{background:#63A6E6}.edc-bw{background:#C9C7C1}.edc-face{background:#E3A94F}
+  .edc-lab{text-transform:uppercase;letter-spacing:.11em;font-size:.6rem;font-weight:700;color:#6E6D69}
+  .edc-name{color:#F3F2EF;font-weight:600}
+  .edc-preset{color:#C9C7C1;background:rgba(255,255,255,.07);border-radius:6px;padding:.05rem .42rem;font-size:.7rem;font-weight:500}
+  .edc-sub{color:#8C8B87}
+  @media (min-width:701px){ .ed-subbar,#edMore{display:none} }   /* desktop: badge + ••• in the panel */
+  @media (max-width:700px){ .ed-badge-row{display:none} }        /* mobile: badge strip + ••• in header */
   .m-body{flex:1;min-height:0;display:flex}
   .ed-stage{position:relative;flex:1;min-width:0;background:radial-gradient(120% 90% at 50% 0%,#15161C,#0B0C10);display:flex;align-items:center;justify-content:center;overflow:hidden}
   .ed-stage canvas{position:absolute;image-rendering:auto}
   #cropCanvas{z-index:1}#cropOverlay{z-index:2;touch-action:none;cursor:grab}#cropOverlay:active{cursor:grabbing}
   #crispCanvas{z-index:1}#dithCanvas{z-index:2;transition:opacity .34s ease}
   .photo-mat{position:absolute;z-index:0;pointer-events:none;background:#EBE8E0;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  /* per-image editor: server-rendered dither preview shown matted like a framed
+     print (replaces the mockup's client-dithered #dithCanvas — the client render
+     was a Euclidean approximation that ignored the LUT/colour-space controls) */
+  .pedit-dith-wrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  #peditDith{max-width:86%;max-height:86%;background:#EBE8E0;padding:10px;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  #peditDith.broken{visibility:hidden}
   .render-chip{position:absolute;z-index:5;bottom:.7rem;left:50%;transform:translateX(-50%);font-size:.66rem;letter-spacing:.05em;color:#F3F2EF;background:rgba(10,9,8,.72);padding:.24rem .6rem;border-radius:999px;display:flex;align-items:center;gap:.4rem;opacity:0;transition:.2s}
   .render-chip.show{opacity:1}
   .render-chip .rspin{width:9px;height:9px;border-radius:50%;border:2px solid #EDEBE5;border-right-color:transparent;animation:bspin .7s linear infinite}
@@ -864,8 +898,10 @@
     .m-panel-inner { width: 100%; height: 100%; padding: 0 .3rem; }
     .crop-dock:not([hidden]) { display: block; }                         /* crop tools live HERE on touch, not in the bin */
     /* top bar per the prototype: plain-text Submit (no border), small EDIT, roomy ••• */
+    /* mobile: no EDIT title — just the ••• / Cancel / Submit toolbar, full width */
     .m-head { padding: .8rem 1rem; }
-    .m-head .ed-title { font-size: .78rem; }
+    .m-head .ed-title { display: none; }
+    .m-head .m-toolbar { flex: 1; justify-content: space-between; }
     .m-head .hr { gap: 1.4rem; }
     .pedit-card .submit { border: 0 !important; min-width: 0; height: auto; padding: 0 .1rem !important; font-size: .95rem; }
     .adj-grabber { display: flex; }

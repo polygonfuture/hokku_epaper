@@ -317,7 +317,13 @@ class AbstractImageRenderer(ABC):
         scale_cover = max(visible_w / src_w, visible_h / src_h)
         zoom_ratio = scale_cover / scale_fit - 1.0
 
-        use_cover = crop_to_fill_threshold > 0.0 and zoom_ratio <= crop_to_fill_threshold
+        # A manual crop from the editor already frames the image to the panel aspect, so
+        # it must FILL the panel (cover) — never letterbox. Fitting an ~exact-aspect crop
+        # left a 1px white line at an edge: int() floors the fit size 1px short of the
+        # panel, and the shortfall is white padding forced to white ink. crop_rect ⇒ cover.
+        use_cover = crop_rect is not None or (
+            crop_to_fill_threshold > 0.0 and zoom_ratio <= crop_to_fill_threshold
+        )
 
         keepout_canvas: list[tuple[int, int, int, int]] = []
 

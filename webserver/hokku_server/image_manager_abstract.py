@@ -30,6 +30,7 @@ from PIL import Image, ImageOps
 from hokku_server.app_config import AppConfig
 from hokku_server.display import TOTAL_BYTES
 from hokku_server.filesystem import atomic_write_json
+from hokku_server.image_abc import _apply_crop_rotation
 from hokku_server.image_classifier import ImageClassifier, ImageClassifierDecision
 from hokku_server.image_config import _image_config_from_dict
 from hokku_server.image_record import (
@@ -237,7 +238,7 @@ class AbstractImageManager(ABC):
             if thumb.exists():
                 continue
             try:
-                self._materialize_thumbnail(src, thumb)
+                self._materialize_thumbnail(src, thumb, rec.edit_crop)
             except Exception as e:
                 logger.warning("Thumbnail pre-generation failed for %r: %s", rec.name, e)
 
@@ -366,6 +367,12 @@ class AbstractImageManager(ABC):
                 landscape_image_config_slug=None,
                 portrait_image_config_slug=None,
             )
+            # Drop the stale thumbnail (reflects the previous crop, or none) so the
+            # next read regenerates it against the committed crop.
+            try:
+                self._thumb_path(rec).unlink(missing_ok=True)
+            except OSError:
+                pass
             self._save_db()
 
     # ── Reads (lock-free) ───────────────────────────────────────
@@ -439,7 +446,7 @@ class AbstractImageManager(ABC):
         # Materialize on first read (thumbnail is pipeline-independent and
         # cheap; safe to do without _db_lock since file write is to its own path).
         try:
-            self._materialize_thumbnail(src_path, thumb_path)
+            self._materialize_thumbnail(src_path, thumb_path, rec.edit_crop)
             return thumb_path.read_bytes()
         except (OSError, Exception) as e:  # PIL throws assorted exceptions
             logger.warning("Thumbnail error for %s: %s", name, e)
@@ -973,8 +980,18 @@ class AbstractImageManager(ABC):
         if rec is None:
             return
         slug = cfg.cache_slug()
-        if self._panel_path(rec.name_hash, slug).exists():
-            self._set_orientation_slug(name, cfg.orientation, slug)
+        # Output already cached? (Re-editing an image often resolves to the SAME slug —
+        # a crop-only change, or resubmitting without moving much — and the prior
+        # panel/preview are still on disk.) Then no render is needed, but we MUST still
+        # finish the pending→ok lifecycle here: skipping the render means _on_render_done
+        # never fires, and that is the only place status flips to "ok" and the progress
+        # counter advances. Doing only _set_orientation_slug left re-edited images stuck
+        # in "converting" forever. Require the preview too — /dithered reads it.
+        if (
+            self._panel_path(rec.name_hash, slug).exists()
+            and self._preview_path(rec.name_hash, slug).exists()
+        ):
+            self._complete_cached(name, cfg.orientation, slug, update_status=update_status)
             return
         render_args = (
             str(self._upload_dir / name),
@@ -992,16 +1009,38 @@ class AbstractImageManager(ABC):
             name, slug, cfg.orientation, render_args, time.monotonic(), update_status=update_status
         )
 
-    def _set_orientation_slug(self, name: str, orientation: Orientation, slug: str) -> None:
-        """Update landscape_image_config_slug or portrait_image_config_slug in the record."""
+    def _complete_cached(
+        self, name: str, orientation: Orientation, slug: str, *, update_status: bool
+    ) -> None:
+        """Finish an (image, orientation) whose panel+preview are already on disk, with
+        no re-render. Mirrors _on_render_done's success path so the lifecycle — slug,
+        status, progress counter, _inflight — advances identically. Content is byte-
+        identical to the cached render, so last_conversion_seconds is left untouched
+        (the UI's cache-bust key stays put and the browser keeps the same image)."""
+        slug_update = (
+            {"landscape_image_config_slug": slug}
+            if orientation == Orientation.LANDSCAPE
+            else {"portrait_image_config_slug": slug}
+        )
         with self._db_lock:
             cur = self._records.get(name)
             if cur is None:
+                if update_status:
+                    self._inflight.discard(name)
                 return
-            if orientation == Orientation.LANDSCAPE:
-                self._records[name] = replace(cur, landscape_image_config_slug=slug)
+            if update_status:
+                self._inflight.discard(name)
+                self._records[name] = replace(
+                    cur, convert_status="ok", convert_error=None, **slug_update
+                )
+                done = self._progress.done + 1
+                total = self._progress.total
+                self._progress = replace(self._progress, done=done)
+                logger.info("Dithered %r from cache (%d/%d)", name, done, total)
+                if done >= total:
+                    self._log_batch_complete()
             else:
-                self._records[name] = replace(cur, portrait_image_config_slug=slug)
+                self._records[name] = replace(cur, **slug_update)
             self._save_db()
 
     def _on_render_done(
@@ -1098,19 +1137,41 @@ class AbstractImageManager(ABC):
         else:
             logger.info("Dithering complete: all %d image(s) done", total)
 
-    def _materialize_thumbnail(self, src_path: Path, thumb_path: Path) -> None:
+    def _materialize_thumbnail(
+        self, src_path: Path, thumb_path: Path, edit_crop: dict | None = None
+    ) -> None:
         thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        # Parse the editor's crop/rotation exactly like _decision_to_screen_image_config
+        # so the thumbnail crop matches the panel render pixel-for-pixel.
+        rotation_quarters = 0
+        crop_rect: tuple[float, float, float, float] | None = None
+        if edit_crop:
+            rotation_quarters = int(edit_crop.get("rotation_quarters", 0))
+            rect = edit_crop.get("rect")
+            if rect:
+                crop_rect = (float(rect["x"]), float(rect["y"]), float(rect["w"]), float(rect["h"]))
+        has_edit = bool(rotation_quarters) or crop_rect is not None
         if src_path.suffix.lower() == ".svg":
             with open_image_for_render(src_path) as img:
-                img.thumbnail((_THUMB_MAX_PX, _THUMB_MAX_PX), Image.Resampling.LANCZOS)
-                img.save(thumb_path, format="JPEG", quality=_THUMB_QUALITY)
+                out = _apply_crop_rotation(img, rotation_quarters, crop_rect) if has_edit else img
+                out.thumbnail((_THUMB_MAX_PX, _THUMB_MAX_PX), Image.Resampling.LANCZOS)
+                out.save(thumb_path, format="JPEG", quality=_THUMB_QUALITY)
             return
         with Image.open(src_path) as img:
             # Ask the JPEG decoder to downsample at decode time so we never
             # materialise the full pixel buffer just to produce a 300 px
-            # thumbnail.  draft() is a no-op for non-JPEG formats.
+            # thumbnail.  draft() is a no-op for non-JPEG formats.  With a crop
+            # the visible region is only a fraction of the frame, so scale the
+            # decode target up by the crop factor (capped) — decoding straight to
+            # 300 px would leave the cropped region far smaller than that and blurry.
+            decode_px = _THUMB_MAX_PX
+            if crop_rect is not None:
+                smallest = min(crop_rect[2], crop_rect[3])
+                if smallest > 0:
+                    # Cap so a tiny/degenerate crop can't request the full source.
+                    decode_px = min(int(_THUMB_MAX_PX / smallest), _THUMB_MAX_PX * 12)
             try:
-                img.draft("RGB", (_THUMB_MAX_PX, _THUMB_MAX_PX))
+                img.draft("RGB", (decode_px, decode_px))
             except (AttributeError, OSError):
                 pass
             img = ImageOps.exif_transpose(img)
@@ -1121,5 +1182,8 @@ class AbstractImageManager(ABC):
                 img = bg
             elif img.mode != "RGB":
                 img = img.convert("RGB")
+            if has_edit:
+                # Same helper the panel render + preview use, so the crop matches.
+                img = _apply_crop_rotation(img, rotation_quarters, crop_rect)
             img.thumbnail((_THUMB_MAX_PX, _THUMB_MAX_PX), Image.Resampling.LANCZOS)
             img.save(thumb_path, format="JPEG", quality=_THUMB_QUALITY)

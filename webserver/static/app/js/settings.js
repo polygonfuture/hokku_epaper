@@ -9,7 +9,7 @@
 
 import { state, refreshConfig, refreshStatus } from "./state.js";
 import { postConfig, clearCache, clearClassifier, scrub, patchScreen, ditherPreview, thumbnailUrl } from "./api.js";
-import { $, $$, esc, toast, isMobileVp, frameColor } from "./ui.js";
+import { $, $$, esc, toast, isMobileVp, frameColor, armConfirm } from "./ui.js";
 
 // ── config draft (clone on open; every control mutates it; Save POSTs a subset) ──
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -39,6 +39,21 @@ const seq = (from, to, step) => { const a = []; for (let h = from; h <= to; h +=
 const iTog = (key, on) => `<button class="sw${on ? " on" : ""}" data-toggle="${key}" role="switch" aria-checked="${on ? "true" : "false"}"><span></span></button>`;
 const iRow = (label, control) => `<div class="iset-row"><span class="iset-lab">${label}</span>${control}</div>`;
 const iGroup = (inner, foot, footCls) => `<div class="igroup"><div class="iset">${inner}</div>${foot ? `<p class="iset-foot ${footCls || ""}">${foot}</p>` : ""}</div>`;
+
+// ── reset-to-defaults (Detection + Image pages): restore the shipped presets/settings ──
+const resetBtnHTML = () =>
+  '<div class="set-reset"><button class="set-reset-btn" data-reset-defaults><span class="lbl">Reset to defaults</span></button>' +
+  '<span class="set-reset-hint">Restores the presets and detection settings Hokku ships with.</span></div>';
+// resets the ACTIVE tab's config keys to config_defaults (the server's fresh AppConfig),
+// updates the draft + re-renders; Save then persists it.
+function resetActiveTabToDefaults() {
+  const defs = state.config ? state.config.config_defaults : null;
+  const tab = SETTINGS[activeTab];
+  if (!defs || !tab || !tab.keys.length) return;
+  tab.keys.forEach((k) => { if (k in defs) draft[k] = clone(defs[k]); });
+  renderTab(activeTab);
+  toast("Reset to defaults — Save to keep");
+}
 
 // preset dropdown + "Custom…" for a pipeline (default / bw / face)
 function presetControl(selId, pipelineKey, pipelineLabel) {
@@ -139,7 +154,8 @@ function detectBody() {
       iRow("Detect faces", iTog("face", draft.classifier_face_detect_enabled)) +
       condRow("face", "Protect faces from CLAHE", iTog("clahe", draft.classifier_face_detect_clahe_keepout)) +
       condRow("face", "Face preset", presetControl("facePreset", "image_config_face", "Face")) +
-    '</div><p class="iset-foot">Detected face photos use this pipeline — tuned to preserve natural skin tones.</p></div>'
+    '</div><p class="iset-foot">Detected face photos use this pipeline — tuned to preserve natural skin tones.</p></div>' +
+    resetBtnHTML()
   );
 }
 function wireDetect() {
@@ -160,7 +176,8 @@ function imageBody() {
     iGroup(iRow("Default dither preset", presetControl("imPreset", "image_config_default", "Default")), `<span id="imPresetDesc">${esc(desc)}</span>`, "reserve2") +
     iGroup('<div class="iset-row"><span class="iset-lab">Zoom to fill</span><span class="range-val" id="imFillVal">' + fillPct + '%</span></div>' +
       `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="100" step="1" value="${fillPct}"></div>`,
-      "Max zoom-in allowed to remove letterbox bars. 0% = always letterbox; higher crops more.")
+      "Max zoom-in allowed to remove letterbox bars. 0% = always letterbox; higher crops more.") +
+    resetBtnHTML()
   );
 }
 function wireImage() {
@@ -311,7 +328,11 @@ setModal.addEventListener("click", (e) => {
   const li = e.target.closest("[data-li]"); if (li) renderTab(li.dataset.li);
 });
 $("#set-save").addEventListener("click", saveActiveTab);
-setBody.addEventListener("click", (e) => { const b = e.target.closest("[data-custom]"); if (b) openDither(b.dataset.custom, b.dataset.customLabel); });
+setBody.addEventListener("click", (e) => {
+  const rb = e.target.closest("[data-reset-defaults]");
+  if (rb) { armConfirm(rb, resetActiveTabToDefaults, "Reset this page to defaults?"); return; }
+  const b = e.target.closest("[data-custom]"); if (b) openDither(b.dataset.custom, b.dataset.customLabel);
+});
 
 // ══ Custom dither editor (desktop) — knobs edit a working copy; live server preview ══
 const DR = (key, label, min, max, step) => ({ key, label, t: "r", min, max, step });

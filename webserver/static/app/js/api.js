@@ -96,3 +96,39 @@ export async function ditherPreview(name, imageConfig, claheKeepout, signal) {
   const blobUrl = URL.createObjectURL(await res.blob());
   return { blobUrl, faceBboxes };
 }
+
+// ── per-image editor (js/editor.js) ──
+// The editor's opening state for an image: the classifier's own decision plus the
+// source's orientation/dimensions and detection results.
+export const getSuggestedConfig = (name) => req(`/image/${encodeURIComponent(name)}/suggested_config`);
+
+// Like ditherPreview, but carries the editor's crop/rotation/target so the preview is
+// pixel-exact for the edited framing. opts: {orientation, crop:[x,y,w,h], rotation, maxSidePx}.
+export async function editorPreview(name, imageConfig, opts = {}, signal) {
+  const body = { name, image: imageConfig };
+  if (opts.orientation) body.orientation = opts.orientation;
+  if (opts.crop) body.crop = opts.crop;
+  if (opts.rotation) body.rotation = opts.rotation;
+  if (opts.maxSidePx) body.max_side_px = opts.maxSidePx;
+  const res = await fetch(`${API}/dither/preview`, { ...json("POST", body), signal });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try { const b = await res.json(); if (b.error) msg = b.error; } catch { /* png or empty */ }
+    throw new Error(msg);
+  }
+  const faceBboxes = JSON.parse(res.headers.get("X-Face-Bboxes") || "[]");
+  const blobUrl = URL.createObjectURL(await res.blob());
+  return { blobUrl, faceBboxes };
+}
+
+// Upload ONE file as an inert draft for the editor. Resolves with {name}.
+export function uploadDraft(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return req("/upload_draft", { method: "POST", body: fd });
+}
+
+// Commit the editor's per-image config + crop; the image (re)renders. image may be
+// null ("use the classifier's decision"); editCrop is {rotation_quarters, rect, target}.
+export const editImage = (name, image, editCrop) =>
+  req(`/image/${encodeURIComponent(name)}/edit`, json("POST", { image, edit_crop: editCrop }));

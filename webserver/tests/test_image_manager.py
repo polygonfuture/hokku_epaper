@@ -84,6 +84,55 @@ def test_thumbnail_jpg(app_config: AppConfig, image_manager_factory, make_test_i
     assert jpg is not None and jpg[:3] == b"\xff\xd8\xff"  # JPEG SOI
 
 
+def test_thumbnail_reflects_edit_crop(
+    app_config: AppConfig, image_manager_factory, make_test_image
+):
+    """After commit_edit with an aspect-changing crop, the gallery thumbnail must be
+    regenerated to the cropped aspect so it matches the dithered render — not stay a
+    plain resize of the full original."""
+    upload = Path(app_config.upload_dir)
+    orig_w, orig_h = 400, 300
+    make_test_image(upload / "a.png", size=(orig_w, orig_h))
+    mgr = image_manager_factory(app_config)
+    mgr.sync()
+    mgr.wait_for_idle()
+
+    # Uncropped thumbnail: a plain resize of the full landscape original.
+    jpg_full = mgr.thumbnail_jpg("a.png")
+    assert jpg_full is not None and jpg_full[:3] == b"\xff\xd8\xff"
+    fw, fh = _Image.open(BytesIO(jpg_full)).size
+    aspect_full = fw / fh
+
+    thumb_path = mgr._thumb_path(mgr.status("a.png"))
+    assert thumb_path.exists()
+
+    # Crop the landscape image down to a tall vertical slice (portrait aspect).
+    crop = {
+        "rotation_quarters": 0,
+        "rect": {"x": 0.3, "y": 0.0, "w": 0.3, "h": 1.0},
+        "target": "portrait",
+    }
+    mgr.commit_edit("a.png", None, crop)
+    # commit_edit drops the stale thumbnail so the next read regenerates it cropped.
+    assert not thumb_path.exists(), "commit_edit must delete the stale thumbnail"
+
+    jpg_crop = mgr.thumbnail_jpg("a.png")
+    assert jpg_crop is not None and jpg_crop[:3] == b"\xff\xd8\xff"
+    assert thumb_path.exists(), "thumbnail must be regenerated after commit_edit"
+    cw, ch = _Image.open(BytesIO(jpg_crop)).size
+    aspect_crop = cw / ch
+
+    # Cropped thumb aspect matches the crop's aspect (w·W / h·H in the un-rotated frame).
+    expected = (crop["rect"]["w"] * orig_w) / (crop["rect"]["h"] * orig_h)
+    assert abs(aspect_crop - expected) < 0.05, (
+        f"cropped thumb aspect {aspect_crop:.3f} != crop aspect {expected:.3f}"
+    )
+    # ...and clearly differs from the uncropped thumbnail's aspect.
+    assert abs(aspect_crop - aspect_full) > 0.2, (
+        f"cropped thumb aspect {aspect_crop:.3f} should differ from uncropped {aspect_full:.3f}"
+    )
+
+
 # ── per-image editor: DRAFT lifecycle + no-re-pend ──────────────────────────
 
 
@@ -145,6 +194,41 @@ def test_edited_image_does_not_re_pend(
     assert mgr.status("a.png").convert_status == "ok", (
         "edited image re-pended — reconcile used the base classifier decision, not the edit"
     )
+
+
+def test_re_edit_same_slug_still_completes(
+    app_config: AppConfig, image_manager_factory, make_test_image
+):
+    """Re-editing an image so it resolves to the SAME slug as a prior render must still
+    reach 'ok'. The panel/preview from the first render are still on disk, so dispatch
+    takes the 'already cached' shortcut — which previously only recorded the slug and
+    left the image stuck in 'converting' forever with the progress counter stalled
+    (crop-only edit, image_config unchanged: exactly the reported bug)."""
+    upload = Path(app_config.upload_dir)
+    make_test_image(upload / "a.png")
+    mgr = image_manager_factory(app_config)
+    mgr.sync()
+    mgr.wait_for_idle()
+
+    crop = {"rotation_quarters": 0, "rect": {"x": 0.0, "y": 0.05, "w": 1.0, "h": 0.9}, "target": "landscape"}
+    # first edit (crop only, no config change) → renders, reaches ok
+    mgr.commit_edit("a.png", None, crop)
+    mgr.sync()
+    mgr.wait_for_idle()
+    assert mgr.status("a.png").convert_status == "ok"
+    first_slug = mgr.status("a.png").landscape_image_config_slug
+
+    # second edit, IDENTICAL crop → same slug; the panel/preview are still on disk
+    mgr.commit_edit("a.png", None, crop)
+    assert mgr.status("a.png").convert_status == "pending"
+    mgr.sync()
+    mgr.wait_for_idle()
+    rec = mgr.status("a.png")
+    assert rec.convert_status == "ok", (
+        "re-edit to the same slug stuck in 'converting' — the cached-panel dispatch "
+        "shortcut skipped the pending→ok completion"
+    )
+    assert rec.landscape_image_config_slug == first_slug
 
 
 def test_add_existing_raises(app_config: AppConfig, image_manager_factory):

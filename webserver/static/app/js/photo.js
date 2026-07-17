@@ -8,6 +8,7 @@
 import { state, subscribe, mutate } from "./state.js";
 import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, originalUrl } from "./api.js";
 import { $, $$, esc, toast, fmtBytes, fmtAgo, fmtUntil, frameColor } from "./ui.js";
+import { openEditor } from "./editor.js";
 
 const gallery = $("#gallery");
 
@@ -36,6 +37,7 @@ const ICONS = {
   retry:  '<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 4v4.5H16"/>',
   error:  '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4.5M12 17h.01"/>',
   details:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
+  edit:   '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   trash:  '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
 };
 const ic = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${ICONS[n]}</svg>`;
@@ -60,7 +62,7 @@ function menuItemsHTML(entry, inDetail) {
     }
   }
   s += '<div class="ctx-sep"></div>';
-  // "Edit photo…" (per-image editor) is intentionally omitted until that pipeline ships.
+  if (entry.status === "ok") s += actBtn("edit", "edit", "Edit photo…");
   if (entry.status === "ok" && !inDetail) s += actBtn("details", "details", "View details");
   s += actBtn("delete", "trash", "Delete", "del");
   return s;
@@ -71,6 +73,7 @@ function runAction(btn, entry) {
   const act = btn.dataset.act;
   const span = btn.querySelector("span:not(.fdot)");   // frame chips have a .fdot dot span too — target the label
   if (act === "details") return "details";
+  if (act === "edit") { openEditor(entry.name); return true; }
   if (act === "error") { toast(entry.error || "Conversion failed"); return false; }
   if (act === "retry") {
     retryImage(entry.name).then(() => { mutate(); toast(`Re-converting ${entry.name}…`); })

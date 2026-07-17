@@ -548,6 +548,26 @@ def test_edit_commits_and_queues_render(synced_client):
     assert state.manager.status(name).convert_status == "ok"
 
 
+def test_suggested_config_returns_saved_edit(synced_client):
+    """Feature 2 (remember edits): after an image is edited, suggested_config returns the
+    saved edit_image_config + edit_crop so re-opening restores them — while image_config
+    stays the classifier's live Auto baseline. Also exposes the pipeline badge fields."""
+    client, state, name = synced_client
+    body0 = client.get(f"/hokku/api/image/{name}/suggested_config").get_json()
+    assert body0["edit_image_config"] is None and body0["edit_crop"] is None
+    assert body0["pipeline"] in ("bw", "face", "default") and "faces_protected" in body0
+
+    cfg = asdict(state.config.image_config_default)
+    cfg["prepare_brightness"] = 1.2
+    edit_crop = {"rotation_quarters": 0, "rect": {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8}, "target": "landscape"}
+    client.post(f"/hokku/api/image/{name}/edit", json={"image": cfg, "edit_crop": edit_crop})
+
+    body1 = client.get(f"/hokku/api/image/{name}/suggested_config").get_json()
+    assert body1["edit_image_config"]["prepare_brightness"] == 1.2
+    assert body1["edit_crop"] == edit_crop
+    assert isinstance(body1["image_config"], dict)  # still the Auto baseline
+
+
 def test_edit_invalid_image_type_400(synced_client):
     client, _, name = synced_client
     resp = client.post(f"/hokku/api/image/{name}/edit", json={"image": "not-a-dict"})

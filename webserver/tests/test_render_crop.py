@@ -74,6 +74,22 @@ def test_crop_flows_through_prepare_canvas():
     )
 
 
+def test_manual_crop_covers_no_white_padding():
+    """A manual crop (crop_rect) must COVER the panel — never letterbox. Fitting an
+    off-aspect or rounded crop left a white line at an edge: int() floors the fit 1px
+    short and the shortfall is padding forced to white ink."""
+    renderer = ImageRenderer(NumbaStreamingDither())
+    _arr, mask = renderer._prepare_canvas(
+        _half_red_blue(1000, 750),
+        _neutral_cfg(),
+        Orientation.LANDSCAPE,
+        400,
+        300,
+        crop_rect=(0.0, 0.0, 1.0, 0.5),  # a wide crop the fit path would letterbox
+    )
+    assert not bool(mask.any()), "manual crop left white padding — should cover, not letterbox"
+
+
 def test_rotation_quarters_changes_the_canvas():
     a0 = _prep(_half_red_blue())
     a1 = _prep(_half_red_blue(), rotation_quarters=1)
