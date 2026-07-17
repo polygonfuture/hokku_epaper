@@ -10,12 +10,15 @@ Usage:
     python hokku_setup.py
 """
 
+import ctypes
 import shutil
 import sys
+import traceback
 import urllib.error
 from pathlib import Path
 
 import esp32_setup
+import local_installer
 import pi_installer
 import release_cache
 
@@ -282,33 +285,49 @@ def action_clear_cache():
 # ---------- main menu ----------
 
 
+# Menu actions keyed by a stable string id (not a display number) so options
+# can be hidden per-platform and reordered without breaking dispatch. Tuple is
+# (action_id, label, windows_only). Pi options are Windows-only (SD imaging).
+_ACTIONS = [
+    ("local_full", "This PC — install the server here, then configure + flash ESP32", False),
+    ("local_only", "This PC — install the hokku server on this PC only", False),
+    ("pi_full", "Raspberry Pi — image SD card, then configure + flash ESP32", True),
+    ("pi_only", "Raspberry Pi — image SD card with hokku-server, skip ESP32", True),
+    ("esp_both", "ESP32: configure + flash firmware", False),
+    ("esp_config", "ESP32: configure only (keep existing firmware)", False),
+    ("esp_flash", "ESP32: flash firmware only (keep existing config)", False),
+    ("advanced", "Advanced — install settings, cache management, uninstall", False),
+    ("exit", "Exit", False),
+]
+
+
+def _visible_actions():
+    """Return [(action_id, label)] visible on this platform (Pi options are
+    hidden off Windows, where SD-card imaging can't run)."""
+    win = sys.platform == "win32"
+    return [(aid, label) for aid, label, win_only in _ACTIONS if win or not win_only]
+
+
 def _menu_default(status):
-    """Pick a sensible default option based on device state."""
-    if status is None or "device" not in status:
-        return "1"  # no device → full Pi install likely
-    dev = status["device"]
-    if not dev.get("has_hokku_firmware"):
-        return "3"  # configure + flash
-    if not dev.get("config_version_ok"):
-        return "4"  # has firmware, needs config
-    if dev.get("firmware_current") is False:
-        return "5"  # firmware update
-    return "1"
+    """Pick a sensible default action id based on device + install state."""
+    dev = (status or {}).get("device")
+    if dev:
+        if not dev.get("has_hokku_firmware"):
+            return "esp_both"  # blank/other device → configure + flash
+        if not dev.get("config_version_ok"):
+            return "esp_config"  # has firmware, needs config
+        if dev.get("firmware_current") is False:
+            return "esp_flash"  # firmware update available
+    # No frame attached: default to setting up the server (this PC first).
+    if local_installer.is_installed():
+        return "esp_config" if dev else "local_only"
+    return "local_full"
 
 
-def _print_menu(default):
+def _print_menu(visible, default_id):
     print("  What would you like to do?")
-    options = [
-        ("1", "Full install — image SD card, then configure + flash ESP32"),
-        ("2", "Server only — image SD card with hokku-server, skip ESP32"),
-        ("3", "ESP32: configure + flash firmware"),
-        ("4", "ESP32: configure only (keep existing firmware)"),
-        ("5", "ESP32: flash firmware only (keep existing config)"),
-        ("6", "Advanced — install settings, cache management"),
-        ("7", "Exit"),
-    ]
-    for num, label in options:
-        marker = "  <-- default" if num == default else ""
+    for num, (aid, label) in enumerate(visible, 1):
+        marker = "  <-- default" if aid == default_id else ""
         print(f"    [{num}] {label}{marker}")
     print()
 
@@ -389,7 +408,8 @@ def _print_advanced_menu():
         ("1", "Show / edit install settings"),
         ("2", "Download everything into .cache"),
         ("3", "Clear .cache"),
-        ("4", "Back to main menu"),
+        ("4", "Uninstall local server (remove Scheduled Task + firewall rules)"),
+        ("5", "Back to main menu"),
     ]:
         print(f"    [{num}] {label}")
     print()
@@ -399,7 +419,7 @@ def action_advanced():
     """Advanced submenu loop — stays here until the user picks Back."""
     while True:
         _print_advanced_menu()
-        choice = input("    [4]> ").strip() or "4"
+        choice = input("    [5]> ").strip() or "5"
         if choice == "1":
             action_show_settings()
         elif choice == "2":
@@ -407,35 +427,51 @@ def action_advanced():
         elif choice == "3":
             action_clear_cache()
         elif choice == "4":
+            local_installer.uninstall()
+        elif choice == "5":
             return 0
         else:
             print(f"    Unknown choice {choice!r}.")
 
 
-def _dispatch(choice):
-    """Run the chosen action. Returns ('continue', rc) to re-display the menu,
-    or ('exit', rc) to quit."""
-    if choice == "1":
-        # Full install: Pi OS SD, then ESP32 config+flash with pre-fill.
-        result = pi_installer.run()
-        pi_install_ran = result is not None
-        pi_credentials = None
-        if pi_install_ran:
-            pi_credentials = {
-                "wifi_ssid": result.get("wifi_ssid"),
-                "wifi_pass": result.get("wifi_pass"),
-                "server_ip": result.get("server_ip"),
-            }
-        else:
-            print()
-            print("  Pi install did not complete. Continuing to ESP32 phase anyway.")
+def _server_then_esp32(result):
+    """Feed a server-install result (Pi or local PC) into the ESP32 config+flash
+    phase, pre-filling WiFi + server address from it."""
+    server_install_ran = result is not None
+    credentials = None
+    if server_install_ran:
+        credentials = {
+            "wifi_ssid": result.get("wifi_ssid"),
+            "wifi_pass": result.get("wifi_pass"),
+            "server_ip": result.get("server_ip"),
+        }
+    else:
         print()
-        print("  ESP32 phase")
-        print("  -----------")
-        return "continue", esp32_setup.run(
-            pi_credentials=pi_credentials, pi_install_ran=pi_install_ran
-        )
-    if choice == "2":
+        print("  Server install did not complete. Continuing to ESP32 phase anyway.")
+    print()
+    print("  ESP32 phase")
+    print("  -----------")
+    return "continue", esp32_setup.run(
+        pi_credentials=credentials, pi_install_ran=server_install_ran
+    )
+
+
+def _dispatch(action_id):
+    """Run the chosen action by its stable id. Returns ('continue', rc) to
+    re-display the menu, or ('exit', rc) to quit."""
+    if action_id == "local_full":
+        return _server_then_esp32(local_installer.run())
+    if action_id == "local_only":
+        result = local_installer.run()
+        if result is None:
+            print()
+            print("  Local install did not complete.")
+            return "continue", 1
+        return "continue", 0
+    if action_id == "pi_full":
+        # Full install: Pi OS SD, then ESP32 config+flash with pre-fill.
+        return _server_then_esp32(pi_installer.run())
+    if action_id == "pi_only":
         # Server only: image the SD card, run through mDNS/HTTP wait, then stop.
         result = pi_installer.run()
         if result is None:
@@ -451,25 +487,57 @@ def _dispatch(choice):
         else:
             print("  Server install submitted but HTTP probe timed out — check the Pi directly.")
         return "continue", 0
-    if choice == "3":
+    if action_id == "esp_both":
         return "continue", esp32_setup.run_configure_and_flash()
-    if choice == "4":
+    if action_id == "esp_config":
         return "continue", esp32_setup.run_configure_only()
-    if choice == "5":
+    if action_id == "esp_flash":
         return "continue", esp32_setup.run_flash_only()
-    if choice == "6":
+    if action_id == "advanced":
         return "continue", action_advanced()
-    if choice == "7":
+    if action_id == "exit":
         print("  Bye!")
         return "exit", 0
-    print(f"  Unknown choice {choice!r}.")
+    print(f"  Unknown action {action_id!r}.")
     return "continue", 1
 
 
-def main():
-    _pause_on_exit = "--pause-on-exit" in sys.argv
-    _banner()
+def _force_utf8_output():
+    """Make stdout/stderr encode as UTF-8 so the em-dashes, arrows, and box
+    characters in the UI don't raise UnicodeEncodeError on a legacy (cp1252)
+    Windows console — which would close the elevated window mid-run. errors=
+    'replace' guarantees a stray character can never crash the process."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # already UTF-8, or a stream that can't be reconfigured
 
+
+def _disable_console_quickedit():
+    """Turn off Windows console QuickEdit Mode. With it on, a stray click freezes
+    output (selection mode) until a key is pressed — and that key then lands in
+    the next prompt. Disabling it keeps the wizard responsive and stops accidental
+    input from corrupting an answer."""
+    if sys.platform != "win32":
+        return
+    try:
+        STD_INPUT_HANDLE = -10
+        ENABLE_EXTENDED_FLAGS = 0x0080
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        mode = ctypes.c_uint()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return
+        new_mode = (mode.value | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE
+        kernel32.SetConsoleMode(handle, new_mode)
+    except Exception:  # noqa: S110 — best-effort; a console-mode tweak must never break startup
+        pass
+
+
+def _menu_loop():
+    """Run the interactive menu until the user exits. Returns the last rc."""
     last_rc = 0
     first = True
     while True:
@@ -484,15 +552,45 @@ def main():
         _print_device_status(status)
         print()
 
-        default = _menu_default(status)
-        _print_menu(default)
+        visible = _visible_actions()
+        default_id = _menu_default(status)
+        # The default may be a hidden (Windows-only) action on other platforms;
+        # fall back to the first visible action so the prompt always resolves.
+        ids = [aid for aid, _ in visible]
+        if default_id not in ids:
+            default_id = ids[0]
+        default_num = ids.index(default_id) + 1
+        _print_menu(visible, default_id)
 
-        choice = input(f"  [{default}]> ").strip() or default
-        action, last_rc = _dispatch(choice)
+        raw = input(f"  [{default_num}]> ").strip()
+        num = raw or str(default_num)
+        if num.isdigit() and 1 <= int(num) <= len(visible):
+            action_id = ids[int(num) - 1]
+        else:
+            print(f"  Unknown choice {raw!r}.")
+            continue
+        action, last_rc = _dispatch(action_id)
         if action == "exit":
-            break
+            return last_rc
         input("\n  Press Enter to return to main menu...")
         print()
+
+
+def main():
+    _pause_on_exit = "--pause-on-exit" in sys.argv
+    _force_utf8_output()
+    _disable_console_quickedit()
+    _banner()
+
+    last_rc = 0
+    try:
+        last_rc = _menu_loop()
+    except KeyboardInterrupt:
+        print("\n  Cancelled.")
+    except Exception:  # never let the elevated window vanish without the reason
+        print("\n  The setup tool hit an unexpected error:\n")
+        traceback.print_exc()
+        last_rc = 1
 
     if _pause_on_exit:
         input("\n  Press Enter to close this window. ")

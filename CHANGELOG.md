@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+### Refresh schedule — interval mode + a friendlier editor
+
+The Configuration page's refresh control is redesigned. A mode toggle switches between:
+- **Interval** — refresh every N (one-tap presets from 15m to 24h), with an optional
+  active-hours window (e.g. only 07:00–23:00) that skips overnight refreshes to save battery.
+- **Specific times** — the existing clock-time list, now with a real time picker (no more
+  raw `HHMM` typing) and one-tap presets (3× daily, every 2h, hourly 8–22).
+
+A live "next refresh in…" line previews what the frame will do next. Config schema bumps to
+v7; existing installs migrate to "specific times" mode with their current times unchanged.
+No firmware change — the server just sends the frame the sleep duration it already used.
+
+### Run the server on this PC (Windows)
+
+The setup wizard can now install and run the image server on the Windows machine
+you're already using, as an alternative to imaging a Raspberry Pi SD card. It
+creates an install folder (`images/`, `cache/`, `config.json`), registers a boot
+service (Scheduled Task running as SYSTEM, so it starts without login and restarts
+on failure), opens the firewall for HTTP + mDNS, starts the server immediately, and
+points the frame at `hokku.local` (or the detected LAN IP if mDNS doesn't resolve).
+An **Advanced → Uninstall** option removes the service and firewall rules. The main
+menu now offers a This-PC vs Raspberry-Pi choice; the Pi options are hidden on
+non-Windows hosts.
+
+### Config-write no longer needs a full ESP-IDF install
+
+Writing the frame's WiFi/server configuration previously required a complete ESP-IDF
+installation (it shelled out to ESP-IDF's `nvs_partition_gen.py`). It now uses the
+standalone `esp-idf-nvs-partition-gen` PyPI package by default — a `pip install`
+away — falling back to ESP-IDF only if that package is absent. This makes the
+documented `pip install -r requirements.txt` genuinely sufficient to configure a frame.
+
+### Fixes
+
+- The installer tooling now imports on Linux/macOS (a Windows-only `ctypes.wintypes`
+  import at module load previously broke `python tools/hokku_setup.py` off Windows).
+- WiFi credentials from a server install now correctly pre-fill the ESP32 config
+  prompts (a key-name mismatch meant they were silently dropped before).
+- `tools/` tests now run in CI.
+
 ## 3.1.0 alpha 1
 
 ### Frame log upload

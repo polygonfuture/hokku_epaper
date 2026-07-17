@@ -174,3 +174,38 @@ class TestBackupRestore:
         """Backup directory is created if missing."""
         d = hokku_config.backup_dir()
         assert d.exists()
+
+
+class TestNvsGeneratorResolver:
+    """The NVS generator prefers the pip package, falls back to ESP-IDF, and
+    raises a helpful error when neither is available (Blocker A)."""
+
+    def test_prefers_pip_module_when_available(self):
+        with patch("importlib.util.find_spec", return_value=object()):
+            argv = hokku_config._nvs_gen_command("in.csv", "out.bin")
+        assert argv[0] == sys.executable
+        assert argv[1:4] == ["-m", "esp_idf_nvs_partition_gen", "generate"]
+        assert argv[-1] == hex(hokku_config.NVS_SIZE)
+
+    def test_falls_back_to_esp_idf(self):
+        with (
+            patch("importlib.util.find_spec", return_value=None),
+            patch.object(hokku_config, "_find_nvs_partition_gen", return_value="/idf/nvs_gen.py"),
+            patch.object(hokku_config, "_find_idf_python", return_value="/idf/python"),
+        ):
+            argv = hokku_config._nvs_gen_command("in.csv", "out.bin")
+        assert argv[0] == "/idf/python"
+        assert argv[1] == "/idf/nvs_gen.py"
+        assert "generate" in argv
+
+    def test_raises_when_no_generator(self):
+        with (
+            patch("importlib.util.find_spec", return_value=None),
+            patch.object(hokku_config, "_find_nvs_partition_gen", return_value=None),
+            patch.object(hokku_config, "_find_idf_python", return_value=None),
+        ):
+            try:
+                hokku_config._nvs_gen_command("in.csv", "out.bin")
+                raise AssertionError("expected NvsToolUnavailable")
+            except hokku_config.NvsToolUnavailable as e:
+                assert "pip install esp-idf-nvs-partition-gen" in str(e)

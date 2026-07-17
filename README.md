@@ -62,6 +62,8 @@ See **[Hardware](docs/hardware.md)** for where to buy the frame and the recommen
 
 Hokku loves Pi! If you need to pick one up, the **[hardware guide](docs/hardware.md)** has a tested parts list that arrives next-day in the US. Connect both to your computer, run `hokku_setup.bat`, and the guided installer takes care of the rest.
 
+**No Pi? Run the server on your Windows PC.** The same `hokku_setup.bat` wizard can install the server on the machine you're already using — it sets up a boot service, opens the firewall, and points the frame at it. Pick *"This PC — install the hokku server on this PC only"* from the menu. Best for an always-on desktop (a laptop that sleeps won't be reachable when the frame refreshes).
+
 Prefer terminal tabs, mysterious pip errors, and the satisfaction of doing things the hard way? We've got you covered: **[Manual installation guide](docs/install.md)**.
 
 ## Buttons and LEDs

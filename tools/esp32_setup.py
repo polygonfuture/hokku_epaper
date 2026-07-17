@@ -477,7 +477,10 @@ def prompt_config(existing_config=None, pi_credentials=None):
     print()
 
     # --- Primary WiFi SSID (required) ---
-    default = pi.get("wifi_ssid1") or cfg.get("wifi_ssid1", "")
+    # Server installers (pi_installer / local_installer) hand us credentials
+    # under the sticky keys wifi_ssid/wifi_pass; accept the legacy wifi_ssid1
+    # form too so either shape pre-fills.
+    default = pi.get("wifi_ssid") or pi.get("wifi_ssid1") or cfg.get("wifi_ssid1", "")
     prompt = f"  WiFi SSID [{default}]: " if default else "  WiFi SSID: "
     val = input(prompt).strip()
     if val:
@@ -489,7 +492,7 @@ def prompt_config(existing_config=None, pi_credentials=None):
         return None
 
     # --- Primary WiFi password ---
-    pi_pass = pi.get("wifi_pass1")
+    pi_pass = pi.get("wifi_pass") or pi.get("wifi_pass1")
     existing_pass = cfg.get("wifi_pass1", "")
     if pi_pass:
         prompt = "  WiFi Password [use Pi install value]: "
@@ -617,15 +620,13 @@ def _pi_config_mismatch(existing_config, pi_credentials):
     if not existing_config or not pi_credentials:
         return []
     diffs = []
-    if (
-        pi_credentials.get("wifi_ssid1")
-        and existing_config.get("wifi_ssid1") != pi_credentials["wifi_ssid1"]
-    ):
+    # Accept both the installer sticky keys (wifi_ssid/wifi_pass) and the legacy
+    # wifi_ssid1/wifi_pass1 form — see prompt_config for the same normalisation.
+    cred_ssid = pi_credentials.get("wifi_ssid") or pi_credentials.get("wifi_ssid1")
+    cred_pass = pi_credentials.get("wifi_pass") or pi_credentials.get("wifi_pass1")
+    if cred_ssid and existing_config.get("wifi_ssid1") != cred_ssid:
         diffs.append("wifi_ssid1")
-    if (
-        pi_credentials.get("wifi_pass1")
-        and existing_config.get("wifi_pass1") != pi_credentials["wifi_pass1"]
-    ):
+    if cred_pass and existing_config.get("wifi_pass1") != cred_pass:
         diffs.append("wifi_pass1")
     if pi_credentials.get("server_ip"):
         host, _ = _parse_server_url(existing_config.get("image_url", ""))

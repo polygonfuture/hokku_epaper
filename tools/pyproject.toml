@@ -11,6 +11,7 @@ license = {text = "GPL-3.0 (non-commercial)"}
 dependencies = [
     "pyserial>=3.5",
     "esptool>=4.0",
+    "esp-idf-nvs-partition-gen",
 ]
 
 [project.scripts]
@@ -18,4 +19,12 @@ hokku-config = "hokku_config:main"
 hokku-setup = "hokku_setup:main"
 
 [tool.setuptools]
-py-modules = ["hokku_config", "hokku_setup"]
+py-modules = [
+    "hokku_config",
+    "hokku_setup",
+    "esp32_setup",
+    "pi_installer",
+    "local_installer",
+    "release_cache",
+    "setup_prompts",
+]

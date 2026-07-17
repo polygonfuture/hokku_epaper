@@ -72,7 +72,9 @@ All options can also be changed live from the web app without restarting the ser
 
 **From source (any platform)**
 
-Create a virtual environment, install dependencies, and start the server:
+Create a virtual environment, install dependencies, and start the server. The
+server takes the path to a `config.json` as a required argument — on first start
+it writes a fresh default there if the file doesn't exist yet:
 
 ```bash
 python -m venv .venv
@@ -80,10 +82,19 @@ source .venv/bin/activate   # Linux / macOS
 .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 cd webserver
-python -m hokku_server
+python -m hokku_server config.json
 ```
 
-The `cd webserver` step is required — the server package lives there. On first start without a config file it writes a fresh default (including `upload_dir`, which defaults to `/var/lib/hokku/images` — change this in the config to a local path if you're not running on Linux). Web GUI at `http://<your-server>:8080/`.
+The `cd webserver` step is required — the server package lives there. The default
+config points `upload_dir` at `/var/lib/hokku/images`; **on Windows or macOS edit
+`config.json` and set `upload_dir` / `cache_dir` to real local paths** (e.g.
+`D:/Hokku/images`), then create those folders — the server exits on start if they
+don't exist. Web GUI at `http://<your-server>:8080/`.
+
+**Windows: let the wizard do it.** On Windows the setup wizard automates this whole
+path — creating the folders, writing a versioned `config.json`, and registering a
+boot service — see [section 2](#2-using-the-setup-wizard), option *"This PC — install
+the hokku server on this PC only"*.
 
 ---
 
@@ -164,7 +175,7 @@ The setup tool can handle just the config-write step if you prefer not to do it 
 
 ```bash
 python tools/hokku_setup.py
-# Select: [4] ESP32: configure only (keep existing firmware)
+# Select: ESP32: configure only (keep existing firmware)
 ```
 
 **Step 4: Verify**
@@ -215,18 +226,56 @@ It then presents a menu and pre-selects the most sensible option for the detecte
 
 ```
   What would you like to do?
-    [1] Full install — image SD card, then configure + flash ESP32
-    [2] Server only — image SD card with hokku-server, skip ESP32
-    [3] ESP32: configure + flash firmware  <-- default
-    [4] ESP32: configure only (keep existing firmware)
-    [5] ESP32: flash firmware only (keep existing config)
-    [6] Advanced — install settings, cache management
-    [7] Exit
+    [1] This PC — install the server here, then configure + flash ESP32
+    [2] This PC — install the hokku server on this PC only
+    [3] Raspberry Pi — image SD card, then configure + flash ESP32
+    [4] Raspberry Pi — image SD card with hokku-server, skip ESP32
+    [5] ESP32: configure + flash firmware  <-- default
+    [6] ESP32: configure only (keep existing firmware)
+    [7] ESP32: flash firmware only (keep existing config)
+    [8] Advanced — install settings, cache management, uninstall
+    [9] Exit
 ```
+
+The default is chosen from the detected state — a connected frame that needs
+configuring defaults to an ESP32 option; with no frame attached it defaults to
+setting up the server. The **Raspberry Pi** options only appear on Windows (SD-card
+imaging needs raw disk access); on Linux/macOS the menu shows the This-PC and ESP32
+options only.
 
 ### 2.3 What the wizard does, step by step
 
-**Full install [1] and Server only [2] — Pi OS SD card imaging (Windows only)**
+**This PC [1] and [2] — run the server on the machine you're on (Windows)**
+
+> These options require administrator privileges (registering a boot service and
+> opening the firewall). `hokku_setup.bat` elevates automatically.
+
+1. **Dependencies** — installs `requirements.txt` into the repo's `.venv` so the
+   server can run.
+2. **Install directory** — proposes a visible default (e.g. `D:\Hokku`) and creates
+   `images/`, `cache/`, and `logs/` under it. Put photos in `images\` (drag-drop, or
+   the web uploader); rendered panel data and thumbnails go in `cache\`.
+3. **Config** — writes a versioned `config.json` pointing at those folders, plus your
+   chosen mDNS hostname (default `hokku` → advertises as `hokku.local`) and port
+   (default 8080).
+4. **Firewall** — adds inbound allow rules for the HTTP port (TCP) and mDNS (UDP 5353),
+   scoped to Private/Domain networks only.
+5. **Boot service** — registers a Windows Scheduled Task that starts the server at
+   boot as `SYSTEM` (no login needed), restarts it on failure, and logs to
+   `logs\server.log`. It's started immediately, so you don't need to reboot.
+6. **Address for the frame** — probes whether `hokku.local` resolves back to this PC
+   and, if so, points the frame at `hokku.local` (survives DHCP changes); otherwise
+   it falls back to this PC's detected LAN IP. Virtual/VPN adapters are filtered out
+   and you can override the choice.
+7. **Frame WiFi** — with option [1] it then flows into the ESP32 phase, pre-filling
+   the WiFi and server address you just configured.
+
+The Scheduled Task and firewall rules can be removed later via **Advanced → Uninstall
+local server** (your photos and config are left in place). Note: a PC that sleeps is
+unreachable when the frame wakes to refresh — the wizard warns and offers to disable
+sleep-on-AC.
+
+**Raspberry Pi [3] and [4] — Pi OS SD card imaging (Windows only)**
 
 > These options require Windows and administrator privileges. They write directly to the raw disk.
 
@@ -301,11 +350,11 @@ It then presents a menu and pre-selects the most sensible option for the detecte
 
    If either phase times out, the wizard asks `Keep waiting? [Y/n]` so you can extend the wait without restarting.
 
-**Configure + flash [3] / Configure only [4] / Flash only [5] — ESP32 frame**
+**ESP32: configure + flash / configure only / flash only — ESP32 frame**
 
 1. **Device detection** — the wizard scans USB serial ports for an ESP32-S3. If multiple devices are found you'll be asked to pick one. The device's current firmware version and config are displayed.
 
-2. **Configuration prompts** (options 3 and 4) — you're asked for WiFi SSID, WiFi password, server IP, server port (default `8080`), and an optional screen name. You can also configure an optional secondary WiFi network; if you do, a connection-order prompt follows (`primary first` or `last-used first`). The wizard checks the server is reachable before writing; if it isn't you'll see a warning and can continue anyway.
+2. **Configuration prompts** (the configure options) — you're asked for WiFi SSID, WiFi password, server IP, server port (default `8080`), and an optional screen name. You can also configure an optional secondary WiFi network; if you do, a connection-order prompt follows (`primary first` or `last-used first`). The wizard checks the server is reachable before writing; if it isn't you'll see a warning and can continue anyway.
 
 3. **Firmware download and flash** (options 3 and 5) — the wizard fetches the latest `hokku-firmware_*.bin` from GitHub releases (or imports a local build if one exists) and flashes it over USB. Takes about 30 seconds. A boot check follows: the wizard reads serial output for 10 seconds and reports whether the firmware started cleanly.
 

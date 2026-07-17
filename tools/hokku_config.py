@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import struct
@@ -69,6 +70,12 @@ STR_TYPE = 0x21  # String
 # Must match firmware's CONFIG_VERSION. Source of truth is CLAUDE.md.
 CONFIG_VERSION = 2
 
+# Standalone NVS partition generator, published by Espressif on PyPI as
+# `esp-idf-nvs-partition-gen` (module name uses underscores). It provides the
+# exact same generator as a full ESP-IDF install, so `pip install`-ing it lets
+# the config-write path work with no ESP-IDF present. See requirements.txt.
+_NVS_GEN_MODULE = "esp_idf_nvs_partition_gen"
+
 # Page states
 PAGE_ACTIVE = 0xFFFFFFFE  # Active page
 
@@ -106,26 +113,16 @@ def _find_idf_python():
     return None
 
 
-def _build_nvs_binary(config_dict):
-    """Build an NVS partition binary using ESP-IDF's nvs_partition_gen.py.
+class NvsToolUnavailable(RuntimeError):
+    """Neither the pip NVS generator nor an ESP-IDF install could be found."""
 
-    Creates a CSV with the config values and calls the ESP-IDF tool to
-    generate a properly formatted NVS partition binary.
+
+def _nvs_csv(config_dict):
+    """Return the NVS-generator CSV body for a config dict.
+
+    Columns are key,type,encoding,value. cfg_ver and wifi_order are u8; every
+    other string value becomes a quoted string entry in the 'hokku' namespace.
     """
-    nvs_gen = _find_nvs_partition_gen()
-    idf_python = _find_idf_python()
-
-    if nvs_gen is None:
-        raise RuntimeError(
-            "Cannot find ESP-IDF nvs_partition_gen.py. "
-            "Set IDF_PATH environment variable or install ESP-IDF."
-        )
-    if idf_python is None:
-        raise RuntimeError(
-            "Cannot find ESP-IDF Python environment. Set IDF_PYTHON_ENV_PATH or install ESP-IDF."
-        )
-
-    # Build CSV: key,type,encoding,value
     csv_lines = ["key,type,encoding,value"]
     csv_lines.append(f"{NVS_NAMESPACE},namespace,,")
     csv_lines.append(f"cfg_ver,data,u8,{CONFIG_VERSION}")
@@ -136,8 +133,48 @@ def _build_nvs_binary(config_dict):
             continue  # u8 fields (cfg_ver, wifi_order) are handled above
         escaped = value.replace('"', '""')
         csv_lines.append(f'{key},data,string,"{escaped}"')
+    return "\n".join(csv_lines) + "\n"
 
-    csv_content = "\n".join(csv_lines) + "\n"
+
+def _nvs_gen_command(csv_path, bin_path):
+    """Return the argv to generate an NVS binary from *csv_path*.
+
+    Prefers the standalone `esp-idf-nvs-partition-gen` pip package (no ESP-IDF
+    needed). Falls back to a full ESP-IDF install for developers who have one.
+    Raises NvsToolUnavailable if neither is present.
+    """
+    if importlib.util.find_spec(_NVS_GEN_MODULE) is not None:
+        return [
+            sys.executable,
+            "-m",
+            _NVS_GEN_MODULE,
+            "generate",
+            csv_path,
+            bin_path,
+            hex(NVS_SIZE),
+        ]
+
+    # Fallback: a full ESP-IDF checkout (kept for devs who already have IDF).
+    nvs_gen = _find_nvs_partition_gen()
+    idf_python = _find_idf_python()
+    if nvs_gen is not None and idf_python is not None:
+        return [str(idf_python), str(nvs_gen), "generate", csv_path, bin_path, hex(NVS_SIZE)]
+
+    raise NvsToolUnavailable(
+        "Cannot build the NVS partition image — no generator found.\n"
+        "  Install the standalone generator:  pip install esp-idf-nvs-partition-gen\n"
+        "  (it is included in requirements.txt; run `pip install -r requirements.txt`)\n"
+        "  Alternatively set IDF_PATH / IDF_PYTHON_ENV_PATH if you have ESP-IDF installed."
+    )
+
+
+def _build_nvs_binary(config_dict):
+    """Build an NVS partition binary from a config dict.
+
+    Writes a temporary CSV and runs the NVS partition generator (the pip
+    package by preference, else ESP-IDF's own copy). Returns the binary bytes.
+    """
+    csv_content = _nvs_csv(config_dict)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         f.write(csv_content)
@@ -146,14 +183,15 @@ def _build_nvs_binary(config_dict):
     bin_path = csv_path.replace(".csv", ".bin")
 
     try:
+        argv = _nvs_gen_command(csv_path, bin_path)
         result = subprocess.run(
-            [str(idf_python), str(nvs_gen), "generate", csv_path, bin_path, hex(NVS_SIZE)],
+            argv,
             capture_output=True,
             text=True,
             timeout=30,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"nvs_partition_gen.py failed: {result.stderr}")
+            raise RuntimeError(f"NVS partition generator failed: {result.stderr or result.stdout}")
 
         with open(bin_path, "rb") as f:
             return f.read()

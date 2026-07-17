@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 GITHUB_RELEASES_LATEST = "https://api.github.com/repos/defl/hokku_epaper/releases/latest"
 GITHUB_RELEASES_ALL = "https://api.github.com/repos/defl/hokku_epaper/releases"
 
-REPO_ROOT = Path(__file__).parent.parent
+# .resolve() so REPO_ROOT is correct even when this module is imported via an
+# unnormalised sys.path entry (e.g. tests inserting ".../tools/tests/.."), where
+# a literal ".." component would otherwise skew parent.parent.
+REPO_ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = REPO_ROOT / ".cache"
 SETTINGS_FILE = CACHE_DIR / "settings.json"
 

@@ -55,7 +55,7 @@ if not exist .venv (
 call .venv\Scripts\activate.bat
 
 echo Installing dependencies...
-pip install pyserial esptool >nul
+pip install pyserial esptool esp-idf-nvs-partition-gen >nul
 if %errorlevel% neq 0 (
     echo Failed to install dependencies.
     pause
@@ -65,14 +65,14 @@ if %errorlevel% neq 0 (
 REM --- relaunch elevated, targeting the venv's python.exe by absolute path ---
 echo.
 echo Requesting Administrator privileges (accept the UAC prompt)...
-powershell -NoProfile -Command "Start-Process -FilePath '%~dp0.venv\Scripts\python.exe' -ArgumentList 'tools\hokku_setup.py','--pause-on-exit' -WorkingDirectory '%~dp0' -Verb RunAs"
+powershell -NoProfile -Command "Start-Process -FilePath '%~dp0.venv\Scripts\python.exe' -ArgumentList '-X','utf8','tools\hokku_setup.py','--pause-on-exit' -WorkingDirectory '%~dp0' -Verb RunAs"
 exit /b 0
 
 :already_elevated
 REM --- already admin: use the venv python if set up, else python from PATH ---
 if exist "%~dp0.venv\Scripts\python.exe" (
-    "%~dp0.venv\Scripts\python.exe" tools\hokku_setup.py --pause-on-exit
+    "%~dp0.venv\Scripts\python.exe" -X utf8 tools\hokku_setup.py --pause-on-exit
 ) else (
     echo Warning: .venv not found; running with system python. Dependencies may be missing.
-    python tools\hokku_setup.py --pause-on-exit
+    python -X utf8 tools\hokku_setup.py --pause-on-exit
 )
