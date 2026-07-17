@@ -441,6 +441,119 @@ def test_dither_preview_non_json_body_returns_400(bare_client):
     assert resp.status_code == 400
 
 
+def _preview_png_dims(data: bytes) -> tuple[int, int]:
+    import io
+
+    from PIL import Image
+
+    return Image.open(io.BytesIO(data)).size  # (w, h)
+
+
+def test_dither_preview_explicit_orientation_is_honoured(synced_client):
+    client, _, name = synced_client
+    cfg = asdict(PRESET_IMAGE_CONFIGS["atkinson_hue_aware"])
+    land = client.post(
+        "/hokku/api/dither/preview", json={"name": name, "image": cfg, "orientation": "landscape"}
+    )
+    port = client.post(
+        "/hokku/api/dither/preview", json={"name": name, "image": cfg, "orientation": "portrait"}
+    )
+    assert land.status_code == 200 and port.status_code == 200
+    lw, lh = _preview_png_dims(land.data)
+    pw, ph = _preview_png_dims(port.data)
+    assert lw > lh, "landscape preview should be wider than tall"
+    assert ph > pw, "portrait preview should be taller than wide (fixes portrait drafts)"
+
+
+def test_dither_preview_with_crop_rotation_and_max_side(synced_client):
+    client, _, name = synced_client
+    cfg = asdict(PRESET_IMAGE_CONFIGS["atkinson_hue_aware"])
+    resp = client.post(
+        "/hokku/api/dither/preview",
+        json={
+            "name": name,
+            "image": cfg,
+            "orientation": "landscape",
+            "crop": [0.1, 0.1, 0.8, 0.8],
+            "rotation": 1,
+            "max_side_px": 256,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.data[:4] == b"\x89PNG"
+    assert "X-Face-Bboxes" in resp.headers
+    assert max(_preview_png_dims(resp.data)) <= 256
+
+
+# ── per-image editor: upload_draft / suggested_config / edit ─────────────────
+
+
+def _editor_png(w: int = 400, h: int = 300) -> bytes:
+    import io as _io
+
+    from PIL import Image as _Img
+
+    buf = _io.BytesIO()
+    _Img.new("RGB", (w, h), (90, 140, 200)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_upload_draft_registers_an_inert_draft(bare_client):
+    import io as _io
+
+    client, state = bare_client
+    resp = client.post(
+        "/hokku/api/upload_draft",
+        data={"file": (_io.BytesIO(_editor_png()), "shot.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    name = resp.get_json()["name"]
+    rec = state.manager.status(name)
+    assert rec is not None and rec.convert_status == "draft"
+
+
+def test_suggested_config_returns_editor_state(synced_client):
+    client, _, name = synced_client
+    resp = client.get(f"/hokku/api/image/{name}/suggested_config")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert isinstance(body["image_config"], dict)
+    assert body["orientation"] in ("landscape", "portrait")
+    assert body["source_w"] > 0 and body["source_h"] > 0
+    assert "face_bboxes" in body and "is_bw" in body
+
+
+def test_suggested_config_unknown_image_404(bare_client):
+    client, _ = bare_client
+    assert client.get("/hokku/api/image/ghost.png/suggested_config").status_code == 404
+
+
+def test_edit_commits_and_queues_render(synced_client):
+    client, state, name = synced_client
+    cfg = asdict(state.config.image_config_default)
+    cfg["prepare_brightness"] = 1.2
+    edit_crop = {
+        "rotation_quarters": 0,
+        "rect": {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8},
+        "target": "landscape",
+    }
+    resp = client.post(f"/hokku/api/image/{name}/edit", json={"image": cfg, "edit_crop": edit_crop})
+    assert resp.status_code == 200
+    rec = state.manager.status(name)
+    assert rec.convert_status == "pending"
+    assert rec.edit_image_config is not None and rec.edit_crop == edit_crop
+    state.manager.sync()
+    state.manager.wait_for_idle()
+    assert state.manager.status(name).convert_status == "ok"
+
+
+def test_edit_invalid_image_type_400(synced_client):
+    client, _, name = synced_client
+    resp = client.post(f"/hokku/api/image/{name}/edit", json={"image": "not-a-dict"})
+    assert resp.status_code == 400
+
+
 # ── /hokku/api/thumbnail/<name> GET ──────────────────────────────────────────
 
 

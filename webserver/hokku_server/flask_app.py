@@ -40,7 +40,7 @@ from hokku_server.app_config import AppConfig
 from hokku_server.app_state import AppState
 from hokku_server.display import FULL_W, PANEL_H, TOTAL_BYTES, VISUAL_H, VISUAL_W
 from hokku_server.dither_streaming_numba import NumbaStreamingDither
-from hokku_server.image_abc import transform_bboxes_to_canvas_norm
+from hokku_server.image_abc import _transform_keepout_through_crop, transform_bboxes_to_canvas_norm
 from hokku_server.image_config import _image_config_from_dict
 from hokku_server.image_record import ConvertStatus
 from hokku_server.image_renderer import (
@@ -50,7 +50,7 @@ from hokku_server.image_renderer import (
     ImageRenderer,
     open_image_for_render,
 )
-from hokku_server.orientation import Orientation
+from hokku_server.orientation import Orientation, orientation_from_dims
 from hokku_server.presets import PRESET_IMAGE_CONFIGS, PRESET_META
 from hokku_server.screen_headers import parse_battery_header, parse_frame_state
 from hokku_server.time_utils import calculate_sleep_seconds, format_duration_human
@@ -359,6 +359,49 @@ def create_app(
                 skipped.append({"name": name, "reason": str(e)})
         return jsonify({"saved": saved, "skipped": skipped})
 
+    @app.route("/hokku/api/upload_draft", methods=["POST"])
+    def api_upload_draft():
+        """Upload a single image as an inert DRAFT for the per-image editor.
+
+        Same validation as /upload, but the image is registered as a DRAFT (it never
+        auto-converts or joins rotation) and a unique name is returned for the editor.
+        """
+        f = (request.files.getlist("file") or request.files.getlist("files") or [None])[0]
+        if f is None or not f.filename:
+            return jsonify({"error": "No file in upload"}), 400
+        name = secure_filename(f.filename)
+        if not name:
+            return jsonify({"error": "invalid filename"}), 400
+        ext = Path(name).suffix.lower()
+        if ext not in IMAGE_EXTENSIONS:
+            return jsonify({"error": f"unsupported extension {ext}"}), 400
+        data = f.read()
+        if ext == ".svg":
+            w, h = SVG_PROBE_DIMS
+        else:
+            try:
+                with Image.open(io.BytesIO(data)) as probe:
+                    w, h = probe.size
+            except Image.DecompressionBombError:
+                return jsonify({"error": f"image too large; cap {MAX_UPLOAD_PIXELS:,} px"}), 400
+            except (UnidentifiedImageError, OSError):
+                return jsonify({"error": "unreadable image"}), 400
+        if w * h > MAX_UPLOAD_PIXELS:
+            return jsonify({"error": f"image too large ({w}x{h}); cap {MAX_UPLOAD_PIXELS:,} px"}), 400
+        # Retry with a suffixed name if the base name is taken, so drafts never collide.
+        draft_name, n = name, 1
+        while True:
+            try:
+                state.manager.add_draft(draft_name, data)
+                return jsonify({"name": draft_name})
+            except FileExistsError:
+                draft_name = f"{Path(name).stem}-draft{n}{ext}"
+                n += 1
+                if n > 100:
+                    return jsonify({"error": "could not allocate a draft name"}), 500
+            except (OSError, ValueError) as e:
+                return jsonify({"error": str(e)}), 400
+
     @app.route("/hokku/api/image/<path:name>", methods=["DELETE"])
     def api_delete(name: str):
         try:
@@ -376,6 +419,67 @@ def create_app(
         except FileNotFoundError:
             return jsonify({"error": f"image {name!r} not found"}), 404
         return jsonify({"ok": True})
+
+    @app.route("/hokku/api/image/<path:name>/suggested_config", methods=["GET"])
+    def api_suggested_config(name: str):
+        """The editor's initial state for an image: the classifier's per-image
+        decision, detection results, and the source dimensions/orientation."""
+        rec = state.manager.status(name)
+        if rec is None:
+            return jsonify({"error": f"image {name!r} not found"}), 404
+        try:
+            path = state.manager.original_path(name)
+            with open_image_for_render(path) as img:
+                w, h = img.size
+        except FileNotFoundError:
+            return jsonify({"error": f"image {name!r} not found"}), 404
+        except (UnidentifiedImageError, OSError) as e:
+            return jsonify({"error": f"could not read image: {e}"}), 400
+        decision = state.classifier.decision_for(path, rec.original_sha1)
+        obs = state.classifier.observations_for(rec.original_sha1)
+        face_bboxes = [[b.x, b.y, b.w, b.h] for b in (obs.face_bboxes or ())]
+        return jsonify(
+            {
+                "image_config": asdict(decision.image_config),
+                "crop_to_fill_threshold": decision.crop_to_fill_threshold,
+                "is_bw": obs.is_bw,
+                "face_bboxes": face_bboxes,
+                "orientation": orientation_from_dims(w, h).value,
+                "source_w": w,
+                "source_h": h,
+            }
+        )
+
+    @app.route("/hokku/api/image/<path:name>/edit", methods=["POST"])
+    def api_edit(name: str):
+        """Commit the editor's per-image config + crop and queue a (re)render.
+
+        Body: {image: ImageConfig dict | null, edit_crop: {rotation_quarters, rect,
+        target} | null}. A null image means "use the classifier's own decision".
+        """
+        if state.manager.status(name) is None:
+            return jsonify({"error": f"image {name!r} not found"}), 404
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "expected JSON object"}), 400
+        image_blob = body.get("image")
+        edit_crop = body.get("edit_crop")
+        if image_blob is not None:
+            if not isinstance(image_blob, dict):
+                return jsonify({"error": "image must be an ImageConfig object or null"}), 400
+            try:
+                _image_config_from_dict(image_blob)  # validate only
+            except (TypeError, ValueError) as e:
+                return jsonify({"error": f"invalid image config: {e}"}), 400
+        if edit_crop is not None and not isinstance(edit_crop, dict):
+            return jsonify({"error": "edit_crop must be an object or null"}), 400
+        try:
+            state.manager.commit_edit(name, image_blob, edit_crop)
+        except FileNotFoundError:
+            return jsonify({"error": f"image {name!r} not found"}), 404
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "name": name})
 
     @app.route("/hokku/api/show_next/<path:name>", methods=["POST"])
     def api_show_next(name: str):
@@ -695,34 +799,79 @@ def create_app(
         )
         keepout = face_bboxes_orig if (face_bboxes_orig and use_clahe_keepout) else None
 
-        # Render in the image's native orientation. NEUTRAL/unknown falls back
-        # to LANDSCAPE since the renderer needs a concrete orientation.
-        render_orientation = Orientation.LANDSCAPE
-        if record is not None and record.convert_status == ConvertStatus.OK:
-            native = record.native_orientation
-            if native != Orientation.NEUTRAL:
-                render_orientation = native
+        # Optional per-image edit (from the editor): an explicit target orientation
+        # (fixes portrait drafts previewing sideways), a preview size, and a
+        # crop/rotation to apply before dithering.
+        orientation_raw = body.get("orientation")
+        render_orientation: Orientation | None = None
+        if isinstance(orientation_raw, str):
+            try:
+                candidate = Orientation(orientation_raw)
+            except ValueError:
+                candidate = None
+            if candidate in (Orientation.LANDSCAPE, Orientation.PORTRAIT):
+                render_orientation = candidate
+
+        rotation_quarters = int(body.get("rotation") or 0)
+        crop_raw = body.get("crop")
+        crop_rect: tuple[float, float, float, float] | None = None
+        if isinstance(crop_raw, (list, tuple)) and len(crop_raw) == 4:
+            try:
+                crop_rect = tuple(float(v) for v in crop_raw)  # type: ignore[assignment]
+            except (TypeError, ValueError):
+                crop_rect = None
+
+        max_side_px = max(64, min(1600, int(body.get("max_side_px") or 800)))
 
         logger.debug("Preview: %r", name)
         with open_image_for_render(path) as img:
             orig_w, orig_h = img.size
+            if render_orientation is None:
+                # No explicit target: use the converted native orientation when we
+                # have it, else derive from dimensions (works on drafts, no assert).
+                if (
+                    record is not None
+                    and record.convert_status == ConvertStatus.OK
+                    and record.native_orientation != Orientation.NEUTRAL
+                ):
+                    render_orientation = record.native_orientation
+                else:
+                    render_orientation = orientation_from_dims(orig_w, orig_h)
             png = ImageRenderer(NumbaStreamingDither()).render_preview_png(
                 img,
                 cfg,
                 render_orientation,
+                max_side_px=max_side_px,
                 clahe_keepout_bboxes_norm=keepout,
+                rotation_quarters=rotation_quarters,
+                crop_rect=crop_rect,
             )
         logger.debug("Preview done: %r", name)
 
-        canvas_bboxes = transform_bboxes_to_canvas_norm(
-            face_bboxes_orig,
-            orig_w,
-            orig_h,
-            render_orientation,
-            FULL_W,
-            PANEL_H,
-            state.config.crop_to_fill_threshold,
-        )
+        # Map face bboxes into the preview's coordinate space for the editor's
+        # keepout overlay — through the crop/rotation when one is applied.
+        if rotation_quarters or crop_rect:
+            face_in_crop = (
+                _transform_keepout_through_crop(face_bboxes_orig, rotation_quarters, crop_rect)
+                if face_bboxes_orig
+                else ()
+            )
+            rw, rh = (orig_h, orig_w) if rotation_quarters % 2 == 1 else (orig_w, orig_h)
+            cw = max(1, round((crop_rect[2] if crop_rect else 1.0) * rw))
+            ch = max(1, round((crop_rect[3] if crop_rect else 1.0) * rh))
+            canvas_bboxes = transform_bboxes_to_canvas_norm(
+                face_in_crop, cw, ch, render_orientation, FULL_W, PANEL_H, 0.0
+            )
+        else:
+            canvas_bboxes = transform_bboxes_to_canvas_norm(
+                face_bboxes_orig,
+                orig_w,
+                orig_h,
+                render_orientation,
+                FULL_W,
+                PANEL_H,
+                state.config.crop_to_fill_threshold,
+            )
 
         resp = _png_response(png)
         resp.headers["X-Face-Bboxes"] = json.dumps([list(b) for b in canvas_bboxes])

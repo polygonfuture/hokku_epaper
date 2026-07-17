@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from hokku_server.orientation import Orientation
 
@@ -12,6 +12,7 @@ class ConvertStatus(str, enum.Enum):
     OK = "ok"
     FAILED = "failed"
     PENDING = "pending"
+    DRAFT = "draft"  # uploaded for editing but inert — never auto-converts or joins rotation
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,12 @@ class ImageRecord:
     last_conversion_seconds: float | None = None  # wall-clock time of last successful render
     image_width: int | None = None  # pixel dimensions of the source image
     image_height: int | None = None
+    #: Per-image editor overrides (None = use the classifier's decision / auto crop).
+    #: edit_image_config: a frozen ImageConfig blob. edit_crop: {rotation_quarters,
+    #: rect{x,y,w,h}, target}. Excluded from __hash__ (dicts are unhashable) but kept
+    #: in equality so round-trips and change-detection still see them.
+    edit_image_config: dict | None = field(default=None, hash=False)
+    edit_crop: dict | None = field(default=None, hash=False)
 
     def slug(self, orientation: Orientation) -> str | None:
         """Return the cached slug for the given orientation, or None if not yet rendered."""
@@ -54,6 +61,16 @@ class ImageRecord:
         if w == h:
             return Orientation.NEUTRAL
         return Orientation.LANDSCAPE if w > h else Orientation.PORTRAIT
+
+    @property
+    def effective_orientation(self) -> Orientation:
+        """The orientation this image should render/serve as: the editor's chosen
+        target when it carries a crop, otherwise the source's native orientation."""
+        if self.edit_crop:
+            target = self.edit_crop.get("target")
+            if target:
+                return Orientation(target)
+        return self.native_orientation
 
     def matches_orientation_filter(self, orientation: Orientation) -> bool:
         """True if this image is eligible when a screen filters by the given orientation."""
@@ -81,6 +98,8 @@ class ImageRecord:
             last_conversion_seconds=float(raw_t) if raw_t is not None else None,
             image_width=int(raw_w) if raw_w is not None else None,
             image_height=int(raw_h) if raw_h is not None else None,
+            edit_image_config=d.get("edit_image_config"),
+            edit_crop=d.get("edit_crop"),
         )
 
 

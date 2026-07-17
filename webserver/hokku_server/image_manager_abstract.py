@@ -31,6 +31,7 @@ from hokku_server.app_config import AppConfig
 from hokku_server.display import TOTAL_BYTES
 from hokku_server.filesystem import atomic_write_json
 from hokku_server.image_classifier import ImageClassifier, ImageClassifierDecision
+from hokku_server.image_config import _image_config_from_dict
 from hokku_server.image_record import (
     ConversionProgress,
     ConvertStatus,
@@ -57,14 +58,27 @@ _KNOWN_SUFFIXES = (_PANEL_SUFFIX, _PREVIEW_SUFFIX, _THUMB_SUFFIX)
 
 
 def _decision_to_screen_image_config(
-    decision: ImageClassifierDecision, orientation: Orientation
+    decision: ImageClassifierDecision,
+    orientation: Orientation,
+    edit_crop: dict | None = None,
 ) -> ScreenImageConfig:
-    """Combine a per-image ImageClassifierDecision with a render orientation."""
+    """Combine a per-image ImageClassifierDecision with a render orientation and an
+    optional manual crop/rotation from the per-image editor."""
+    rotation_quarters = 0
+    crop_rect: tuple[float, float, float, float] | None = None
+    if edit_crop:
+        rotation_quarters = int(edit_crop.get("rotation_quarters", 0))
+        rect = edit_crop.get("rect")
+        if rect:
+            crop_rect = (float(rect["x"]), float(rect["y"]), float(rect["w"]), float(rect["h"]))
     return ScreenImageConfig(
         image_config=decision.image_config,
         orientation=orientation,
-        crop_to_fill_threshold=decision.crop_to_fill_threshold,
+        # a manual crop already frames the image, so auto crop-to-fill is bypassed
+        crop_to_fill_threshold=0.0 if crop_rect else decision.crop_to_fill_threshold,
         clahe_keepout_bboxes=decision.clahe_keepout_bboxes,
+        rotation_quarters=rotation_quarters,
+        crop_rect=crop_rect,
     )
 
 
@@ -239,7 +253,7 @@ class AbstractImageManager(ABC):
             if rec_now is None:
                 continue
             try:
-                decisions[rec.name] = self._classifier.decision_for(src_path, rec_now.original_sha1)
+                decisions[rec.name] = self._effective_decision(rec_now, src_path)
             except Exception as e:
                 logger.warning("Classification failed for %r: %s", rec.name, e)
         # Phase 3: dispatch renders with the pre-computed ImageClassifierDecisions.
@@ -269,6 +283,27 @@ class AbstractImageManager(ABC):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(src_bytes)
             self._register_new(name, target)
+            self._save_db()
+
+    def add_draft(self, name: str, src_bytes: bytes) -> None:
+        """Like ``add`` but registers the image as an inert DRAFT.
+
+        The original is written (so the editor's preview can resolve it) but the
+        record never auto-converts or joins rotation until ``commit_edit`` flips it.
+        Raises FileExistsError if the name already exists.
+        """
+        if not name or "/" in name or "\\" in name:
+            raise ValueError(f"Invalid image name: {name!r}")
+        target = self._upload_dir / name
+        with self._db_lock:
+            if name in self._records or target.exists():
+                raise FileExistsError(f"Image {name!r} already exists; remove it first to replace.")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(src_bytes)
+            self._register_new(name, target)
+            rec = self._records.get(name)
+            if rec is not None and rec.convert_status == ConvertStatus.PENDING:
+                self._records[name] = replace(rec, convert_status=ConvertStatus.DRAFT)
             self._save_db()
 
     def remove(self, name: str) -> None:
@@ -304,6 +339,32 @@ class AbstractImageManager(ABC):
                 rec,
                 convert_status="pending",
                 convert_error=None,
+            )
+            self._save_db()
+
+    def commit_edit(
+        self, name: str, edit_image_config: dict | None, edit_crop: dict | None
+    ) -> None:
+        """Store the editor's per-image config + crop and queue a (re)render.
+
+        A DRAFT flips to PENDING (first conversion); an already-OK image flips to
+        PENDING and clears its cached slugs (the reprocess path, like ``retry``).
+        The next ``sync()`` renders it with the committed settings.
+        """
+        with self._db_lock:
+            rec = self._records.get(name)
+            if rec is None:
+                raise FileNotFoundError(f"Image {name!r} is not registered.")
+            if rec.image_width is None:
+                raise ValueError(f"Image {name!r} could not be read; cannot edit.")
+            self._records[name] = replace(
+                rec,
+                edit_image_config=edit_image_config,
+                edit_crop=edit_crop,
+                convert_status=ConvertStatus.PENDING,
+                convert_error=None,
+                landscape_image_config_slug=None,
+                portrait_image_config_slug=None,
             )
             self._save_db()
 
@@ -700,11 +761,14 @@ class AbstractImageManager(ABC):
                     continue
 
             if existing.convert_status == "ok":
-                decision = self._classifier.decision_for(src_path, existing.original_sha1)
+                decision = self._effective_decision(existing, src_path)
                 # Compare against the LANDSCAPE slug specifically — it's the
                 # lifecycle-primary orientation, and PORTRAIT shares the same
-                # decision so its slug changes in lockstep.
-                landscape_cfg = _decision_to_screen_image_config(decision, Orientation.LANDSCAPE)
+                # decision so its slug changes in lockstep. Pass edit_crop so the
+                # predicted slug matches what dispatch renders (else re-pend loop).
+                landscape_cfg = _decision_to_screen_image_config(
+                    decision, Orientation.LANDSCAPE, existing.edit_crop
+                )
                 predicted_slug = landscape_cfg.cache_slug()
                 if existing.slug(Orientation.LANDSCAPE) != predicted_slug:
                     self._records[name] = replace(
@@ -825,6 +889,20 @@ class AbstractImageManager(ABC):
                     self._log_batch_complete()
                 self._save_db()
 
+    def _effective_decision(self, rec: ImageRecord, src_path: Path) -> ImageClassifierDecision:
+        """The classifier's decision for this image, with the per-image editor's
+        ImageConfig override applied when set.
+
+        MUST be used symmetrically in dispatch AND reconcile. If reconcile used the
+        bare classifier decision instead, an edited OK image would predict a different
+        cache slug than the one dispatch rendered, and re-pend on every sync forever.
+        """
+        base = self._classifier.decision_for(src_path, rec.original_sha1)
+        if rec.edit_image_config:
+            edited = _image_config_from_dict(rec.edit_image_config, field_path="edit_image_config")
+            return replace(base, image_config=edited)
+        return base
+
     def _submit_one(self, name: str, decision: ImageClassifierDecision | None = None) -> None:
         """Validate one image and hand it off to the concrete dispatcher.
 
@@ -855,10 +933,9 @@ class AbstractImageManager(ABC):
 
         try:
             if decision is None:
-                # Fallback: classification failed or was skipped; compute now.
-                with self._db_lock:
-                    original_sha1 = self._records[name].original_sha1
-                decision = self._classifier.decision_for(src_path, original_sha1)
+                # Fallback: classification failed or was skipped; compute now
+                # (via _effective_decision so dispatch and reconcile agree on the slug).
+                decision = self._effective_decision(rec, src_path)
 
             # _inflight was already populated by sync() under the lock, so no need
             # to add here.  The assert is a safety net during development.
@@ -869,8 +946,12 @@ class AbstractImageManager(ABC):
             # Render both real orientations. LANDSCAPE is the
             # lifecycle-tracking primary (it drives pending → ok and the
             # progress counter) — an internal bookkeeping choice.
-            landscape_cfg = _decision_to_screen_image_config(decision, Orientation.LANDSCAPE)
-            portrait_cfg = _decision_to_screen_image_config(decision, Orientation.PORTRAIT)
+            landscape_cfg = _decision_to_screen_image_config(
+                decision, Orientation.LANDSCAPE, rec.edit_crop
+            )
+            portrait_cfg = _decision_to_screen_image_config(
+                decision, Orientation.PORTRAIT, rec.edit_crop
+            )
             self._dispatch_cfg(name, landscape_cfg, update_status=True)
             self._dispatch_cfg(name, portrait_cfg, update_status=False)
         except Exception as e:
@@ -903,6 +984,8 @@ class AbstractImageManager(ABC):
             tuple(asdict(b) for b in cfg.clahe_keepout_bboxes)
             if cfg.clahe_keepout_bboxes
             else None,
+            cfg.rotation_quarters,
+            cfg.crop_rect,
         )
         logger.debug("Submitted %r for dithering (%s)", name, cfg.orientation)
         self._dispatch_render(

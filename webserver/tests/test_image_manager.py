@@ -10,6 +10,7 @@ is a no-op.
 
 from __future__ import annotations
 
+from dataclasses import asdict, replace
 from io import BytesIO
 from pathlib import Path
 
@@ -81,6 +82,69 @@ def test_thumbnail_jpg(app_config: AppConfig, image_manager_factory, make_test_i
     mgr.wait_for_idle()
     jpg = mgr.thumbnail_jpg("a.png")
     assert jpg is not None and jpg[:3] == b"\xff\xd8\xff"  # JPEG SOI
+
+
+# ── per-image editor: DRAFT lifecycle + no-re-pend ──────────────────────────
+
+
+def _png_bytes(w: int = 400, h: int = 300, color=(100, 150, 200)) -> bytes:
+    buf = BytesIO()
+    _Image.new("RGB", (w, h), color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_add_draft_is_inert(app_config: AppConfig, image_manager_factory):
+    mgr = image_manager_factory(app_config)
+    mgr.add_draft("d.png", _png_bytes())
+    assert mgr.status("d.png").convert_status == "draft"
+    mgr.sync()
+    mgr.wait_for_idle()
+    rec = mgr.status("d.png")
+    assert rec.convert_status == "draft", "sync() must not convert a DRAFT"
+    assert rec.landscape_image_config_slug is None
+    assert mgr.panel_bytes_for_orientation("d.png", Orientation.LANDSCAPE) is None
+
+
+def test_commit_edit_converts_draft_with_the_edited_config(
+    app_config: AppConfig, image_manager_factory
+):
+    mgr = image_manager_factory(app_config)
+    mgr.add_draft("d.png", _png_bytes())
+    edited = replace(app_config.image_config_default, prepare_brightness=1.23)
+    mgr.commit_edit("d.png", asdict(edited), None)
+    assert mgr.status("d.png").convert_status == "pending"
+    mgr.sync()
+    mgr.wait_for_idle()
+    rec = mgr.status("d.png")
+    assert rec.convert_status == "ok"
+    expected = ScreenImageConfig(
+        image_config=edited,
+        orientation=Orientation.LANDSCAPE,
+        crop_to_fill_threshold=app_config.crop_to_fill_threshold,
+    ).cache_slug()
+    assert rec.landscape_image_config_slug == expected, "edit_image_config must drive the render"
+
+
+def test_edited_image_does_not_re_pend(
+    app_config: AppConfig, image_manager_factory, make_test_image
+):
+    upload = Path(app_config.upload_dir)
+    make_test_image(upload / "a.png")
+    mgr = image_manager_factory(app_config)
+    mgr.sync()
+    mgr.wait_for_idle()
+    mgr.commit_edit(
+        "a.png", asdict(replace(app_config.image_config_default, prepare_brightness=1.23)), None
+    )
+    mgr.sync()
+    mgr.wait_for_idle()
+    assert mgr.status("a.png").convert_status == "ok"
+    # THE trap: reconcile must predict the same slug it rendered, or the edited
+    # image flips OK -> PENDING on every sync forever.
+    mgr._reconcile_with_disk()
+    assert mgr.status("a.png").convert_status == "ok", (
+        "edited image re-pended — reconcile used the base classifier decision, not the edit"
+    )
 
 
 def test_add_existing_raises(app_config: AppConfig, image_manager_factory):
