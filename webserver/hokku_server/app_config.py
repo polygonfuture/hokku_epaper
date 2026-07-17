@@ -24,7 +24,7 @@ from hokku_server.presets import PRESET_IMAGE_CONFIGS
 
 logger = logging.getLogger(__name__)
 
-_CURRENT_VERSION = 6
+_CURRENT_VERSION = 7
 
 
 def _migrate_v1_to_v2(d: dict) -> dict:
@@ -61,6 +61,16 @@ def _migrate_v5_to_v6(d: dict) -> dict:
     return d
 
 
+def _migrate_v6_to_v7(d: dict) -> dict:
+    """Add interval-refresh scheduling. Default to the existing 'times' mode so
+    current installs keep their refresh_image_at_time behaviour unchanged."""
+    d.setdefault("refresh_mode", "times")
+    d.setdefault("refresh_interval_minutes", 120)
+    d.setdefault("refresh_active_start", "")
+    d.setdefault("refresh_active_end", "")
+    return d
+
+
 # v(N) → v(N+1) upgrade functions. Populated as the schema evolves.
 _MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _migrate_v1_to_v2,
@@ -68,6 +78,7 @@ _MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 
@@ -86,7 +97,17 @@ class AppConfig:
     """Persisted server settings."""
 
     version: int = _CURRENT_VERSION
+    #: How the wake schedule is expressed: "times" uses refresh_image_at_time
+    #: (specific clock times); "interval" uses refresh_interval_minutes.
+    refresh_mode: str = "times"
     refresh_image_at_time: tuple[str, ...] = ("0600", "1200", "1800")
+    #: Interval-mode cadence, in minutes. Only used when refresh_mode == "interval".
+    refresh_interval_minutes: int = 120
+    #: Optional active-hours window for interval mode (HHMM strings). When both are
+    #: set, the frame only refreshes inside the window and sleeps until the next
+    #: start otherwise. Empty strings = always on (24/7).
+    refresh_active_start: str = ""
+    refresh_active_end: str = ""
     upload_dir: str = "/var/lib/hokku/images"
     cache_dir: str = "/var/lib/hokku/cache"
     port: int = 8080

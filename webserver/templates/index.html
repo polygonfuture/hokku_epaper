@@ -231,7 +231,59 @@
     cursor: pointer; color: var(--vermilion); font-weight: bold;
     border: none; background: none; font-size: 1em; padding: 0;
   }
-  #add-time-input { width: 70px; font-family: var(--font-mono); }
+  #add-time-input { font-family: var(--font-mono); }
+
+  /* ── Refresh schedule control ─────────────────────────────── */
+  .refresh-schedule { align-items: flex-start; }
+  .refresh-control { flex: 1; min-width: 0; }
+  .refresh-row-label {
+    font-size: 0.8em; font-weight: 600; letter-spacing: 0.02em;
+    text-transform: uppercase; color: var(--stone); margin: 0 0 9px;
+  }
+  .segmented {
+    display: inline-flex; border: 1px solid var(--bamboo); border-radius: 8px;
+    overflow: hidden; background: var(--paper-card-solid); margin-bottom: 16px;
+  }
+  .segmented button {
+    border: none; background: transparent; color: var(--sumi);
+    font-family: var(--font-sans); font-size: 0.9em; font-weight: 500;
+    padding: 7px 18px; cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .segmented button + button { border-left: 1px solid var(--bamboo); }
+  .segmented button[aria-selected="true"] { background: var(--indigo); color: var(--paper-card-solid); }
+  .segmented button:not([aria-selected="true"]):hover { background: rgba(201, 191, 168, 0.3); }
+
+  .refresh-chips, .refresh-presets, .refresh-time-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .refresh-time-chips { min-height: 32px; }
+  .refresh-chip {
+    font-family: var(--font-mono); font-size: 0.85em; padding: 5px 13px;
+    border-radius: 7px; border: 1px solid var(--bamboo); background: var(--bamboo-soft);
+    color: var(--sumi); cursor: pointer; transition: background 0.13s, color 0.13s, border-color 0.13s;
+  }
+  .refresh-chip:hover { border-color: var(--stone); }
+  .refresh-chip[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); color: var(--paper-card-solid); }
+
+  .refresh-active-hours { margin-top: 16px; }
+  .refresh-window { display: flex; align-items: center; gap: 10px; margin-top: 11px; padding-left: 25px; }
+  .refresh-window .dash { color: var(--stone); font-size: 0.9em; }
+  .refresh-add-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .refresh-presets { margin-top: 14px; }
+  .refresh-presets .lbl { font-size: 0.82em; color: var(--stone); font-weight: 600; }
+  .refresh-empty { color: var(--stone); font-size: 0.85em; font-style: italic; }
+
+  .refresh-preview {
+    margin: 18px 0 0; padding-top: 14px; border-top: 1px dashed var(--bamboo);
+    font-size: 0.88em; color: var(--stone);
+  }
+  .refresh-preview strong { color: var(--sumi); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .refresh-preview .lead { color: var(--matcha); }
+  .refresh-preview .warn { color: var(--persimmon); }
+  input[type="time"] {
+    padding: 6px 9px; border: 1px solid var(--bamboo); border-radius: 6px;
+    font-family: var(--font-mono); font-size: 0.88em;
+    background: var(--paper-card-solid); color: var(--sumi);
+  }
+  input[type="time"]:focus { outline: none; border-color: var(--indigo); background: #fff; }
 
   /* ── Tooltip (replaces click-to-show ? buttons) ───────────── */
   /* Any element with [data-tip] gets a hover tooltip below it. */
@@ -859,11 +911,62 @@
   <h2>Configuration</h2>
 <div class="section-card">
 
-  <div class="config-row">
-    <label>Refresh times:</label>
-    <div id="refresh-times"></div>
-    <input type="text" id="add-time-input" placeholder="HHMM">
-    <button class="btn btn-secondary btn-small" onclick="addTime()">Add</button>
+  <div class="config-row refresh-schedule">
+    <label>Refresh schedule:</label>
+    <div class="refresh-control">
+      <!-- Mode toggle -->
+      <div class="segmented" role="tablist" aria-label="Refresh mode">
+        <button type="button" id="refresh-tab-interval" role="tab" aria-selected="false"
+                onclick="setRefreshMode('interval')">Interval</button>
+        <button type="button" id="refresh-tab-times" role="tab" aria-selected="true"
+                onclick="setRefreshMode('times')">Specific times</button>
+      </div>
+
+      <!-- Interval mode -->
+      <div id="refresh-panel-interval" hidden>
+        <p class="refresh-row-label">Refresh every</p>
+        <div class="refresh-chips" id="interval-chips" role="group" aria-label="Interval">
+          <button type="button" class="refresh-chip" data-min="15"   onclick="pickInterval(15)">15m</button>
+          <button type="button" class="refresh-chip" data-min="30"   onclick="pickInterval(30)">30m</button>
+          <button type="button" class="refresh-chip" data-min="60"   onclick="pickInterval(60)">1h</button>
+          <button type="button" class="refresh-chip" data-min="120"  onclick="pickInterval(120)">2h</button>
+          <button type="button" class="refresh-chip" data-min="240"  onclick="pickInterval(240)">4h</button>
+          <button type="button" class="refresh-chip" data-min="360"  onclick="pickInterval(360)">6h</button>
+          <button type="button" class="refresh-chip" data-min="720"  onclick="pickInterval(720)">12h</button>
+          <button type="button" class="refresh-chip" data-min="1440" onclick="pickInterval(1440)">24h</button>
+        </div>
+        <div class="refresh-active-hours">
+          <label class="toggle" data-tip="Outside these hours the frame stays asleep — skips overnight refreshes to save battery.">
+            <input type="checkbox" id="active-hours-toggle" onchange="toggleActiveHours()">
+            <span>Only refresh during certain hours</span>
+          </label>
+          <div class="refresh-window" id="active-hours-window" hidden>
+            <input type="time" id="active-hours-start" value="07:00" onchange="renderRefreshPreview()">
+            <span class="dash">to</span>
+            <input type="time" id="active-hours-end" value="23:00" onchange="renderRefreshPreview()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Specific times mode -->
+      <div id="refresh-panel-times">
+        <p class="refresh-row-label">Refresh at these times</p>
+        <div id="refresh-times" class="refresh-time-chips"></div>
+        <div class="refresh-add-row">
+          <input type="time" id="add-time-input">
+          <button type="button" class="btn btn-secondary btn-small" onclick="addTime()">Add time</button>
+        </div>
+        <div class="refresh-presets">
+          <span class="lbl">Presets:</span>
+          <button type="button" class="refresh-chip" onclick="applyTimesPreset(['0600','1200','1800'])">3× daily</button>
+          <button type="button" class="refresh-chip" onclick="applyTimesPreset(everyNHours(2))">Every 2h</button>
+          <button type="button" class="refresh-chip" onclick="applyTimesPreset(hourlyBetween(8,22))">Hourly 8–22</button>
+          <button type="button" class="refresh-chip" onclick="applyTimesPreset(['0800','2000'])">Morning &amp; night</button>
+        </div>
+      </div>
+
+      <p class="refresh-preview" id="refresh-preview"></p>
+    </div>
   </div>
 
   <!-- Advanced toggle -->
@@ -1169,6 +1272,8 @@
 <script>
 let currentConfig = {};
 let refreshTimes = [];
+let refreshMode = 'times';
+let refreshIntervalMinutes = 120;
 
 // Toggle the Advanced config section open/closed.
 function toggleConfigAdvanced() {
@@ -1843,39 +1948,142 @@ function formatHHMM(s) {
   return s.slice(0,2) + ':' + s.slice(2,4);
 }
 
+// ── Refresh-mode toggle ────────────────────────────────────────
+function setRefreshMode(mode) {
+  refreshMode = mode;
+  document.getElementById('refresh-tab-interval').setAttribute('aria-selected', mode === 'interval');
+  document.getElementById('refresh-tab-times').setAttribute('aria-selected', mode === 'times');
+  document.getElementById('refresh-panel-interval').hidden = mode !== 'interval';
+  document.getElementById('refresh-panel-times').hidden = mode !== 'times';
+  renderRefreshPreview();
+}
+
+// ── Interval mode ──────────────────────────────────────────────
+function pickInterval(min) {
+  refreshIntervalMinutes = min;
+  document.querySelectorAll('#interval-chips .refresh-chip').forEach(c => {
+    c.setAttribute('aria-pressed', String(parseInt(c.dataset.min, 10) === min));
+  });
+  renderRefreshPreview();
+}
+
+function toggleActiveHours() {
+  const on = document.getElementById('active-hours-toggle').checked;
+  document.getElementById('active-hours-window').hidden = !on;
+  renderRefreshPreview();
+}
+
+// ── Specific-times mode ────────────────────────────────────────
 function renderRefreshTimes() {
   const el = document.getElementById('refresh-times');
   el.innerHTML = '';
+  if (!refreshTimes.length) {
+    el.innerHTML = '<span class="refresh-empty">No times yet — add one, or pick a preset below.</span>';
+    return;
+  }
   refreshTimes.sort();
   refreshTimes.forEach((t, i) => {
     const span = document.createElement('span');
     span.className = 'time-entry';
-    span.innerHTML = `${formatHHMM(t)} <button class="remove-time" onclick="removeTime(${i})">&times;</button>`;
+    span.innerHTML = `${formatHHMM(t)} <button class="remove-time" title="Remove" onclick="removeTime(${i})">&times;</button>`;
     el.appendChild(span);
   });
 }
 
 function addTime() {
   const input = document.getElementById('add-time-input');
-  let val = input.value.trim().replace(':', '');
+  const val = input.value.trim().replace(':', '');  // <input type=time> gives "HH:MM"
+  if (!val) return;
   if (/^\d{3,4}$/.test(val)) {
-    val = val.padStart(4, '0');
-    const h = parseInt(val.slice(0,2)), m = parseInt(val.slice(2,4));
+    const hhmm = val.padStart(4, '0');
+    const h = parseInt(hhmm.slice(0,2)), m = parseInt(hhmm.slice(2,4));
     if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-      if (!refreshTimes.includes(val)) {
-        refreshTimes.push(val);
+      if (!refreshTimes.includes(hhmm)) {
+        refreshTimes.push(hhmm);
         renderRefreshTimes();
+        renderRefreshPreview();
       }
-      input.value = '';
       return;
     }
   }
-  showToast('Invalid time format. Use HHMM (e.g. 0930, 1845)');
+  showToast('Invalid time. Pick a time and press Add.');
 }
 
 function removeTime(idx) {
   refreshTimes.splice(idx, 1);
   renderRefreshTimes();
+  renderRefreshPreview();
+}
+
+function everyNHours(n) {
+  const out = [];
+  for (let h = 0; h < 24; h += n) out.push(String(h).padStart(2, '0') + '00');
+  return out;
+}
+function hourlyBetween(from, to) {
+  const out = [];
+  for (let h = from; h <= to; h++) out.push(String(h).padStart(2, '0') + '00');
+  return out;
+}
+function applyTimesPreset(list) {
+  refreshTimes = [...new Set(list)];
+  renderRefreshTimes();
+  renderRefreshPreview();
+}
+
+// ── Live "next refresh" preview (mirrors calculate_sleep_seconds) ─
+function fmtRefreshDur(mins) {
+  mins = Math.round(mins);
+  if (mins < 60) return mins + 'm';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;
+  const d = Math.floor(h / 24), rh = h % 24;
+  return rh ? `${d}d ${rh}h` : `${d}d`;
+}
+function hhmmToMinutes(s) { return parseInt(s.slice(0,2),10) * 60 + parseInt(s.slice(2,4),10); }
+
+function renderRefreshPreview() {
+  const el = document.getElementById('refresh-preview');
+  if (!el) return;
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let mins, note = '', cls = '';
+
+  if (refreshMode === 'interval') {
+    const base = refreshIntervalMinutes;
+    const ahOn = document.getElementById('active-hours-toggle').checked;
+    if (!ahOn) {
+      mins = base;
+      note = `about ${Math.max(1, Math.round(1440 / base))}×/day`;
+    } else {
+      const start = hhmmToMinutes(document.getElementById('active-hours-start').value.replace(':',''));
+      const end   = hhmmToMinutes(document.getElementById('active-hours-end').value.replace(':',''));
+      const wake = (nowMin + base) % 1440;
+      const inside = start < end ? (wake >= start && wake <= end) : (wake >= start || wake <= end);
+      if (inside) {
+        const windowLen = start < end ? (end - start) : (1440 - start + end);
+        mins = base;
+        note = `about ${Math.max(1, Math.round(windowLen / base))}×/day within active hours`;
+      } else {
+        let until = (start - nowMin + 1440) % 1440;
+        if (until === 0) until = 1440;
+        mins = until;
+        note = 'paused — resumes at start of active hours';
+        cls = 'warn';
+      }
+    }
+  } else {
+    if (!refreshTimes.length) {
+      mins = 360; note = 'no times set — defaults to 6h'; cls = 'warn';
+    } else {
+      const sorted = [...refreshTimes].map(hhmmToMinutes).sort((a,b) => a - b);
+      const next = sorted.find(t => t > nowMin);
+      mins = next !== undefined ? next - nowMin : (1440 - nowMin) + sorted[0];
+      note = `${refreshTimes.length}×/day`;
+    }
+  }
+  el.innerHTML = `<span class="lead">◷</span> Next refresh in <strong>${fmtRefreshDur(mins)}</strong>` +
+                 (note ? ` <span class="${cls}">· ${note}</span>` : '');
 }
 
 function onWorkerModeChange() {
@@ -1889,8 +2097,15 @@ async function saveConfig() {
     showToast('mDNS hostname cannot be empty — enter a name or uncheck mDNS');
     return;
   }
+  const ahOn = document.getElementById('active-hours-toggle').checked;
   const data = {
+    refresh_mode: refreshMode,
     refresh_image_at_time: refreshTimes,
+    refresh_interval_minutes: refreshIntervalMinutes,
+    refresh_active_start: (refreshMode === 'interval' && ahOn)
+      ? document.getElementById('active-hours-start').value.replace(':', '') : '',
+    refresh_active_end: (refreshMode === 'interval' && ahOn)
+      ? document.getElementById('active-hours-end').value.replace(':', '') : '',
     poll_interval_seconds: parseInt(document.getElementById('poll-interval').value) || 10,
     debug_fast_refresh: document.getElementById('debug-fast-refresh').checked,
     auto_clear_cache: document.getElementById('auto-clear-cache').checked,
@@ -2569,6 +2784,17 @@ async function loadConfig() {
 
     refreshTimes = cfg.refresh_image_at_time || [];
     renderRefreshTimes();
+    // Refresh schedule: mode, interval preset, active-hours window.
+    refreshIntervalMinutes = cfg.refresh_interval_minutes || 120;
+    pickInterval(refreshIntervalMinutes);
+    const ahStart = cfg.refresh_active_start || '';
+    const ahEnd = cfg.refresh_active_end || '';
+    const ahOn = !!(ahStart && ahEnd);
+    document.getElementById('active-hours-toggle').checked = ahOn;
+    if (ahStart) document.getElementById('active-hours-start').value = formatHHMM(ahStart);
+    if (ahEnd) document.getElementById('active-hours-end').value = formatHHMM(ahEnd);
+    document.getElementById('active-hours-window').hidden = !ahOn;
+    setRefreshMode(cfg.refresh_mode === 'interval' ? 'interval' : 'times');
     document.getElementById('poll-interval').value = cfg.poll_interval_seconds || 10;
     // Classifier toggles
     const bwOn = !!cfg.classifier_bw_detect_enabled;

@@ -1,5 +1,9 @@
 {
-  "version": 6,
+  "version": 7,
+  "refresh_mode": "times",
+  "refresh_interval_minutes": 120,
+  "refresh_active_start": "",
+  "refresh_active_end": "",
   "refresh_image_at_time": [
     "0600",
     "1200",
