@@ -1,0 +1,41 @@
+/* Ported from Plans/prototypes/app-mockup.html (the signed-off design mockup).
+   Keep section comments intact — they are the map back to the mockup. */
+
+  /* base tokens on :root so the WHOLE page (incl. body) is dark — the earlier
+     white-bg bug was tokens scoped to a descendant, unreachable by <body>. */
+  :root {
+    color-scheme: dark;   /* start the browser canvas dark — no white flash on load */
+    --font: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+
+    --bg: #0B0C10;
+    --bg-elev: #17171C;
+    --hair: rgba(255,255,255,0.07);
+    --hair-2: rgba(255,255,255,0.12);
+    --text: #F3F2EF;
+    --dim: #8C8B87;
+    --faint: #86857F;   /* lifted to clear WCAG 4.5:1 on the off-black ground */
+    --accent: #EDEBE5;       /* porcelain — locked */
+    --accent-ink: #14140F;
+    --online: #46D07E;       /* semantic status: server active (independent of accent) */
+
+    --gap: 6px;
+    --radius: 2px;
+    --pad: clamp(18px, 4vw, 44px);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #0B0C10; }   /* literal so it paints instantly, before vars resolve */
+  body {
+    background: var(--bg);
+    font-family: var(--font);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    display: flex; flex-direction: column; min-height: 100vh;   /* footer hugs the viewport bottom */
+  }
+
+  /* keyboard focus ring (never shown for mouse via :focus-visible) */
+  :where(button, a, input, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+  }

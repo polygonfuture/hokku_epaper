@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### New web app
+
+A redesigned, mobile-first web app is now available alongside the original page, served at `/hokku/app`. It works just as well on a phone as on a computer and talks to the same server, so nothing about your frames or photos changes when you switch. You get a photo gallery, a detail view that previews how each photo will look on the six-colour screen, connected-frame management, and every setting in one place.
+
+The plain address `/` opens whichever interface you set as the default — set `"default_ui": "modern"` in `config.json` for the new app, or `"classic"` (the default) for the original page, which stays at `/hokku/ui` and is unchanged. See the [user manual](docs/manual.md#1-the-web-app) for a full walkthrough with screenshots.
+
+### Send a photo to a specific frame
+
+You can now send a chosen photo to one particular frame for its next refresh, rather than only queuing it into the shared rotation. Open a photo's actions in the web app and pick the frame under "Send to a frame". The override is per-screen, survives a server restart, and is consumed the next time that frame checks in.
+
 ## 3.1.0 alpha 1
 
 ### Frame log upload

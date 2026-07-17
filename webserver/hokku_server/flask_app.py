@@ -237,13 +237,32 @@ def create_app(
 
     # ── Web GUI ────────────────────────────────────────────────
 
+    def _default_ui() -> str:
+        # Which interface the bare "/" opens: "classic" (the original page) or
+        # "modern" (the redesigned app). Read as an optional key from config.json;
+        # AppConfig ignores keys it doesn't know, so this needs no schema change.
+        if config_path:
+            try:
+                with open(config_path) as f:
+                    choice = str(json.load(f).get("default_ui", "classic")).lower()
+                return "modern" if choice == "modern" else "classic"
+            except (OSError, json.JSONDecodeError):
+                pass
+        return "classic"
+
     @app.route("/")
     def root():
-        return redirect("/hokku/ui")
+        return redirect("/hokku/app" if _default_ui() == "modern" else "/hokku/ui")
 
     @app.route("/hokku/ui")
     def web_gui():
         return render_template("index.html", visual_w=VISUAL_W, visual_h=VISUAL_H)
+
+    @app.route("/hokku/app")
+    def modern_gui():
+        # the redesigned no-build web app (webserver/static/app/); its asset links
+        # are absolute so it loads correctly from this short URL and from "/".
+        return send_from_directory(static_root, "app/index.html")
 
     @app.route("/hokku/static/<path:filename>")
     def static_asset(filename: str):
@@ -482,6 +501,7 @@ def create_app(
                 "status": r.convert_status,
                 "error": r.convert_error,
                 "size_bytes": r.original_size_bytes,
+                "added_at": r.added_at,  # first-uploaded time; the app sorts newest-first by this
                 "image_width": r.image_width,
                 "image_height": r.image_height,
                 "dimension_unit": "pt" if Path(r.name).suffix.lower() == ".svg" else "px",
