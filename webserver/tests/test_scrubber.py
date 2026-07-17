@@ -18,7 +18,7 @@ from hokku_server.presets import PRESET_IMAGE_CONFIGS
 # Suffixes as defined in image_manager
 _PANEL = "_panel.bin.zst"
 _PREVIEW = "_preview.png"
-_THUMB = "_thumb.jpg"
+_THUMB = "_thumbv2.jpg"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ def test_scrub_always_removes_orphan_thumb(app_config, make_test_image):
     _register_ok(mgr, "a.png", make_test_image)
 
     # Thumb with an unknown hash.
-    orphan = _images_dir(mgr) / "deadbeef000000_thumb.jpg"
+    orphan = _images_dir(mgr) / f"deadbeef000000{_THUMB}"
     _write(orphan)
 
     mgr.sync()

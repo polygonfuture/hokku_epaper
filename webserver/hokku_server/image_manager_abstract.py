@@ -50,9 +50,16 @@ _DB_VERSION = 3  # bump whenever ImageRecord schema changes; old DB is nuked on 
 _IMAGES_SUBDIR = "images"
 _PANEL_SUFFIX = "_panel.bin.zst"
 _PREVIEW_SUFFIX = "_preview.png"
-_THUMB_SUFFIX = "_thumb.jpg"
+# Bumping this suffix orphans the previous generation of thumbnails: the scrubber drops the
+# old files (Rule 3, unknown suffix) and sync Phase 1 regenerates them at the current
+# _THUMB_MAX_PX, so a resolution change takes effect on the next sync without a re-dither.
+_THUMB_SUFFIX = "_thumbv2.jpg"
 _NAME_HASH_LEN = 14
-_THUMB_MAX_PX = 300
+# Gallery tiles are height-constrained (justified rows reach ~475 CSS px, ~950 device px on a
+# 2x display).  The old 300 px long-side cap left landscapes badly upscaled (their height is
+# only cap * short/long); 900 keeps typical photos crisp at the default zoom on HiDPI screens
+# (a 3:2 landscape lands at ~900x600).
+_THUMB_MAX_PX = 900
 _THUMB_QUALITY = 85
 
 _KNOWN_SUFFIXES = (_PANEL_SUFFIX, _PREVIEW_SUFFIX, _THUMB_SUFFIX)
@@ -1159,11 +1166,11 @@ class AbstractImageManager(ABC):
             return
         with Image.open(src_path) as img:
             # Ask the JPEG decoder to downsample at decode time so we never
-            # materialise the full pixel buffer just to produce a 300 px
+            # materialise the full pixel buffer just to produce a small
             # thumbnail.  draft() is a no-op for non-JPEG formats.  With a crop
             # the visible region is only a fraction of the frame, so scale the
             # decode target up by the crop factor (capped) — decoding straight to
-            # 300 px would leave the cropped region far smaller than that and blurry.
+            # the target size would leave the cropped region far smaller and blurry.
             decode_px = _THUMB_MAX_PX
             if crop_rect is not None:
                 smallest = min(crop_rect[2], crop_rect[3])
