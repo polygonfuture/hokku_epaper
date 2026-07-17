@@ -178,6 +178,63 @@ def _apply_prepare_enhancements(
     return canvas
 
 
+def _rotate_norm_bbox_cw(x: float, y: float, w: float, h: float) -> tuple[float, float, float, float]:
+    """One clockwise 90-degree turn of a normalized (x, y, w, h) box."""
+    return (1.0 - y - h, x, h, w)
+
+
+def _apply_crop_rotation(
+    img: Image.Image,
+    rotation_quarters: int,
+    crop_rect: tuple[float, float, float, float] | None,
+) -> Image.Image:
+    """Rotate the source clockwise by ``rotation_quarters * 90`` then crop to the
+    normalized rect (expressed in the rotated frame). Returns a NEW image; the
+    caller keeps ownership of the input ``img``.
+    """
+    out = img
+    q = rotation_quarters % 4
+    if q:
+        out = out.rotate(-90 * q, expand=True)  # PIL rotate is CCW, so -90 == one CW quarter
+    if crop_rect:
+        rw, rh = out.size
+        x, y, w, h = crop_rect
+        left = max(0, min(rw - 1, round(x * rw)))
+        top = max(0, min(rh - 1, round(y * rh)))
+        right = max(left + 1, min(rw, round((x + w) * rw)))
+        bottom = max(top + 1, min(rh, round((y + h) * rh)))
+        cropped = out.crop((left, top, right, bottom))
+        if out is not img:
+            out.close()
+        out = cropped
+    elif out is img:
+        out = img.copy()  # always hand back a distinct object the caller can release
+    return out
+
+
+def _transform_keepout_through_crop(
+    bboxes_norm: tuple[BoundingBox, ...],
+    rotation_quarters: int,
+    crop_rect: tuple[float, float, float, float] | None,
+) -> tuple[BoundingBox, ...]:
+    """Re-express original-image-normalized keepout bboxes in the rotated+cropped
+    frame so CLAHE keepout stays on the right pixels for edited images.
+    """
+    q = rotation_quarters % 4
+    cx, cy, cw, ch = crop_rect if crop_rect else (0.0, 0.0, 1.0, 1.0)
+    out: list[BoundingBox] = []
+    for b in bboxes_norm:
+        x, y, w, h = b.x, b.y, b.w, b.h
+        for _ in range(q):
+            x, y, w, h = _rotate_norm_bbox_cw(x, y, w, h)
+        x, y, w, h = (x - cx) / cw, (y - cy) / ch, w / cw, h / ch
+        nx, ny = max(0.0, x), max(0.0, y)
+        nx2, ny2 = min(1.0, x + w), min(1.0, y + h)
+        if nx2 > nx and ny2 > ny:
+            out.append(BoundingBox(x=nx, y=ny, w=nx2 - nx, h=ny2 - ny))
+    return tuple(out)
+
+
 class AbstractImageRenderer(ABC):
     """Strategy interface for panel-image rendering.
 
@@ -220,6 +277,8 @@ class AbstractImageRenderer(ABC):
         *,
         release_input: bool = False,
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
+        rotation_quarters: int = 0,
+        crop_rect: tuple[float, float, float, float] | None = None,
     ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
         """Fit-or-crop → PIL enhancements → rotate.
 
@@ -230,7 +289,26 @@ class AbstractImageRenderer(ABC):
         clahe_keepout_bboxes_norm: [(x, y, w, h), ...] in [0, 1] relative to the original image.
         Converted to canvas pixel coordinates and passed to
         _apply_prepare_enhancements to scope CLAHE away from the face regions.
+
+        rotation_quarters / crop_rect: optional manual edit from the per-image
+        editor. Rotate the source clockwise then crop to the normalized rect (in
+        the rotated frame) BEFORE the usual fit/cover scaling. Defaults (0 / None)
+        are the unchanged auto path.
         """
+        if rotation_quarters or crop_rect:
+            transformed = _apply_crop_rotation(img, rotation_quarters, crop_rect)
+            if release_input:
+                img.close()
+            img = transformed
+            release_input = True  # `img` is now our own copy; downstream may release it
+            if clahe_keepout_bboxes_norm:
+                clahe_keepout_bboxes_norm = (
+                    _transform_keepout_through_crop(
+                        clahe_keepout_bboxes_norm, rotation_quarters, crop_rect
+                    )
+                    or None
+                )
+
         portrait = orientation == "portrait"
         visible_w, visible_h = (canvas_w, canvas_h) if portrait else (canvas_h, canvas_w)
 
@@ -322,6 +400,8 @@ class AbstractImageRenderer(ABC):
         *,
         release_input: bool = False,
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
+        rotation_quarters: int = 0,
+        crop_rect: tuple[float, float, float, float] | None = None,
     ) -> NDArray[np.uint8]:
         """Render to palette indices.
 
@@ -338,6 +418,9 @@ class AbstractImageRenderer(ABC):
         orientation: Orientation,
         crop_to_fill_threshold: float = 0.0,
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
+        *,
+        rotation_quarters: int = 0,
+        crop_rect: tuple[float, float, float, float] | None = None,
     ) -> bytes:
         """Full-resolution panel → wire bytes."""
         idx = self.render_indices(
@@ -349,6 +432,8 @@ class AbstractImageRenderer(ABC):
             crop_to_fill_threshold,
             release_input=True,
             clahe_keepout_bboxes_norm=clahe_keepout_bboxes_norm,
+            rotation_quarters=rotation_quarters,
+            crop_rect=crop_rect,
         )
         return indices_to_panel_bytes(idx)
 
@@ -360,6 +445,9 @@ class AbstractImageRenderer(ABC):
         max_side_px: int = 800,
         crop_to_fill_threshold: float = 0.0,
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
+        *,
+        rotation_quarters: int = 0,
+        crop_rect: tuple[float, float, float, float] | None = None,
     ) -> bytes:
         """Smaller panel → PNG preview bytes."""
         cw, ch = self._preview_canvas_dims(orientation, max_side_px)
@@ -371,6 +459,8 @@ class AbstractImageRenderer(ABC):
             ch,
             crop_to_fill_threshold,
             clahe_keepout_bboxes_norm=clahe_keepout_bboxes_norm,
+            rotation_quarters=rotation_quarters,
+            crop_rect=crop_rect,
         )
         preview_rgb = indices_to_preview_rgb(idx)
         return self._encode_panel_rgb_to_png(preview_rgb, orientation)

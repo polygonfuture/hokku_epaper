@@ -27,6 +27,12 @@ class ScreenImageConfig:
     #: Face bounding boxes or None.
     #: Passed to the renderer to scope CLAHE away from the face regions.
     clahe_keepout_bboxes: tuple[BoundingBox, ...] | None = None
+    #: Manual crop/rotation from the per-image editor. Defaults (0 / None) mean
+    #: "auto fit/cover" — identical behaviour for every non-edited image.
+    #: rotation_quarters: 0-3 clockwise 90-degree steps, applied BEFORE cropping.
+    #: crop_rect: normalized (x, y, w, h) within the rotated source frame.
+    rotation_quarters: int = 0
+    crop_rect: tuple[float, float, float, float] | None = None
 
     def cache_slug(self) -> str:
         # Convert BoundingBox objects to dicts for JSON serialization
@@ -40,6 +46,12 @@ class ScreenImageConfig:
             "crop_to_fill_threshold": self.crop_to_fill_threshold,
             "clahe_keepout_bboxes": bbox_serializable,
         }
+        # Only fold in manual crop/rotation when actually set, so existing
+        # (non-edited) images keep their current slug and don't re-render.
+        if self.rotation_quarters:
+            payload["rotation_quarters"] = self.rotation_quarters
+        if self.crop_rect:
+            payload["crop_rect"] = list(self.crop_rect)
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:14]
 
 
@@ -56,9 +68,14 @@ def _screen_image_config_from_dict(d: dict) -> ScreenImageConfig:
             keepout = None
     else:
         keepout = None
+    rotation_quarters = int(d.get("rotation_quarters", 0))
+    crop_raw = d.get("crop_rect")
+    crop_rect = tuple(float(v) for v in crop_raw) if crop_raw else None
     return ScreenImageConfig(
         image_config=image_config,
         orientation=orientation,
         crop_to_fill_threshold=crop_to_fill_threshold,
         clahe_keepout_bboxes=keepout,
+        rotation_quarters=rotation_quarters,
+        crop_rect=crop_rect,
     )
