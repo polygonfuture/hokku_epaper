@@ -723,8 +723,14 @@
      print (replaces the mockup's client-dithered #dithCanvas — the client render
      was a Euclidean approximation that ignored the LUT/colour-space controls) */
   .pedit-dith-wrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none}
-  #peditDith{max-width:86%;max-height:86%;background:#EBE8E0;padding:10px;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  #peditDith,#peditDithBefore{max-width:86%;max-height:86%;background:#EBE8E0;padding:10px;box-shadow:0 18px 44px rgba(0,0,0,.55)}
   #peditDith.broken{visibility:hidden}
+  /* press-and-hold "before": the un-dithered original, stacked exactly over the preview */
+  #peditDithBefore{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);visibility:hidden;pointer-events:none}
+  .pedit-dith-wrap.peek #peditDithBefore{visibility:visible}
+  /* iOS long-press: suppress the native callout / magnifier loupe / image context preview
+     over the stage, so only our own press-and-hold peek shows */
+  .ed-stage,#peditDith,#peditDithBefore{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
   .render-chip{position:absolute;z-index:5;bottom:.7rem;left:50%;transform:translateX(-50%);font-size:.66rem;letter-spacing:.05em;color:#F3F2EF;background:rgba(10,9,8,.72);padding:.24rem .6rem;border-radius:999px;display:flex;align-items:center;gap:.4rem;opacity:0;transition:.2s}
   .render-chip.show{opacity:1}
   .render-chip .rspin{width:9px;height:9px;border-radius:50%;border:2px solid #EDEBE5;border-right-color:transparent;animation:bspin .7s linear infinite}

@@ -32,6 +32,7 @@ const cropCanvas = $("#cropCanvas");
 const cropOverlay = $("#cropOverlay");
 const dithWrap = $("#peditDithWrap");
 const dithImg = $("#peditDith");
+const beforeImg = $("#peditDithBefore");
 const renderChip = $("#renderChip");
 const mPanel = $("#mPanel");
 const cropPanel = $("#cropPanel");
@@ -402,7 +403,8 @@ function renderRail() {
   toolRail.innerHTML = html;
 }
 toolRail.addEventListener("click", (e) => {
-  if (e.target.closest("[data-tool='crop']")) { if (ED.mode !== "crop") setMode("crop"); return; }
+  // crop toggles: tapping it while already cropping returns to the clean dither preview
+  if (e.target.closest("[data-tool='crop']")) { setMode(ED.mode === "crop" ? "dither" : "crop"); return; }
   const gb = e.target.closest("[data-group]"); if (!gb) return;
   const i = +gb.dataset.group;
   if (ED.mode !== "dither") { setMode("dither"); ED.stage = i; openPanel(); return; }
@@ -456,8 +458,37 @@ function setMode(m) {
 }
 
 // slide-up bin (touch): tap the stage or the grabber to close it
-edStage.addEventListener("click", () => { if (isMobileVp() && ED.mode === "dither" && ED.panelOpen) closePanel(); });
+let suppressStageClick = false;
+edStage.addEventListener("click", () => {
+  if (suppressStageClick) { suppressStageClick = false; return; }
+  if (isMobileVp() && ED.mode === "dither" && ED.panelOpen) closePanel();
+});
 $("#binGrabber").addEventListener("click", () => { if (ED.panelOpen) closePanel(); });
+
+// press-and-hold the dithered preview to peek at the un-dithered original (before/after).
+// a quick tap must NOT flash it — only a sustained hold swaps in the "before"; release restores.
+const PEEK_HOLD_MS = 280, PEEK_MOVE_TOL = 12;
+let peekTimer = null, peekAt = null, peeking = false;
+function endPeek() {
+  clearTimeout(peekTimer); peekTimer = null; peekAt = null;
+  if (peeking) { peeking = false; suppressStageClick = true; dithWrap.classList.remove("peek"); }
+}
+edStage.addEventListener("pointerdown", (e) => {
+  if (ED.mode !== "dither" || !previewUrl || dithImg.classList.contains("broken")) return;
+  peekAt = { x: e.clientX, y: e.clientY };
+  try { edStage.setPointerCapture(e.pointerId); } catch (_) {}
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => { peeking = true; dithWrap.classList.add("peek"); }, PEEK_HOLD_MS);
+});
+edStage.addEventListener("pointermove", (e) => {
+  if (!peekAt || peeking) return;
+  if (Math.hypot(e.clientX - peekAt.x, e.clientY - peekAt.y) > PEEK_MOVE_TOL) endPeek();
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((ev) => edStage.addEventListener(ev, endPeek));
+// block the native long-press/drag reactions over the preview so only our peek shows:
+// iOS callout/loupe + desktop right-click menu (contextmenu) and the drag-to-select / drag-image (dragstart)
+edStage.addEventListener("contextmenu", (e) => e.preventDefault());
+edStage.addEventListener("dragstart", (e) => e.preventDefault());
 
 // ══════════════════════════ SERVER PREVIEW (debounced, one in flight) ══════════════════════════
 let previewTimer = null, previewCtrl = null, previewUrl = null;
@@ -472,6 +503,7 @@ async function runPreview() {
   renderChip.classList.add("show");
   try {
     const nc = normCrop();
+    renderBefore();
     const { blobUrl } = await editorPreview(ED.name, ED.cfg, { orientation: target(), crop: [nc.x, nc.y, nc.w, nc.h], rotation: ED.rotation }, previewCtrl.signal);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = blobUrl;
@@ -483,6 +515,24 @@ async function runPreview() {
     dithImg.classList.add("broken");
     toast("Preview failed: " + e.message);
   }
+}
+
+// client-side "before": the raw original cropped/rotated to the SAME frame as the dithered
+// preview (ED.crop is already in rotatedSrc pixels), so press-and-hold shows a pixel-aligned
+// before/after with no server round-trip. Re-rendered only when the crop or rotation changes.
+let beforeKey = "";
+function renderBefore() {
+  if (!rotatedSrc || !ED.crop) return;
+  const cr = ED.crop;
+  const key = ED.rotation + ":" + cr.x + ":" + cr.y + ":" + cr.w + ":" + cr.h;
+  if (key === beforeKey) return;
+  beforeKey = key;
+  const MAX = 900, scale = Math.min(1, MAX / Math.max(cr.w, cr.h));
+  const cw = Math.max(1, Math.round(cr.w * scale)), ch = Math.max(1, Math.round(cr.h * scale));
+  const c = document.createElement("canvas");
+  c.width = cw; c.height = ch;
+  c.getContext("2d").drawImage(rotatedSrc, cr.x, cr.y, cr.w, cr.h, 0, 0, cw, ch);
+  beforeImg.src = c.toDataURL("image/jpeg", 0.9);
 }
 
 // ══════════════════════════ PRESETS / AUTO / RESET (••• menu) ══════════════════════════
@@ -631,6 +681,7 @@ function closeEditor() {
   clearTimeout(previewTimer); if (previewCtrl) previewCtrl.abort();
   renderChip.classList.remove("show");
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  endPeek(); beforeKey = ""; beforeImg.removeAttribute("src");
   const draftToDrop = ED.isDraft ? ED.name : null;
   ED.name = null; ED.srcCanvas = null; rotatedSrc = null; ED.isDraft = false;
   if (draftToDrop) deleteImage(draftToDrop).catch(() => {});   // discard the inert draft
