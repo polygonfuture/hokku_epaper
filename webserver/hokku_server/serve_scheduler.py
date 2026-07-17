@@ -95,6 +95,9 @@ class ServeScheduler:
         self._screen_configs: dict[str, ScreenConfig] = {}
         self._last_served: tuple[str, float] | None = None
         self._next_for: dict[Orientation, str | None] = dict.fromkeys(Orientation, None)
+        # Per-screen forced next image (screen name -> image name). Persisted:
+        # frames sleep for hours, so an override must survive a server restart.
+        self._next_for_screen: dict[str, str] = {}
         self._load()
         # Pre-determine the next image right now so the UI can show it
         # immediately without waiting for the first screen request.
@@ -134,10 +137,13 @@ class ServeScheduler:
             self._save()
             return self._next_for.get(orientation)
 
-    def mark_served(self, name: str) -> None:
+    def mark_served(self, name: str, screen_name: str | None = None) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the
         previously-served image. Pre-computes the next image for all orientations
-        so the UI reflects the upcoming choice immediately."""
+        so the UI reflects the upcoming choice immediately.
+
+        When ``screen_name`` is given and that screen had a pending per-screen
+        override for exactly this image, the override is consumed."""
         with self._lock:
             now = time.time()
             self._attribute_show_time(now)
@@ -150,6 +156,8 @@ class ServeScheduler:
                 total_show_minutes=cur.total_show_minutes,
             )
             self._last_served = (name, now)
+            if screen_name is not None and self._next_for_screen.get(screen_name) == name:
+                del self._next_for_screen[screen_name]
             # Consumed — recompute the next image for all orientations immediately.
             ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
             ready_names = {r.name for r in ready}
@@ -190,6 +198,44 @@ class ServeScheduler:
             for o in Orientation:
                 self._next_for[o] = name
             self._save()
+
+    # ── Per-screen forced next ───────────────────────────────────
+
+    def set_next_for_screen(self, screen_name: str, image_name: str) -> None:
+        """Force a specific image to be served next to ONE screen.
+
+        Bypasses the screen's orientation filter (both orientations are always
+        rendered for OK images, so a cached binary exists either way).
+        Raises ValueError if the image is not currently ready to serve.
+        """
+        with self._lock:
+            ready = {r.name for r in self._manager.list() if r.convert_status == ConvertStatus.OK}
+            if image_name not in ready:
+                raise ValueError(f"Image {image_name!r} is not ready to serve")
+            self._next_for_screen[screen_name] = image_name
+            self._save()
+
+    def clear_next_for_screen(self, screen_name: str) -> None:
+        """Cancel a pending per-screen override. Idempotent."""
+        with self._lock:
+            if self._next_for_screen.pop(screen_name, None) is not None:
+                self._save()
+
+    def peek_next_for_screen(self, screen_name: str) -> str | None:
+        """Return the screen's pending override iff it is ready to serve NOW.
+
+        A temporarily not-ready image (e.g. mid-reconversion after a cache clear)
+        returns None but the override is RETAINED; it is dropped only when the
+        image is deleted (see _reconcile) or after it has been served.
+        """
+        with self._lock:
+            name = self._next_for_screen.get(screen_name)
+            if name is None:
+                return None
+            rec = self._manager.status(name)
+            if rec is None or rec.convert_status != ConvertStatus.OK:
+                return None
+            return name
 
     # ── Screen telemetry ─────────────────────────────────────────
 
@@ -271,6 +317,7 @@ class ServeScheduler:
             self._screens.pop(name, None)
             self._stats.pop(name, None)
             self._screen_configs.pop(name, None)
+            self._next_for_screen.pop(name, None)
             if self._last_served and self._last_served[0] == name:
                 self._last_served = None
             self._save()
@@ -314,10 +361,16 @@ class ServeScheduler:
                 )
 
     def _reconcile(self, ready_names: set[str]) -> None:
+        all_names = {r.name for r in self._manager.list()}
         # Drop orphans.
         for name in list(self._stats.keys()):
-            if name not in ready_names and name not in {r.name for r in self._manager.list()}:
+            if name not in ready_names and name not in all_names:
                 del self._stats[name]
+        # Drop per-screen overrides whose image was DELETED (a merely not-ready
+        # image keeps its override — see peek_next_for_screen).
+        for sname in list(self._next_for_screen.keys()):
+            if self._next_for_screen[sname] not in all_names:
+                del self._next_for_screen[sname]
 
         # Add fresh entries. If we see any genuinely new name, reset all
         # nonzero indices to 1 so the new image isn't perpetually behind.
@@ -385,11 +438,17 @@ class ServeScheduler:
             old_next = data.get("next_image")
             if isinstance(old_next, str):
                 self._next_for[Orientation.NEUTRAL] = old_next
+        nfs = data.get("next_for_screen")
+        if isinstance(nfs, dict):
+            for sname, iname in nfs.items():
+                if isinstance(sname, str) and isinstance(iname, str):
+                    self._next_for_screen[sname] = iname
 
     def _save(self) -> None:
         payload = {
             "version": 1,
             "next_for": {o.value: self._next_for.get(o) for o in Orientation},
+            "next_for_screen": dict(self._next_for_screen),
             "last_served": (
                 {"name": self._last_served[0], "served_at": self._last_served[1]}
                 if self._last_served

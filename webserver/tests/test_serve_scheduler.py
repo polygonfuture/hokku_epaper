@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from hokku_server.app_config import AppConfig
 from hokku_server.image_manager_single import SingleThreadedImageManager
 from hokku_server.orientation import Orientation
@@ -272,3 +274,69 @@ def test_precompute_all_locked_neutral_images_appear_in_all_slots(
     assert sched._next_for[Orientation.NEUTRAL] == "square.png"
     assert sched._next_for[Orientation.LANDSCAPE] == "square.png"
     assert sched._next_for[Orientation.PORTRAIT] == "square.png"
+
+
+# ── Per-screen forced next (show-next override) ───────────────────────────────
+
+
+def test_set_next_for_screen_and_peek(app_config: AppConfig, make_test_image):
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    sched.set_next_for_screen("frame-1", "b.png")
+    assert sched.peek_next_for_screen("frame-1") == "b.png"
+    assert sched.peek_next_for_screen("frame-2") is None
+
+
+def test_set_next_for_screen_not_ready_raises(app_config: AppConfig, make_test_image):
+    _, sched = _setup(app_config, make_test_image, ["a.png"])
+    with pytest.raises(ValueError):
+        sched.set_next_for_screen("frame-1", "missing.png")
+
+
+def test_mark_served_clears_screen_override(app_config: AppConfig, make_test_image):
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    sched.set_next_for_screen("frame-1", "b.png")
+    # serving a DIFFERENT image to that screen keeps the override
+    sched.mark_served("a.png", screen_name="frame-1")
+    assert sched.peek_next_for_screen("frame-1") == "b.png"
+    # serving the image to a different/unnamed screen keeps it too
+    sched.mark_served("b.png")
+    assert sched.peek_next_for_screen("frame-1") == "b.png"
+    # serving the image to THAT screen consumes it
+    sched.mark_served("b.png", screen_name="frame-1")
+    assert sched.peek_next_for_screen("frame-1") is None
+
+
+def test_screen_override_persisted_across_reload(app_config: AppConfig, make_test_image):
+    mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    sched.set_next_for_screen("frame-1", "b.png")
+    sched2 = ServeScheduler(mgr)
+    assert sched2.peek_next_for_screen("frame-1") == "b.png"
+
+
+def test_screen_override_dropped_when_image_deleted(app_config: AppConfig, make_test_image):
+    mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    sched.set_next_for_screen("frame-1", "b.png")
+    mgr.remove("b.png")
+    sched.pick_next(Orientation.NEUTRAL)  # triggers _reconcile
+    assert sched.peek_next_for_screen("frame-1") is None
+
+
+def test_remove_screen_clears_override(app_config: AppConfig, make_test_image):
+    _, sched = _setup(app_config, make_test_image, ["a.png"])
+    sched.set_next_for_screen("frame-1", "a.png")
+    sched.remove_screen("frame-1")
+    assert sched.peek_next_for_screen("frame-1") is None
+
+
+def test_screen_override_bypasses_orientation_filter(app_config: AppConfig, make_test_image):
+    """A landscape image forced onto a portrait-filtered screen is still honoured."""
+    _, sched = _setup_with_sizes(
+        app_config,
+        make_test_image,
+        [("land.png", (400, 300)), ("port.png", (300, 400))],
+    )
+    sched.set_screen_config(
+        "frame-1", ScreenConfig(orientation=Orientation.PORTRAIT, filter_by_orientation=True)
+    )
+    sched.set_next_for_screen("frame-1", "land.png")
+    assert sched.peek_next_for_screen("frame-1") == "land.png"

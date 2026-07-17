@@ -558,3 +558,130 @@ def test_ui_returns_html(bare_client):
     resp = client.get("/hokku/ui")
     assert resp.status_code == 200
     assert b"<!DOCTYPE html>" in resp.data or b"<html" in resp.data
+
+
+# ── /hokku/api/screens/<name>/show_next — per-screen forced next ─────────────
+
+
+def _register_screen(client, name: str):
+    """A screen exists once it has checked in at the firmware endpoint."""
+    return client.get("/hokku/screen/", headers={"X-Screen-Name": name})
+
+
+def _add_ready_image(state, as_name: str) -> None:
+    src = _TEST_IMAGES_DIR / "grayscale_linear_bar_1200x300.png"
+    shutil.copy(src, Path(state.config.upload_dir) / as_name)
+    state.manager.sync()
+    state.manager.wait_for_idle()
+
+
+def test_screen_show_next_forced_serve_once(synced_client):
+    client, state, first = synced_client
+    _add_ready_image(state, "second.png")
+    _register_screen(client, "frame-a")
+    _register_screen(client, "frame-b")
+
+    # Force onto frame-b the image rotation would NOT pick next.
+    status = client.get("/hokku/api/status").get_json()
+    rotation_next = status["next_images"].get("neutral")
+    forced = "second.png" if rotation_next != "second.png" else first
+
+    resp = client.post(f"/hokku/api/screens/frame-b/show_next", json={"image": forced})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body == {"ok": True, "screen": "frame-b", "next_image": forced}
+
+    # /status exposes the pending override on frame-b only.
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    assert screens["frame-b"]["next_override"] == forced
+    assert screens["frame-a"]["next_override"] is None
+
+    # Another screen checking in does NOT consume frame-b's override.
+    _register_screen(client, "frame-a")
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    assert screens["frame-b"]["next_override"] == forced
+
+    # frame-b checks in → receives the forced image, override consumed.
+    resp = _register_screen(client, "frame-b")
+    assert resp.status_code == 200
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    assert screens["frame-b"]["last_served"] == forced
+    assert screens["frame-b"]["next_override"] is None
+
+    # Next check-in falls back to rotation (no lingering override).
+    _register_screen(client, "frame-b")
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    assert screens["frame-b"]["next_override"] is None
+
+
+def test_screen_show_next_unknown_screen_returns_404(synced_client):
+    client, _, name = synced_client
+    resp = client.post("/hokku/api/screens/ghost/show_next", json={"image": name})
+    assert resp.status_code == 404
+
+
+def test_screen_show_next_missing_image_returns_404(synced_client):
+    client, _, _ = synced_client
+    _register_screen(client, "frame-a")
+    resp = client.post("/hokku/api/screens/frame-a/show_next", json={"image": "nope.png"})
+    assert resp.status_code == 404
+
+
+def test_screen_show_next_bad_body_returns_400(synced_client):
+    client, _, _ = synced_client
+    _register_screen(client, "frame-a")
+    resp = client.post("/hokku/api/screens/frame-a/show_next", json={})
+    assert resp.status_code == 400
+
+
+def test_screen_show_next_not_ready_returns_409(bare_client):
+    """Uploading without syncing leaves status != 'ok' → 409 (mirrors global show_next)."""
+    client, _ = bare_client
+    _register_screen(client, "frame-a")
+    img = _TEST_IMAGES_DIR / "grayscale_linear_bar_1200x300.png"
+    _upload_bytes(client, img.read_bytes(), img.name)
+    resp = client.post("/hokku/api/screens/frame-a/show_next", json={"image": img.name})
+    assert resp.status_code == 409
+
+
+def test_screen_show_next_delete_clears_override(synced_client):
+    client, _, name = synced_client
+    _register_screen(client, "frame-a")
+    assert client.post(
+        "/hokku/api/screens/frame-a/show_next", json={"image": name}
+    ).status_code == 200
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    assert screens["frame-a"]["next_override"] == name
+
+    resp = client.delete("/hokku/api/screens/frame-a/show_next")
+    assert resp.status_code == 200
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    assert screens["frame-a"]["next_override"] is None
+    # idempotent
+    assert client.delete("/hokku/api/screens/frame-a/show_next").status_code == 200
+
+
+# ── /hokku/api/screens/<name>/config PATCH (gap-fill coverage) ────────────────
+
+
+def test_screen_config_patch_orientation_and_filter(synced_client):
+    client, _, _ = synced_client
+    _register_screen(client, "frame-a")
+    resp = client.patch(
+        "/hokku/api/screens/frame-a/config",
+        json={"orientation": "portrait", "filter_by_orientation": True},
+    )
+    assert resp.status_code == 200
+    s = client.get("/hokku/api/status").get_json()["screens"]["frame-a"]
+    assert s["orientation"] == "portrait"
+    assert s["filter_by_orientation"] is True
+
+
+def test_screen_config_patch_invalid_returns_400(synced_client):
+    client, _, _ = synced_client
+    assert client.patch(
+        "/hokku/api/screens/frame-a/config", json={"orientation": "auto"}
+    ).status_code == 400
+    assert client.patch(
+        "/hokku/api/screens/frame-a/config", json={"filter_by_orientation": "yes"}
+    ).status_code == 400

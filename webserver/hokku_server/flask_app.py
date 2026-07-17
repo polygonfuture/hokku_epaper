@@ -172,7 +172,10 @@ def create_app(
 
         cfg = scheduler.get_screen_config(screen_name)
         pick_orientation = cfg.orientation if cfg.filter_by_orientation else Orientation.NEUTRAL
-        chosen = scheduler.pick_next(orientation=pick_orientation)
+        # A pending per-screen override wins over rotation. It deliberately bypasses
+        # the orientation filter — both orientations are rendered for every OK image.
+        forced = scheduler.peek_next_for_screen(screen_name)
+        chosen = forced if forced is not None else scheduler.pick_next(orientation=pick_orientation)
         sleep_seconds = calculate_sleep_seconds(config) if chosen else _busy_retry_seconds(config)
 
         if chosen is None:
@@ -213,7 +216,7 @@ def create_app(
             resp.headers["X-Sleep-Seconds"] = str(sleep_seconds)
             return resp
 
-        scheduler.mark_served(chosen)
+        scheduler.mark_served(chosen, screen_name=screen_name)
         scheduler.record_screen_call(
             screen_name,
             screen_ip,
@@ -421,6 +424,37 @@ def create_app(
             state.manager.sync()
         return jsonify({"ok": True})
 
+    @app.route("/hokku/api/screens/<string:name>/show_next", methods=["POST", "DELETE"])
+    def api_screen_show_next(name: str):
+        """Force a specific image onto ONE screen's next refresh (POST), or cancel
+        a pending per-screen override (DELETE, idempotent).
+
+        Unlike the global /hokku/api/show_next, this targets a single frame: the
+        override is consumed when THAT frame next checks in. It bypasses the
+        screen's orientation filter (both orientations are always rendered)."""
+        if request.method == "DELETE":
+            state.scheduler.clear_next_for_screen(name)
+            return jsonify({"ok": True})
+
+        if name not in state.scheduler.screens():
+            return jsonify({"error": f"screen {name!r} not known"}), 404
+        body = request.get_json(silent=True) or {}
+        image = body.get("image")
+        if not isinstance(image, str) or not image:
+            return jsonify({"error": "body must be {'image': <name>}"}), 400
+        rec = state.manager.status(image)
+        if rec is None:
+            return jsonify({"error": f"image {image!r} not found"}), 404
+        if rec.convert_status != ConvertStatus.OK:
+            return jsonify(
+                {"error": f"image {image!r} is not ready (status: {rec.convert_status})"}
+            ), 409
+        try:
+            state.scheduler.set_next_for_screen(name, image)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 409
+        return jsonify({"ok": True, "screen": name, "next_image": image})
+
     @app.route("/hokku/api/scrub", methods=["POST"])
     def api_scrub():
         """Remove stale-slug panel/preview files immediately (preserves thumbs)."""
@@ -515,6 +549,7 @@ def create_app(
                 "state": t.frame_state,
                 "orientation": scfg.orientation,
                 "filter_by_orientation": scfg.filter_by_orientation,
+                "next_override": scheduler.peek_next_for_screen(sname),
                 "last_log": t.last_log or None,
                 "last_log_at": (
                     datetime.fromtimestamp(t.last_log_at).isoformat(timespec="seconds")
