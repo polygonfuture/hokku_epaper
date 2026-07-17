@@ -1,0 +1,249 @@
+<!doctype html>
+<!-- Hokku — new web UI (Step 2 port of Plans/prototypes/app-mockup.html).
+     Served at /hokku/static/app/index.html by the existing static route; the old UI
+     at /hokku/ui is untouched. No build step: vanilla ES modules + two CSS files. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>hokku.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='6.5' y='3' width='11' height='18' rx='1.5' fill='none' stroke='%23EDEBE5' stroke-width='1.8'/%3E%3Crect x='9.5' y='6.5' width='5' height='7' fill='none' stroke='%23EDEBE5' stroke-width='1.8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/hokku/static/app/css/tokens.css">
+  <link rel="stylesheet" href="/hokku/static/app/css/app.css">
+  <script type="module" src="/hokku/static/app/js/main.js"></script>
+</head>
+<body>
+
+<header class="bar">
+  <!-- the wordmark IS the server button: online dot + hover ring, no border -->
+  <button class="word" id="brand" title="Server" aria-label="Server">
+    <span class="wtext">hokku<i>.</i></span><span class="wdot" aria-hidden="true"></span>
+  </button>
+  <span class="sp"></span>
+  <!-- header cluster order (L→R): processing tiles · Upload · Frames · Settings -->
+  <div class="status-tiles" id="status-tiles" aria-live="polite"></div>
+  <button class="up" id="upload-btn">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+    Upload
+  </button>
+  <button class="frames-pill" id="fp">
+    <svg class="fp-frame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="6.5" y="3" width="11" height="18" rx="1.5"/><rect x="9.5" y="6.5" width="5" height="7"/></svg>
+    <span class="fdots" id="fdots"></span>
+    <span>Frames</span>
+    <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
+  </button>
+  <button class="icon-pill" id="settings-btn" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+  <!-- native picker: on mobile this opens the OS photo library / camera options -->
+  <input type="file" id="file-input" accept="image/*,.heic,.heif,.avif,.jxl" multiple hidden>
+</header>
+
+<!-- status-tile dropdown: details for the clicked tile (anchored under it) -->
+<div class="status-pop" id="status-pop" hidden></div>
+
+<!-- SERVER drawer (desktop): identity row + live system readouts -->
+<div class="drawer" id="server-drawer">
+  <div class="inner">
+    <span class="fd"><span class="k">Server</span><b class="mono" id="svHost">—</b></span>
+    <span class="fd"><span class="k">IP address</span><b class="mono" id="svIp">—</b></span>
+    <span class="fd"><span class="k">Version</span><b id="svVersion">—</b><b class="mono commit" id="svCommit"></b></span>
+    <span class="cache-group">
+      <span class="fd"><span class="k">Cache</span><b id="svCache">—</b></span>
+      <button class="ghost" id="clear-cache">Clear cache</button>
+    </span>
+  </div>
+  <!-- live system readouts, polled from /hokku/api/status -->
+  <div class="inner readouts">
+    <span class="fd"><span class="k">Disk</span><b id="svDisk">—</b><span class="of">free</span></span>
+    <span class="fd"><span class="k">CPU</span><b id="svCpu">—</b></span>
+    <span class="fd"><span class="k">Free RAM</span><b id="svRam">—</b></span>
+    <span class="fd"><span class="k">Workers</span><b id="svWorkersLive">—</b></span>
+    <span class="fd"><span class="k">Last served</span><b id="svServed">—</b></span>
+  </div>
+</div>
+
+<!-- FRAMES panel: one card per connected frame (thumbnail + IP + stats) -->
+<div class="drawer frames-panel" id="frames-panel">
+  <div class="fpanel-body">
+    <div class="fcards" id="fcards"></div>
+    <button class="ghost" id="edit-orientation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/></svg>
+      Frame orientation
+    </button>
+  </div>
+</div>
+
+<main>
+  <div class="head">
+    <h1>Gallery</h1>
+    <span class="meta" id="meta">— photos · — frames</span>
+    <span class="grow"></span>
+    <div class="size-ctrl" id="size-ctrl">
+      <svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      <input type="range" id="size-slider" min="180" max="560" value="320" aria-label="Thumbnail size">
+      <svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    </div>
+    <div class="ftabs" id="ftabs" role="tablist" aria-label="Arrangement">
+      <button data-filter="mixed" role="tab" class="on">Mixed</button>
+      <button data-filter="grouped" role="tab">Grouped</button>
+      <button data-filter="landscape" role="tab">Landscape</button>
+      <button data-filter="portrait" role="tab">Portrait</button>
+    </div>
+  </div>
+  <div id="gallery"></div>
+</main>
+
+<!-- slim footer: live server time + version/commit -->
+<footer class="foot">
+  <span class="fd"><span class="k">Server time</span><b class="mono" id="footTime">—</b></span>
+  <span class="grow"></span>
+  <span class="fd"><span class="k">Hokku</span><b id="footVersion">—</b><a class="mono commit" id="footCommit" target="_blank" rel="noopener" hidden></a></span>
+</footer>
+
+<!-- failed-conversions modal (opened from the dithering/failed status tile's Review action) -->
+<div class="sheet-overlay" id="failed-modal" hidden>
+  <div class="failed-card" role="dialog" aria-modal="true" aria-label="Failed conversions">
+    <div class="fdiag-head">
+      <span class="fdiag-title">Failed conversions<span class="gcount" id="failed-count"></span></span>
+      <button class="detail-close" data-failed-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="fdiag-body" id="failed-body"></div>
+    <div class="set-foot">
+      <button class="ghost-btn" data-failed="retry">Retry all</button>
+      <button class="ghost-btn danger" data-failed="delete"><span class="lbl">Delete all</span></button>
+      <span style="flex:1"></span>
+      <button class="ghost-btn" data-failed-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- image detail view (tap a photo): E-ink ↔ Original, info, face overlay, actions -->
+<div class="sheet-overlay" id="detail" hidden>
+  <!-- no close button by design: tap the backdrop (or press Escape) to dismiss -->
+  <div class="detail-card" role="dialog" aria-modal="true" aria-label="Photo detail">
+    <div id="detail-body"></div>
+  </div>
+</div>
+
+<!-- press-hold action sheet (touch: centered spotlight) -->
+<div class="ctx-backdrop" id="ctx" hidden>
+  <div id="ctx-sheet"></div>
+</div>
+
+<!-- right-click / ⋯ action menu (desktop: over the photo, dimmed backdrop) -->
+<div class="anchor-scrim" id="anchor-scrim" hidden></div>
+<div class="ctx-menu anchor-menu" id="anchor-menu" hidden></div>
+
+<!-- frame ⋯ action menu (Diagnostics / Remove) -->
+<div class="anchor-scrim" id="frame-scrim" hidden></div>
+<div class="ctx-menu frame-menu" id="frame-menu" hidden></div>
+
+<!-- connected-frame diagnostics modal (⋯ → View diagnostics) -->
+<div class="sheet-overlay" id="frame-modal" hidden>
+  <div class="fdiag-card" role="dialog" aria-modal="true" aria-label="Frame diagnostics">
+    <div class="fdiag-head">
+      <span class="fdiag-title"><span class="d" id="fdiag-dot"></span><span id="fdiag-name"></span><span class="fdiag-ip mono" id="fdiag-ip"></span></span>
+      <button class="detail-close" data-fdiag-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="fdiag-body" id="fdiag-body"></div>
+    <div class="set-foot">
+      <button class="ghost-btn danger" id="fdiag-remove"><span class="lbl">Remove frame</span></button>
+      <span style="flex:1"></span>
+      <button class="ghost-btn" data-fdiag-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- server info as a clean modal on MOBILE (the desktop drawer reads jumbled at phone width) -->
+<div class="sheet-overlay" id="server-modal" hidden>
+  <div class="fdiag-card" role="dialog" aria-modal="true" aria-label="Server info">
+    <div class="fdiag-head">
+      <span class="fdiag-title"><span class="sdot" aria-hidden="true"></span><span id="server-modal-host">hokku</span></span>
+      <button class="detail-close" data-server-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="fdiag-body" id="server-modal-body"></div>
+    <div class="set-foot">
+      <button class="ghost-btn danger" id="smClear"><span class="lbl">Clear cache</span></button>
+      <span style="flex:1"></span>
+      <button class="ghost-btn" data-server-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- single tabbed settings modal (opened by the gear button) -->
+<div class="sheet-overlay" id="settings-modal" hidden>
+  <div class="set-card" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="set-head">
+      <button class="set-back" id="set-back" aria-label="Back to settings" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h2 id="set-title">Settings</h2>
+      <span class="sp"></span>
+      <button class="detail-close" data-set-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="set-main">
+      <nav class="set-nav" id="set-nav" role="tablist"></nav>
+      <div class="set-body" id="set-body"></div>
+    </div>
+    <div class="set-foot">
+      <button class="ghost-btn" data-set-close>Cancel</button>
+      <button class="save-btn" id="set-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- custom dither pipeline editor (opened by a "Custom…" button in Settings; desktop-only) -->
+<div class="sheet-overlay" id="dither-modal" hidden>
+  <div class="dither-card" role="dialog" aria-modal="true" aria-label="Custom dither pipeline">
+    <div class="set-head">
+      <h2 id="dither-title">Custom dither</h2>
+      <span class="sp"></span>
+      <button class="detail-close" data-dither-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="dither-main">
+      <nav class="dcats" id="dcats" role="tablist" aria-label="Pipeline stages"></nav>
+      <div class="dcontrols" id="dcontrols"></div>
+      <div class="dpreview">
+        <div class="dprev-lab">Live preview</div>
+        <div class="dprev-stage" id="dprev-stage"><span class="dprev-wrap"><img id="dprev-img" alt="Dither preview"><div class="dprev-faces" id="dprev-faces" hidden></div></span></div>
+        <div class="dprev-pick" id="dprev-pick" aria-label="Preview photo"></div>
+      </div>
+    </div>
+    <div class="set-foot">
+      <button class="ghost-btn" id="dither-reset">Reset to preset</button>
+      <span style="flex:1"></span>
+      <button class="ghost-btn" data-dither-close>Cancel</button>
+      <button class="save-btn" id="dither-save">Use these settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- desktop drag-and-drop overlay -->
+<div class="drop-overlay" id="drop-overlay" hidden>
+  <div class="drop-card">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+    <p>Drop photos to upload</p>
+    <span>JPEG · HEIC · PNG · WEBP · AVIF · JXL</span>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- offline indicator: fixed pill (does not push content); the wordmark dot also goes amber -->
+<div class="offline-pill" id="offline-pill" role="status" aria-live="polite" aria-hidden="true">
+  <span class="d"></span><span>Offline — reconnecting…</span>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,1095 @@
+<title>hokku — Upload & Edit prototype</title>
+<style>
+  :root{
+    --paper:#F3EEE4; --card:#FBF8F1; --sunk:#ECE5D8;
+    --ink:#211C17; --ink-2:#5C5349; --grey:#8B8177; --faint:#A79C8E;
+    --line:#E2DACC; --line-2:#D3C9B7;
+    --accent:#1E4FA0; --accent-soft:#2C63B8; --danger:#A81F0C;
+    --shadow:0 1px 2px rgba(41,33,22,.06),0 10px 30px rgba(41,33,22,.10);
+    --shadow-lg:0 30px 70px rgba(41,33,22,.28);
+    /* Spectra 6 inks — constant across themes */
+    --ink-black:#262626; --ink-white:#E8EAE6; --ink-yellow:#C8C400;
+    --ink-red:#A81800; --ink-blue:#0A4098; --ink-green:#2A6A44;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code","Roboto Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#161311; --card:#211C18; --sunk:#1B1714;
+      --ink:#EDE6DA; --ink-2:#C3B9AC; --grey:#9A9084; --faint:#6E655A;
+      --line:#332B24; --line-2:#403830;
+      --accent:#7BA4E8; --accent-soft:#6E9BE6; --danger:#E0765F;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px rgba(0,0,0,.45);
+      --shadow-lg:0 30px 80px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="light"]{
+    --paper:#F3EEE4; --card:#FBF8F1; --sunk:#ECE5D8;
+    --ink:#211C17; --ink-2:#5C5349; --grey:#8B8177; --faint:#A79C8E;
+    --line:#E2DACC; --line-2:#D3C9B7;
+    --accent:#1E4FA0; --accent-soft:#2C63B8; --danger:#A81F0C;
+    --shadow:0 1px 2px rgba(41,33,22,.06),0 10px 30px rgba(41,33,22,.10);
+    --shadow-lg:0 30px 70px rgba(41,33,22,.28);
+  }
+  :root[data-theme="dark"]{
+    --paper:#161311; --card:#211C18; --sunk:#1B1714;
+    --ink:#EDE6DA; --ink-2:#C3B9AC; --grey:#9A9084; --faint:#6E655A;
+    --line:#332B24; --line-2:#403830;
+    --accent:#7BA4E8; --accent-soft:#6E9BE6; --danger:#E0765F;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px rgba(0,0,0,.45);
+    --shadow-lg:0 30px 80px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);line-height:1.55;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  }
+  ::selection{background:color-mix(in srgb,var(--accent) 24%,transparent)}
+  .wrap{max-width:1120px;margin:0 auto;padding:clamp(20px,5vw,64px) clamp(16px,4vw,40px)}
+
+  /* ── Masthead ─────────────────────────────────────────── */
+  .brand{display:flex;align-items:baseline;gap:.6rem;font-family:var(--serif)}
+  .brand b{font-weight:600;font-size:1.15rem;letter-spacing:.02em}
+  .brand span{font-size:.72rem;letter-spacing:.28em;text-transform:uppercase;color:var(--grey);font-family:var(--sans)}
+  h1.title{
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(2rem,5.5vw,3.4rem);line-height:1.04;letter-spacing:-.015em;
+    margin:.5rem 0 .35rem;text-wrap:balance;max-width:16ch;
+  }
+  .lede{font-size:clamp(1rem,2.1vw,1.18rem);color:var(--ink-2);max-width:60ch;margin:0}
+  .meta-row{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.1rem}
+  .tag{
+    font-size:.72rem;letter-spacing:.04em;color:var(--ink-2);
+    border:1px solid var(--line-2);border-radius:999px;padding:.28rem .7rem;background:var(--card);
+  }
+  .tag b{color:var(--ink);font-weight:600}
+
+  /* Ink strip motif */
+  .inkstrip{display:flex;height:8px;border-radius:6px;overflow:hidden;margin:2.4rem 0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)}
+  .inkstrip i{flex:1}
+  .inkstrip i:nth-child(1){background:var(--ink-black)}
+  .inkstrip i:nth-child(2){background:var(--ink-white)}
+  .inkstrip i:nth-child(3){background:var(--ink-yellow)}
+  .inkstrip i:nth-child(4){background:var(--ink-red)}
+  .inkstrip i:nth-child(5){background:var(--ink-blue)}
+  .inkstrip i:nth-child(6){background:var(--ink-green)}
+
+  /* ── Section scaffold ─────────────────────────────────── */
+  section{margin-top:clamp(2.4rem,6vw,4.2rem)}
+  .sec-head{display:flex;align-items:baseline;gap:.9rem;margin-bottom:1.3rem}
+  .sec-num{font-family:var(--mono);font-size:.8rem;color:var(--accent);letter-spacing:.05em;padding-top:.15rem}
+  .sec-title{font-family:var(--serif);font-weight:600;font-size:clamp(1.4rem,3.2vw,2rem);letter-spacing:-.01em;margin:0}
+  .sec-sub{color:var(--grey);font-size:.95rem;margin:.2rem 0 0}
+
+  .split{display:grid;grid-template-columns:1fr;gap:1.6rem}
+  @media(min-width:920px){
+    .split.demo-left{grid-template-columns:minmax(0,1fr) 300px;align-items:start}
+  }
+  .note{
+    border-left:2px solid var(--line-2);padding:.1rem 0 .1rem 1.05rem;
+    display:flex;flex-direction:column;gap:1.05rem;
+  }
+  .note h4{margin:0 0 .3rem;font-size:.78rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .note p{margin:0;font-size:.9rem;color:var(--ink-2)}
+  .note .kbd{font-family:var(--mono);font-size:.82em;background:var(--sunk);padding:.05em .4em;border-radius:5px;border:1px solid var(--line)}
+
+  /* ── Browser card (Images screen) ─────────────────────── */
+  .browser{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .browser-bar{display:flex;align-items:center;gap:.55rem;padding:.7rem .9rem;border-bottom:1px solid var(--line);background:var(--sunk)}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--line-2)}
+  .browser-url{margin-left:.4rem;font-family:var(--mono);font-size:.76rem;color:var(--grey);background:var(--card);border:1px solid var(--line);border-radius:7px;padding:.25rem .7rem;flex:1;max-width:280px}
+  .app-nav{display:flex;gap:.2rem;padding:.55rem .8rem 0;border-bottom:1px solid var(--line)}
+  .app-tab{font-size:.86rem;color:var(--grey);padding:.5rem .75rem;border-bottom:2px solid transparent;cursor:default;font-weight:500}
+  .app-tab[aria-current]{color:var(--ink);border-bottom-color:var(--accent)}
+  .images-body{padding:1.1rem}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;margin-bottom:1.1rem}
+  .uploads{display:flex;gap:.55rem;flex-wrap:wrap}
+  .btn{font-family:var(--sans);font-size:.87rem;font-weight:600;border-radius:10px;padding:.6rem .95rem;border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:.45rem;transition:transform .08s ease,background .15s ease,box-shadow .15s}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:var(--accent-soft)}
+  .btn-ghost{background:var(--card);color:var(--ink);border-color:var(--line-2)}
+  .btn-ghost:hover{background:var(--sunk)}
+  .btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Segmented control */
+  .seg{display:inline-flex;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+  .seg button{font-family:var(--sans);font-size:.8rem;font-weight:600;border:0;background:transparent;color:var(--grey);padding:.4rem .8rem;border-radius:7px;cursor:pointer;transition:.15s}
+  .seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .seg-label{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-right:.55rem}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.85rem}
+  .gcard{position:relative;background:var(--sunk);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);cursor:pointer}
+  .gcard canvas{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;image-rendering:auto}
+  .gcard.portrait canvas{aspect-ratio:3/4}
+  .gcard-foot{display:flex;align-items:center;justify-content:space-between;padding:.4rem .55rem;gap:.4rem}
+  .gcard-name{font-size:.72rem;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono)}
+  .flip-pill{position:absolute;top:.5rem;left:.5rem;font-size:.63rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#fff;background:rgba(20,16,12,.62);backdrop-filter:blur(4px);padding:.2rem .48rem;border-radius:999px;pointer-events:none;transition:.2s}
+  .flip-pill.dith{background:color-mix(in srgb,var(--ink-blue) 78%,#000)}
+  .badge-next{position:absolute;top:.5rem;right:.5rem;font-size:.6rem;font-weight:700;letter-spacing:.06em;color:#3a2e00;background:var(--ink-yellow);padding:.18rem .42rem;border-radius:6px;pointer-events:none}
+  .tap-hint{position:absolute;inset:auto 0 0 0;text-align:center;font-size:.62rem;color:#fff;background:linear-gradient(transparent,rgba(20,16,12,.55));padding:1.4rem .4rem .35rem;opacity:0;transition:.2s;pointer-events:none}
+  .gcard:hover .tap-hint{opacity:1}
+
+  .toast{margin-top:1rem;display:none;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;font-size:.82rem;color:var(--ink-2)}
+  .toast.show{display:block}
+  .toast .row{display:flex;justify-content:space-between;gap:1rem;padding:.15rem 0}
+  .toast .ok{color:var(--ink-green);font-weight:600}
+
+  /* ── Phone frame (Editor) ─────────────────────────────── */
+  .stage-wrap{display:flex;justify-content:center;padding:.5rem 0}
+  .phone{
+    width:390px;max-width:100%;aspect-ratio:390/760;background:#0d0b0a;border-radius:44px;
+    padding:12px;box-shadow:var(--shadow-lg),0 0 0 1px rgba(0,0,0,.3);position:relative;
+  }
+  .phone::before{content:"";position:absolute;top:20px;left:50%;transform:translateX(-50%);width:104px;height:24px;background:#0d0b0a;border-radius:0 0 16px 16px;z-index:6}
+  .screen{position:absolute;inset:12px;border-radius:33px;overflow:hidden;background:#0B0C10;display:flex;flex-direction:column;color:#F3F2EF}
+  /* whole editor uses one clean sans (Helvetica Neue) — top bar matches the sliders */
+  #editor,#editor button,#editor input,#editor select{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+  .ed-top{position:relative;display:flex;align-items:center;justify-content:space-between;padding:2.4rem .95rem .7rem;font-size:.9rem;background:linear-gradient(#141419,#0B0C10);z-index:4}
+  .ed-top button{background:none;border:0;color:#F3F2EF;font-size:.9rem;cursor:pointer;padding:.2rem .1rem;font-weight:500}
+  .ed-top button.submit{color:#EDEBE5;font-weight:700;min-width:64px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .ed-top button.submit svg{stroke:#EDEBE5;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+  .ed-top .ed-title{position:absolute;left:50%;transform:translateX(-50%);font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:#F3F2EF;font-weight:600}
+
+  .ed-stage{position:relative;flex:1;min-height:0;background:
+     radial-gradient(120% 90% at 50% 0%,#15161C,#0B0C10);
+     display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .ed-stage canvas{position:absolute;image-rendering:auto}
+  #cropCanvas{z-index:1}
+  #cropOverlay{z-index:2;touch-action:none}
+  #crispCanvas{z-index:1}
+  #dithCanvas{z-index:2;transition:opacity .34s ease}
+  /* off-white photo mat behind the image — a larger card to judge brightness against the frame's white */
+  .photo-mat{position:absolute;z-index:0;pointer-events:none;background:#EBE8E0;box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  .render-chip{position:absolute;z-index:5;bottom:.6rem;left:50%;transform:translateX(-50%);font-size:.66rem;letter-spacing:.05em;color:#F3F2EF;background:rgba(10,9,8,.7);padding:.24rem .6rem;border-radius:999px;display:flex;align-items:center;gap:.4rem;opacity:0;transition:.2s}
+  .render-chip.show{opacity:1}
+  .render-chip .spin{width:9px;height:9px;border-radius:50%;border:2px solid #EDEBE5;border-right-color:transparent;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* Crop mode controls */
+  .ed-bottom{background:#0B0C10;padding:.7rem .8rem 1.1rem;z-index:4}
+  #cropControls{margin-bottom:1rem}   /* lift the crop tools off the bottom toolbar */
+  .crop-tools{display:flex;align-items:center;justify-content:center;gap:.5rem;margin-bottom:.85rem}
+  .rot-btn,.aspect-seg button{font-family:var(--sans);background:#1E1E24;border:1px solid rgba(255,255,255,0.12);color:#F3F2EF;border-radius:9px;cursor:pointer}
+  .rot-btn{width:42px;height:38px;display:grid;place-items:center}
+  .rot-btn svg{width:20px;height:20px;stroke:#F3F2EF;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .rot-btn:active{background:rgba(255,255,255,0.07)}
+  .aspect-seg{display:inline-flex;background:#0F0F13;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:3px;gap:2px}
+  .aspect-seg button{border:0;background:transparent;color:#8C8B87;font-weight:600;font-size:.8rem;padding:.42rem .85rem;border-radius:7px}
+  .aspect-seg button[aria-pressed="true"]{background:#1E1E24;color:#fff}
+  .crop-zoom{display:flex;align-items:center;gap:.6rem;margin:0 auto;max-width:240px;padding:0 .2rem}
+  .crop-zoom svg{width:15px;height:15px;stroke:#8C8B87;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .crop-zoom input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;border-radius:3px;background:rgba(255,255,255,0.15);outline:none;margin:0}
+  .crop-zoom input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#0B0C10;border:2px solid #8C8B87;cursor:grab}
+  .crop-zoom input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#0B0C10;border:2px solid #8C8B87;cursor:grab}
+  #cropOverlay{cursor:grab}
+  #cropOverlay:active{cursor:grabbing}
+
+  /* Mode switch (Crop | Adjust) */
+  .mode-switch{display:flex;background:#0F0F13;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:3px}
+  .mode-switch button{flex:1;font-family:var(--sans);background:transparent;border:0;color:#8C8B87;font-size:.84rem;font-weight:700;padding:.5rem;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem}
+  .mode-switch button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .mode-switch button[aria-current]{background:#1E1E24;color:#fff}
+
+  /* iOS grouped adjustment controls (dark editor) */
+  .ios-group{margin-bottom:.85rem}
+  .ios-group-h{font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;color:#8C8B87;margin:0 .35rem .35rem;font-weight:700}
+  .ios-card{background:#17171C;border:1px solid rgba(255,255,255,0.10);border-radius:12px;overflow:hidden}
+  .ios-row{padding:.6rem .7rem;border-top:1px solid #1E1E24}
+  .ios-card .ios-row:first-child{border-top:0}
+  .ios-row-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.1rem}
+  .ios-lab{font-size:.82rem;color:#F3F2EF;font-weight:600}
+  .ios-val{font-family:var(--mono);font-size:.72rem;color:#8C8B87}
+  .ios-val.tweaked{color:#EDEBE5}
+  .row-seg .ios-lab,.row-chips .ios-lab{display:block;margin-bottom:.4rem}
+  .row-toggle{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+  .ios-seg{display:flex;width:100%;background:#0F0F13;border:1px solid rgba(255,255,255,0.10);border-radius:9px;padding:2px;gap:2px}
+  .ios-seg button{flex:1;border:0;background:transparent;color:#8C8B87;font-size:.74rem;font-weight:600;padding:.42rem .3rem;border-radius:7px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ios-seg button[aria-pressed="true"]{background:rgba(255,255,255,0.07);color:#fff}
+  .ios-switch{width:44px;height:26px;border-radius:999px;background:rgba(255,255,255,0.12);border:0;position:relative;cursor:pointer;transition:background .2s;flex:none;padding:0}
+  .ios-switch.on{background:#34c759}
+  .ios-switch span{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .18s;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+  .ios-switch.on span{left:20px}
+  .lut-chips{display:flex;gap:.4rem;overflow-x:auto;padding:.1rem .05rem .2rem;scrollbar-width:thin}
+  .lut-chips button{white-space:nowrap;border:1px solid rgba(255,255,255,0.10);background:#0F0F13;color:#8C8B87;font-size:.73rem;font-weight:600;padding:.36rem .62rem;border-radius:999px;cursor:pointer;flex:none}
+  .lut-chips button.sel{background:rgba(255,255,255,0.07);color:#fff;border-color:rgba(255,255,255,0.20)}
+  /* stage selector — pull up one pipeline group at a time */
+  .stage-strip{display:flex;gap:.35rem;position:sticky;top:0;background:#0B0C10;padding:.1rem 0 .55rem;z-index:3}
+  .stage-chip{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid rgba(255,255,255,0.10);background:#0F0F13;color:#8C8B87;font-size:.75rem;font-weight:700;padding:.44rem .3rem;border-radius:9px;cursor:pointer}
+  .stage-chip.active{background:#EDEBE5;color:#14140F;border-color:#EDEBE5}
+  /* preset menu */
+  .preset-bar{display:flex;align-items:center;gap:.5rem;margin-bottom:.55rem}
+  .preset-lab{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:#8C8B87;font-weight:700;flex:none}
+  #ditherPreset{flex:1;min-width:0;background:#0F0F13;color:#F3F2EF;border:1px solid rgba(255,255,255,0.10);border-radius:8px;padding:.42rem .5rem;font-family:var(--sans);font-size:.78rem;font-weight:600}
+  .preset-actions{display:flex;gap:.55rem;flex:none}
+  /* active control + parameter filmstrip */
+  .adj-active{background:#17171C;border:1px solid rgba(255,255,255,0.10);border-radius:12px;padding:.7rem .85rem;margin-bottom:.55rem;min-height:78px;display:flex;flex-direction:column;justify-content:center;gap:.55rem}
+  .adj-title{display:flex;justify-content:space-between;align-items:center;gap:.6rem;font-size:.9rem;color:#F3F2EF;font-weight:600}
+  .adj-val{font-family:var(--mono);font-size:.82rem;color:#8C8B87;font-weight:700}
+  .adj-val.tweaked{color:#EDEBE5}
+  .track.big{height:32px}
+  .track.big input[type=range]{height:6px;border-radius:6px}
+  .track.big input[type=range]::-webkit-slider-thumb{width:28px;height:28px}
+  .track.big input[type=range]::-moz-range-thumb{width:28px;height:28px}
+  .track.big .detent{height:14px}
+  .param-strip{display:flex;gap:.4rem;overflow-x:auto;padding:.1rem .05rem .4rem;scrollbar-width:thin}
+  .param-pill{flex:none;min-width:58px;border:1px solid rgba(255,255,255,0.10);background:#161311;border-radius:11px;padding:.4rem .55rem;cursor:pointer;text-align:center}
+  .param-pill.active{border-color:#EDEBE5;background:#1E1E24}
+  .param-pill .pn{display:block;font-size:.62rem;letter-spacing:.02em;color:#8C8B87;font-weight:700;white-space:nowrap}
+  .param-pill.active .pn{color:#F3F2EF}
+  .param-pill .pv{display:block;font-family:var(--mono);font-size:.76rem;color:#F3F2EF;font-weight:700;margin-top:.12rem}
+  .param-pill.active .pv{color:#EDEBE5}
+
+  /* ══ Lightroom-model Dither UI · porcelain, minimalist ══ */
+  .ed-top-right{display:flex;align-items:center;gap:.9rem}
+  .more-btn{background:none;border:0;color:#F3F2EF;font-size:1.1rem;letter-spacing:1px;cursor:pointer;min-width:44px;min-height:36px;line-height:1}
+  .mode-seg{display:inline-flex;background:#0F0F13;border:1px solid rgba(255,255,255,0.10);border-radius:9px;padding:2px}
+  .mode-seg button{border:0;background:transparent;color:#8C8B87;font-family:var(--sans);font-size:.82rem;font-weight:500;padding:.4rem .9rem;border-radius:7px;cursor:pointer;min-height:32px}
+  .mode-seg button.on{background:#EDEBE5;color:#14140F;font-weight:600}
+  .more-menu{position:absolute;top:56px;right:14px;z-index:12;min-width:222px;background:#17171C;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:.3rem;box-shadow:0 20px 44px rgba(0,0,0,.55)}
+  .mm-sec{font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:#8C8B87;font-weight:600;padding:.5rem .6rem .25rem}
+  .mm-item{display:block;width:100%;text-align:left;background:none;border:0;color:#F3F2EF;font-size:.86rem;padding:.7rem .6rem;border-radius:8px;cursor:pointer;font-family:var(--sans);min-height:44px}
+  .mm-item:hover{background:rgba(255,255,255,0.06)}
+  .mm-div{height:1px;background:rgba(255,255,255,0.10);margin:.3rem .4rem}
+
+  /* group bar — square icon buttons, sits at the very bottom */
+  .group-bar{display:flex;gap:.5rem;padding:.15rem 0 .05rem}
+  .group-chip{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:56px;background:transparent;border:0;border-radius:12px;color:#8C8B87;cursor:pointer;font-family:var(--sans)}
+  .group-chip svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .group-chip .gc-lab{font-size:.66rem;font-weight:500}
+  .group-chip:active{background:rgba(255,255,255,0.05)}
+  .group-chip.active{color:#EDEBE5}
+  .gc-dot{position:absolute;top:6px;right:16px;width:5px;height:5px;border-radius:50%;background:#EDEBE5}
+
+  /* control bin — in-flow, collapses so the photo stays visible */
+  /* control bin — FIXED height when open so switching groups never moves the photo */
+  /* OVERLAY above the toolbar — the preview area never resizes, so the photo never moves */
+  .adj-panel{position:absolute;left:0;right:0;bottom:0;z-index:5;height:0;overflow:hidden;display:flex;flex-direction:column;background:#0B0C10;transition:height .3s cubic-bezier(.32,.72,0,1)}
+  .adj-panel.open{height:158px}   /* grabber 28 + 2.5 rows (130) */
+  .adj-grabber{align-self:center;display:flex;align-items:center;justify-content:center;width:64px;height:28px;cursor:grab;flex:none;touch-action:none}
+  .adj-grabber span{width:38px;height:4px;border-radius:3px;background:rgba(255,255,255,0.28)}
+  .panel-body{flex:none;height:130px;overflow-y:auto;display:flex;flex-direction:column;padding:0 .3rem}
+  /* short groups (Colour/Palette/Kernel) sit at the BOTTOM; collapses to normal scroll when full */
+  .panel-body .prow:first-child{margin-top:auto}
+
+  /* slider row — FIXED 60px so at most four ever show; Lightroom spacing, no dividers */
+  .prow{height:52px;padding:.25rem .4rem;display:flex;flex-direction:column;justify-content:center}
+  .prow.slider{cursor:ew-resize;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+  .prow-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.4rem}
+  /* label + value dim by default; both brighten once the value has been changed */
+  .prow-lab{font-size:.8rem;color:#8C8B87;font-weight:400;letter-spacing:.01em}
+  .prow-val{font-family:var(--mono);font-size:.75rem;color:#8C8B87;font-weight:400;font-variant-numeric:tabular-nums}
+  .prow.tweaked .prow-lab,.prow.tweaked .prow-val{color:#F3F2EF}
+  .prow.tweaked .prow-knob{border-color:#F3F2EF}
+  .prow-line{position:relative;height:22px;margin:0 .55rem;pointer-events:none}
+  .prow-line::before{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:3px;border-radius:3px;background:rgba(255,255,255,0.15)}
+  /* hollow ring on the track; centre filled with the background so the line doesn't show through */
+  .prow-knob{position:absolute;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;border:2px solid #8C8B87;background:#0B0C10}
+  .prow.slider.scrubbing .prow-knob{border-color:#F3F2EF}
+  .prow.seg,.prow.toggle,.prow.menu{flex-direction:row;align-items:center;justify-content:space-between;gap:.7rem}
+  .prow.seg .ios-seg{flex:1;max-width:64%}
+  .prow .ios-seg button{min-height:36px}
+  .prow .ios-switch.on{background:#EDEBE5}
+  .prow .ios-switch.on span{background:#14140F}
+  .menu-btn{display:inline-flex;align-items:center;gap:.35rem;background:#0F0F13;border:1px solid rgba(255,255,255,0.10);color:#F3F2EF;border-radius:8px;padding:.5rem .6rem;font-size:.8rem;font-weight:500;cursor:pointer;font-family:var(--sans);min-height:40px}
+  .menu-btn svg{width:14px;height:14px;stroke:#8C8B87;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .choice-back{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:10}
+  .choice-menu{position:absolute;left:1rem;right:1rem;bottom:1rem;max-height:72%;overflow-y:auto;background:#17171C;border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:11;box-shadow:0 24px 56px rgba(0,0,0,.6)}
+  .choice-title{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:#8C8B87;font-weight:600;padding:.85rem 1rem .4rem}
+  .choice-menu button{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid rgba(255,255,255,0.07);color:#F3F2EF;font-size:.9rem;padding:.85rem 1rem;cursor:pointer;font-family:var(--sans);min-height:48px}
+  .choice-menu button.sel{color:#EDEBE5;font-weight:600}
+  .choice-menu .ck{color:#EDEBE5}
+
+  /* Adjust sliders */
+  .sliders{display:flex;flex-direction:column;gap:.15rem;margin-bottom:.8rem;max-height:250px;overflow-y:auto;padding-right:.2rem}
+  .slider{padding:.32rem .1rem}
+  .slider-head{display:flex;justify-content:space-between;align-items:baseline;font-size:.78rem;margin-bottom:.12rem}
+  .slider-head .lab{color:#F3F2EF;font-weight:600;letter-spacing:.01em}
+  .slider-head .val{font-family:var(--mono);font-size:.72rem;color:#8C8B87}
+  .slider-head .val.tweaked{color:#EDEBE5}
+  .track{position:relative;height:26px;display:flex;align-items:center}
+  .track input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;background:rgba(255,255,255,0.12);outline:none;margin:0}
+  .track input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:#f4efe6;border:1px solid #cfc7b6;box-shadow:0 2px 5px rgba(0,0,0,.5);cursor:grab}
+  .track input[type=range]::-webkit-slider-thumb:active{cursor:grabbing;transform:scale(1.06)}
+  .track input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#f4efe6;border:1px solid #cfc7b6;cursor:grab}
+  .track .detent{position:absolute;top:50%;width:2px;height:11px;background:rgba(255,255,255,0.20);transform:translate(-50%,-50%);border-radius:2px;pointer-events:none}
+  .bubble{position:absolute;bottom:26px;transform:translateX(-50%);background:#EDEBE5;color:#14140F;font-family:var(--mono);font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:6px;opacity:0;transition:opacity .12s;pointer-events:none;white-space:nowrap}
+  .bubble::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:4px solid transparent;border-top-color:#EDEBE5}
+  .track.dragging .bubble{opacity:1}
+  .adjust-actions{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.7rem}
+  .link-btn{background:none;border:0;color:#8C8B87;font-size:.76rem;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+
+  .demo-picker{display:flex;gap:.4rem;margin-top:.6rem;flex-wrap:wrap}
+  .demo-picker button{width:44px;height:34px;border-radius:7px;border:1px solid var(--line-2);overflow:hidden;padding:0;cursor:pointer;background:none}
+  .demo-picker button[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:1px}
+  .demo-picker canvas{width:100%;height:100%;display:block}
+
+  /* ── Design system section ────────────────────────────── */
+  .ds-grid{display:grid;grid-template-columns:1fr;gap:1.4rem}
+  @media(min-width:760px){.ds-grid{grid-template-columns:1fr 1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.2rem 1.3rem;box-shadow:var(--shadow)}
+  .panel h3{margin:0 0 .9rem;font-family:var(--serif);font-size:1.05rem;font-weight:600}
+  .swatches{display:flex;flex-direction:column;gap:.5rem}
+  .swatch{display:flex;align-items:center;gap:.7rem;font-size:.82rem}
+  .chip{width:26px;height:26px;border-radius:7px;border:1px solid rgba(0,0,0,.12);flex:none}
+  .swatch code{font-family:var(--mono);font-size:.74rem;color:var(--grey);margin-left:auto}
+  .rules{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.75rem}
+  .rules li{display:flex;gap:.6rem;font-size:.88rem;color:var(--ink-2)}
+  .rules b{color:var(--ink);font-weight:600}
+  .rules .n{font-family:var(--mono);color:var(--accent);font-size:.8rem;flex:none;padding-top:.05rem}
+  .type-spec{display:flex;flex-direction:column;gap:.85rem}
+  .type-spec .s{font-family:var(--serif);font-size:1.5rem;line-height:1.1}
+  .type-spec .b{font-family:var(--sans);font-size:.95rem}
+  .type-spec .m{font-family:var(--mono);font-size:.82rem;color:var(--grey)}
+  .type-spec small{display:block;font-family:var(--sans);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-top:.15rem}
+
+  footer{margin-top:3.5rem;padding-top:1.4rem;border-top:1px solid var(--line);color:var(--grey);font-size:.8rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem}
+
+  @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand"><b>hokku</b><span>e-ink photo frame</span></div>
+    <h1 class="title">Upload &amp; Edit, prototyped.</h1>
+    <p class="lede">An iOS-Photos-style way to crop, straighten and tune a single photo against a live
+      preview of the six-ink e-paper — then submit it straight to the frame. The editing view is fully
+      interactive: drag the crop, pan/zoom, work the sliders, and watch the dither settle.</p>
+    <div class="meta-row">
+      <span class="tag"><b>Interactive</b> — try it</span>
+      <span class="tag">Runs a real Floyd–Steinberg dither to the 6 Spectra inks</span>
+      <span class="tag">Light &amp; dark</span>
+    </div>
+  </header>
+
+  <div class="inkstrip" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <!-- ══ SECTION 2 — Editor ══ -->
+  <section id="s-editor">
+    <div class="sec-head">
+      <div>
+        <h2 class="sec-title">The editing view</h2>
+        <p class="sec-sub">Two modes, iOS-style. <b>Crop</b> first: frame to 4:3 or 3:4, rotate 90°. Then <b>Dither</b>: hokku's pipeline controls organised Lightroom-style — a group bar at rest, tap to slide up that group's sliders — over a live six-ink preview.</p>
+      </div>
+    </div>
+
+    <div class="split demo-left">
+      <div>
+        <div class="stage-wrap">
+          <div class="phone">
+            <div class="screen" id="editor">
+              <div class="ed-top">
+                <button id="edCancel">Cancel</button>
+                <span class="ed-title">Edit</span>
+                <span class="ed-top-right">
+                  <button id="edMore" class="more-btn" hidden aria-label="More">•••</button>
+                  <button class="submit" id="edSubmit">Submit</button>
+                </span>
+              </div>
+              <div class="more-menu" id="moreMenu" hidden>
+                <div class="mm-sec">Preset</div>
+                <button class="mm-item" data-preset="floyd_steinberg_hue_aware">Floyd-Steinberg (hue-aware)</button>
+                <button class="mm-item" data-preset="atkinson_hue_aware">Atkinson (hue-aware)</button>
+                <button class="mm-item" data-preset="floyd_steinberg_bw">Floyd-Steinberg (neutral)</button>
+                <div class="mm-div"></div>
+                <button class="mm-item" id="mmAuto">↺ Auto (best-guess)</button>
+                <button class="mm-item" id="mmReset">Reset all</button>
+              </div>
+
+              <div class="ed-stage" id="edStage">
+                <!-- crop mode -->
+                <canvas id="cropCanvas"></canvas>
+                <canvas id="cropOverlay"></canvas>
+                <!-- adjust mode -->
+                <canvas id="crispCanvas"></canvas>
+                <canvas id="dithCanvas"></canvas>
+                <div class="photo-mat" id="photoMat"></div>
+                <div class="render-chip" id="renderChip"><span class="spin"></span>rendering dither…</div>
+              </div>
+
+              <div class="adj-panel" id="adjPanel" hidden>
+                <div class="adj-grabber" id="adjGrabber"><span></span></div>
+                <div class="panel-body" id="panelBody"></div>
+              </div>
+
+              <div class="ed-bottom">
+                <!-- CROP controls -->
+                <div id="cropControls">
+                  <div class="crop-tools">
+                    <button class="rot-btn" id="rotL" title="Rotate left">
+                      <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg>
+                    </button>
+                    <div class="aspect-seg" role="group" aria-label="Crop aspect">
+                      <button id="aspH" aria-pressed="true">Horizontal 4:3</button>
+                      <button id="aspV" aria-pressed="false">Vertical 3:4</button>
+                    </div>
+                    <button class="rot-btn" id="rotR" title="Rotate right">
+                      <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/></svg>
+                    </button>
+                  </div>
+                  <div class="crop-zoom">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg>
+                    <input type="range" id="zoomSlider" min="1" max="5" step="0.01" value="1" aria-label="Zoom photo">
+                  </div>
+                </div>
+
+                <!-- bottom toolbar: Crop + dither groups (always visible) -->
+                <div class="group-bar" id="groupBar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-picker" id="demoPicker" aria-label="Demo photo"></div>
+      </div>
+
+      <aside class="note">
+        <div>
+          <h4>Fixed frame, movable photo</h4>
+          <p>The crop frame stays put; you <b>pan and zoom the photo</b> to sit inside it (drag, pinch, wheel, or the zoom slider) — the photo can't pull away from the edges. Rotate 90° either way. <b>Horizontal</b> = a 4:3 landscape frame, <b>Vertical</b> = 3:4 portrait.</p>
+        </div>
+        <div>
+          <h4>One navigator at rest, one editor when active</h4>
+          <p>Lightroom's model: one bottom <b>toolbar</b> of icon buttons — <b>Crop · Tonal · Color · Palette · Kernel</b> — is the single navigator (a porcelain dot marks groups you've edited). Tap a group to bring its sliders into a <b>fixed control bin</b> — a hard <b>four at a time, scroll for the rest</b>; short groups sit at the bottom. The bin height never changes as you switch groups, so the photo stays perfectly still. Sliders are minimalist — a line and a hollow ring — <b>drag anywhere on the row</b> to scrub, <b>double-tap the middle to reset</b>. A changed label + value <b>brighten</b> so you can see what you've touched. <b>Swipe the bin down, or tap the photo,</b> to minimise. The 9-way LUT is a <b>pull-down menu</b>; Preset / Auto / Reset live in the <b>•••</b> menu.</p>
+        </div>
+        <div>
+          <h4>Starts from Auto</h4>
+          <p>On open, the controls load the server's own best-guess for <em>this</em> photo — its B&amp;W / face detection and matching profile. <span class="kbd">↺ Auto</span> (in the ••• menu) returns to it; a tweaked value brightens to porcelain.</p>
+        </div>
+        <div>
+          <h4>Previewed on a photo mat</h4>
+          <p>The image sits on a larger off-white <b>mat</b> — like a matted print — so you can judge brightness the way it'll read against the frame's white ink, not against black. Submit then persists this photo's own crop + settings and converts it once. No "convert" or "preview" button — ever.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+
+  <footer>
+    <span>hokku — Upload &amp; Edit interaction prototype</span>
+    <span>Prototype only · sample photos generated in-browser · no real photos leave the page</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ── Spectra 6 inks (punchy preview values) ──────────────
+  const INKS = [[38,38,38],[232,234,230],[200,196,0],[168,24,0],[10,64,152],[42,106,68]];
+  const INK_META = [["Black","#262626"],["White","#E8EAE6"],["Yellow","#C8C400"],["Red","#A81800"],["Blue","#0A4098"],["Green","#2A6A44"]];
+
+  // ── tiny seeded PRNG for stable scenes ──────────────────
+  function rng(seed){let s=seed>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+  // ── Procedural "photo" generator ────────────────────────
+  // variants: 0 sunset ridge, 1 forest, 2 harbour(blue), 3 dusk portrait
+  const SCENES=[
+    {name:"sunset_ridge.jpg",seed:7,sky:[[255,196,92],[236,120,86],[120,58,110]],sun:[255,238,170],hills:[[74,58,86],[46,40,66],[26,26,44]],portrait:false},
+    {name:"pine_forest.jpg",seed:21,sky:[[206,222,180],[150,190,150],[90,150,120]],sun:[250,250,210],hills:[[54,96,64],[36,74,50],[22,50,36]],portrait:false},
+    {name:"harbour.png",seed:44,sky:[[150,196,224],[96,150,200],[40,90,150]],sun:[240,246,255],hills:[[30,70,120],[22,54,96],[14,36,68]],portrait:true},
+    {name:"golden_hour.jpg",seed:88,sky:[[250,214,150],[232,150,110],[150,80,90]],sun:[255,244,200],hills:[[96,66,74],[70,48,58],[44,32,42]],portrait:true},
+  ];
+  function paintScene(ctx,w,h,v){
+    const S=SCENES[v], r=rng(S.seed);
+    // sky gradient
+    const g=ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,`rgb(${S.sky[0]})`);g.addColorStop(0.55,`rgb(${S.sky[1]})`);g.addColorStop(1,`rgb(${S.sky[2]})`);
+    ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+    // sun / glow
+    const sx=w*(0.25+r()*0.5), sy=h*(0.30+r()*0.16), rad=w*0.13;
+    const gg=ctx.createRadialGradient(sx,sy,0,sx,sy,rad*3);
+    gg.addColorStop(0,`rgba(${S.sun},0.95)`);gg.addColorStop(0.3,`rgba(${S.sun},0.5)`);gg.addColorStop(1,`rgba(${S.sun},0)`);
+    ctx.fillStyle=gg;ctx.fillRect(0,0,w,h);
+    ctx.beginPath();ctx.arc(sx,sy,rad,0,7);ctx.fillStyle=`rgb(${S.sun})`;ctx.fill();
+    // layered hills
+    for(let L=0;L<S.hills.length;L++){
+      const baseY=h*(0.52+L*0.14), amp=h*(0.05+0.03*L);
+      ctx.beginPath();ctx.moveTo(0,h);
+      let ph=r()*6.28, fr=1.2+r()*1.6;
+      for(let x=0;x<=w;x+=6){
+        const y=baseY+Math.sin(x/w*fr*6.28+ph)*amp+Math.sin(x/w*13+ph*2)*amp*0.3;
+        ctx.lineTo(x,y);
+      }
+      ctx.lineTo(w,h);ctx.closePath();ctx.fillStyle=`rgb(${S.hills[L]})`;ctx.fill();
+    }
+    // faint grain for realism
+    const id=ctx.getImageData(0,0,w,h),d=id.data;
+    for(let i=0;i<d.length;i+=4){const n=(r()-0.5)*10;d[i]+=n;d[i+1]+=n;d[i+2]+=n;}
+    ctx.putImageData(id,0,0);
+  }
+  function makePhoto(v){
+    const c=document.createElement("canvas");c.width=480;c.height=360;
+    paintScene(c.getContext("2d"),c.width,c.height,v);return c;
+  }
+  const PHOTOS=SCENES.map((_,i)=>makePhoto(i));
+
+  // ── tonal adjustment (from an ImageConfig) ──────────────
+  function toneLUT(p){
+    const lut=new Float32Array(256);
+    for(let i=0;i<256;i++){
+      let x=i/255;
+      x=Math.pow(x,p.gamma);              // gamma
+      x=Math.pow(x,1/p.midtone);          // midtone lift
+      x=x*p.brightness;                   // brightness
+      x=(x-0.5)*p.contrast+0.5;           // contrast
+      const lc=p.local; if(lc!==1){const s=(x-0.5); x=0.5+Math.sign(s)*Math.pow(Math.abs(s)*2,1/lc)/2;}
+      lut[i]=clamp(x,0,1)*255;
+    }
+    return lut;
+  }
+  function toneParams(cfg){
+    return {
+      gamma:cfg.prepare_gamma, brightness:cfg.prepare_brightness, contrast:cfg.prepare_contrast,
+      midtone:cfg.prepare_midtone,
+      local:clamp(1+(cfg.clahe_clip_limit-1.75)*0.12,0.7,1.9),
+      // both colour sliders drive the preview's effective saturation
+      sat:clamp(cfg.color_enhance*(cfg.saturate_max_enhance/1.25),0.3,3),
+    };
+  }
+  function applyTone(src,cfg){
+    const out=new ImageData(src.width,src.height);
+    const s=src.data,o=out.data,p=toneParams(cfg),lut=toneLUT(p),sat=p.sat;
+    for(let i=0;i<s.length;i+=4){
+      let r=lut[s[i]],g=lut[s[i+1]],b=lut[s[i+2]];
+      if(sat!==1){const L=0.299*r+0.587*g+0.114*b;r=L+(r-L)*sat;g=L+(g-L)*sat;b=L+(b-L)*sat;}
+      o[i]=r;o[i+1]=g;o[i+2]=b;o[i+3]=255;
+    }
+    return out;
+  }
+  // ── error-diffusion dither (kernel + serpentine + palette + noise) ──
+  const BW_INKS=[INKS[0],INKS[1]];
+  const KERNELS={
+    floyd_steinberg:{div:16,pts:[[1,0,7],[-1,1,3],[0,1,5],[1,1,1]]},
+    atkinson:{div:8,pts:[[1,0,1],[2,0,1],[-1,1,1],[0,1,1],[1,1,1],[0,2,1]]},
+    stucki:{div:42,pts:[[1,0,8],[2,0,4],[-2,1,2],[-1,1,4],[0,1,8],[1,1,4],[2,1,2],[-2,2,1],[-1,2,2],[0,2,4],[1,2,2],[2,2,1]]},
+  };
+  function nearestInk(pal,r,g,b){let bi=0,bd=1e12;for(let i=0;i<pal.length;i++){const dr=r-pal[i][0],dg=g-pal[i][1],db=b-pal[i][2];const d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;bi=i;}}return pal[bi];}
+  function dither(src,opt){
+    opt=opt||{};
+    const K=KERNELS[opt.algorithm]||KERNELS.floyd_steinberg;
+    const pal=opt.palette||INKS, ser=opt.serpentine!==false, nz=opt.noise?opt.noise*4:0;
+    const w=src.width,h=src.height,f=new Float32Array(w*h*3),d=src.data;
+    for(let i=0,j=0;i<d.length;i+=4,j+=3){
+      const n=nz?(Math.random()-0.5)*nz:0;
+      f[j]=d[i]+n;f[j+1]=d[i+1]+n;f[j+2]=d[i+2]+n;
+    }
+    const at=(x,y)=>(y*w+x)*3;
+    for(let y=0;y<h;y++){
+      const ltr=!ser||(y%2===0);
+      for(let xi=0;xi<w;xi++){
+        const x=ltr?xi:(w-1-xi),k=at(x,y);
+        const nc=nearestInk(pal,f[k],f[k+1],f[k+2]);
+        const er=f[k]-nc[0],eg=f[k+1]-nc[1],eb=f[k+2]-nc[2];
+        f[k]=nc[0];f[k+1]=nc[1];f[k+2]=nc[2];
+        for(let t=0;t<K.pts.length;t++){
+          const dx=K.pts[t][0],dy=K.pts[t][1],wt=K.pts[t][2];
+          const sx=x+(ltr?dx:-dx),sy=y+dy;
+          if(sx<0||sx>=w||sy<0||sy>=h)continue;
+          const m=at(sx,sy),fac=wt/K.div;
+          f[m]+=er*fac;f[m+1]+=eg*fac;f[m+2]+=eb*fac;
+        }
+      }
+    }
+    const out=new ImageData(w,h),o=out.data;
+    for(let i=0,j=0;i<o.length;i+=4,j+=3){o[i]=f[j];o[i+1]=f[j+1];o[i+2]=f[j+2];o[i+3]=255;}
+    return out;
+  }
+  // render a source-canvas crop region → target canvas (optional tone cfg, optional dither opts)
+  function renderTo(canvas,srcCanvas,crop,opts){
+    const tone=opts.tone, dith=opts.dither;
+    const aspect=crop.w/crop.h;
+    let tw=dith?(aspect>=1?210:158):(aspect>=1?520:390);
+    let th=Math.round(tw/aspect);
+    const tmp=document.createElement("canvas");tmp.width=tw;tmp.height=th;
+    const tctx=tmp.getContext("2d");tctx.imageSmoothingQuality="high";
+    tctx.drawImage(srcCanvas,crop.x,crop.y,crop.w,crop.h,0,0,tw,th);
+    let img=tctx.getImageData(0,0,tw,th);
+    if(tone) img=applyTone(img,tone);
+    if(dith){
+      const dc=(typeof dith==="object")?dith:{};
+      const pal=dc.lut_name==="bw"?BW_INKS:INKS;
+      img=dither(img,{algorithm:dc.algorithm,serpentine:dc.serpentine,palette:pal,noise:dc.noise});
+    }
+    canvas.width=tw;canvas.height=th;
+    canvas.getContext("2d").putImageData(img,0,0);
+  }
+
+
+  /* ═══════════════ SECTION 2: EDITOR ═══════════════ */
+  const ED={
+    photo:0, mode:"crop", aspect:"H", rotation:0,
+    zoom:1, panX:0, panY:0,
+    crop:{x:0,y:0,w:1,h:1}, // source region under the fixed frame
+    cfg:null, stage:0, panelOpen:false,   // selected pipeline group + whether its panel is up
+  };
+  const cropCanvas=document.getElementById("cropCanvas");
+  const cropOverlay=document.getElementById("cropOverlay");
+  const crispCanvas=document.getElementById("crispCanvas");
+  const dithCanvas=document.getElementById("dithCanvas");
+  const photoMat=document.getElementById("photoMat");
+  const renderChip=document.getElementById("renderChip");
+  const edStage=document.getElementById("edStage");
+
+  // rotated source cache
+  let rotatedSrc=null;
+  function buildRotated(){
+    const base=PHOTOS[ED.photo];
+    if(ED.rotation%2===0){rotatedSrc=base;return;}
+    const c=document.createElement("canvas");c.width=base.height;c.height=base.width;
+    const cx=c.getContext("2d");cx.translate(c.width/2,c.height/2);cx.rotate(ED.rotation*Math.PI/2);
+    cx.drawImage(base,-base.width/2,-base.height/2);rotatedSrc=c;
+  }
+  // ImageConfig defaults — mirrors presets._hue_aware() on the real server
+  function baseCfg(){
+    return {
+      prepare_autocontrast_cutoff:0.5, prepare_gamma:0.88, prepare_midtone:1.02,
+      prepare_brightness:1.0, prepare_contrast:1.1, clahe_clip_limit:1.75,
+      prepare_usm_amount:120, prepare_usm_radius:1.0, clahe_keepout_feather:0.015, dither_noise:2.0,
+      color_enhance:1.25, adaptive_saturate_space:"cielab", saturate_max_enhance:1.25,
+      saturate_low_chroma_thresh:5.0, saturate_high_chroma_thresh:15.0,
+      saturate_low_chroma_thresh_oklab:0.025, saturate_high_chroma_thresh_oklab:0.075,
+      drc_l_space:"cielab", drc_chroma_space:"cielab", scale_chroma:false, adaptive_vivid:true,
+      vivid_chroma_low:5.0, vivid_chroma_high:15.0, vivid_chroma_low_oklab:0.025, vivid_chroma_high_oklab:0.075,
+      dither:{ algorithm:"floyd_steinberg", lut_name:"hue_aware", serpentine:true, hue_cutoff_deg:95.0, neutral_chroma:8.0 },
+    };
+  }
+  // "Auto / best-guess" = the server's default preset (floyd_steinberg_hue_aware) for a
+  // normal colour photo. The classifier only swaps to the B&W / face preset for those cases.
+  function autoCfgFor(v){return baseCfg();}
+  function getK(o,k){if(k.indexOf(".")<0)return o[k];const p=k.split(".");return o[p[0]][p[1]];}
+  function setK(o,k,v){if(k.indexOf(".")<0){o[k]=v;return;}const p=k.split(".");o[p[0]][p[1]]=v;}
+  function fmt(v,step){const d=step>=1?0:step>=0.05?2:3;return Number(v).toFixed(d);}
+
+  // Dither page groups (trimmed): Tonal · Colour · Palette · Kernel.
+  function DITHER_SCHEMA(c){return [
+    {group:"Tonal preparation",rows:[
+      {t:"slider",k:"prepare_autocontrast_cutoff",lab:"Autocontrast cutoff",min:0,max:1,step:0.05,det:0.5},
+      {t:"slider",k:"prepare_gamma",lab:"Gamma",min:0.48,max:1.28,step:0.05,det:0.88},
+      {t:"slider",k:"prepare_midtone",lab:"Midtone lift",min:0.62,max:1.42,step:0.05,det:1.02},
+      {t:"slider",k:"prepare_brightness",lab:"Brightness",min:0.5,max:1.5,step:0.05,det:1},
+      {t:"slider",k:"prepare_contrast",lab:"Contrast",min:0.6,max:1.6,step:0.05,det:1.1},
+      {t:"slider",k:"clahe_clip_limit",lab:"Local contrast (CLAHE)",min:0,max:3.5,step:0.05,det:1.75},
+      {t:"slider",k:"clahe_keepout_feather",lab:"Keepout feather",min:0,max:0.03,step:0.001,det:0.015},
+    ]},
+    {group:"Colour enhancement",rows:[
+      {t:"slider",k:"color_enhance",lab:"Global color enhance",min:0.5,max:2,step:0.05,det:1.25},
+      {t:"slider",k:"saturate_max_enhance",lab:"Max enhance",min:0.5,max:2,step:0.05,det:1.25},
+    ]},
+    {group:"Palette LUT",rows:[
+      {t:"chips",k:"dither.lut_name",lab:"LUT",opts:[["euclidean","CIELAB"],["euclidean_weighted","CIELAB weighted"],["hue_aware","CIELAB hue-aware"],["hue_aware_weighted","CIELAB hue-aware weighted"],["oklab","OKLAB"],["oklab_hue_aware","OKLAB hue-aware"],["cam16ucs","CAM16-UCS"],["cam16ucs_hue_aware","CAM16-UCS hue-aware"],["bw","B&W only"]]},
+      ...(["hue_aware","hue_aware_weighted","oklab_hue_aware","cam16ucs_hue_aware"].includes(c.dither.lut_name)?[
+        {t:"slider",k:"dither.hue_cutoff_deg",lab:"Hue cutoff °",min:10,max:180,step:1,det:95},
+      ]:[]),
+      ...(["hue_aware","hue_aware_weighted","cam16ucs_hue_aware"].includes(c.dither.lut_name)?[
+        {t:"slider",k:"dither.neutral_chroma",lab:"Neutral chroma",min:0,max:16,step:0.5,det:8},
+      ]:[]),
+    ]},
+    {group:"Dither kernel",rows:[
+      {t:"seg",k:"dither.algorithm",lab:"Algorithm",opts:[["floyd_steinberg","Floyd–Steinberg"],["atkinson","Atkinson"],["stucki","Stucki"]]},
+      {t:"toggle",k:"dither.serpentine",lab:"Serpentine scan"},
+    ]},
+  ];}
+
+  function stageSize(){const r=edStage.getBoundingClientRect();return{W:r.width,H:r.height};}
+
+  // ── CROP mode: fixed frame, the PHOTO pans & zooms to fill ──
+  function fitContain(sw,sh,bw,bh){const s=Math.min(bw/sw,bh/sh);return{w:sw*s,h:sh*s,s};}
+  let cropRect=null; // fixed frame in stage px {x,y,w,h,cx,cy}
+  function computeCropRect(){
+    const {W,H}=stageSize();const pad=30;
+    const ar=ED.aspect==="H"?4/3:3/4;
+    const fit=fitContain(ar,1,W-pad*2,H-pad*2);
+    return{x:(W-fit.w)/2,y:(H-fit.h)/2,w:fit.w,h:fit.h,cx:W/2,cy:H/2};
+  }
+  function initCrop(){
+    buildRotated();
+    ED.zoom=1;ED.panX=0;ED.panY=0;
+    const zs=document.getElementById("zoomSlider");if(zs)zs.value=1;
+    drawCrop();
+  }
+  function clampPan(){
+    const cr=cropRect,sw=rotatedSrc.width,sh=rotatedSrc.height;
+    const cover=Math.max(cr.w/sw,cr.h/sh),eff=cover*ED.zoom;
+    const dw=sw*eff,dh=sh*eff;
+    const mx=Math.max(0,(dw-cr.w)/2),my=Math.max(0,(dh-cr.h)/2);
+    ED.panX=clamp(ED.panX,-mx,mx);ED.panY=clamp(ED.panY,-my,my);
+    return{eff,dw,dh};
+  }
+  function drawHandles(o,fr){
+    o.strokeStyle="rgba(243,242,239,.96)";o.lineWidth=3;o.lineCap="round";
+    const A=18;
+    [[fr.x,fr.y,1,1],[fr.x+fr.w,fr.y,-1,1],[fr.x,fr.y+fr.h,1,-1],[fr.x+fr.w,fr.y+fr.h,-1,-1]]
+      .forEach(([x,y,sx,sy])=>{o.beginPath();o.moveTo(x,y+sy*A);o.lineTo(x,y);o.lineTo(x+sx*A,y);o.stroke();});
+    const e=13, mx=fr.x+fr.w/2, my=fr.y+fr.h/2;
+    o.beginPath();o.moveTo(mx-e,fr.y);o.lineTo(mx+e,fr.y);o.stroke();
+    o.beginPath();o.moveTo(mx-e,fr.y+fr.h);o.lineTo(mx+e,fr.y+fr.h);o.stroke();
+    o.beginPath();o.moveTo(fr.x,my-e);o.lineTo(fr.x,my+e);o.stroke();
+    o.beginPath();o.moveTo(fr.x+fr.w,my-e);o.lineTo(fr.x+fr.w,my+e);o.stroke();
+    o.lineCap="butt";
+  }
+  function drawCrop(frame){
+    const {W,H}=stageSize();
+    cropRect=computeCropRect();
+    const {eff,dw,dh}=clampPan();
+    const F=cropRect, fr=frame||F;
+    const left=F.cx+ED.panX-dw/2, top=F.cy+ED.panY-dh/2;
+    ED.imgRect={left,top,dw,dh,eff};
+    cropCanvas.width=W;cropCanvas.height=H;
+    const cx=cropCanvas.getContext("2d");cx.clearRect(0,0,W,H);cx.imageSmoothingQuality="high";
+    cx.drawImage(rotatedSrc,0,0,rotatedSrc.width,rotatedSrc.height,left,top,dw,dh);
+    cropOverlay.width=W;cropOverlay.height=H;
+    const o=cropOverlay.getContext("2d");o.clearRect(0,0,W,H);
+    o.fillStyle="rgba(9,10,14,.72)";o.fillRect(0,0,W,H);
+    o.clearRect(fr.x,fr.y,fr.w,fr.h);
+    o.strokeStyle="rgba(243,242,239,.85)";o.lineWidth=1.5;o.strokeRect(fr.x,fr.y,fr.w,fr.h);
+    o.strokeStyle="rgba(243,242,239,.24)";o.lineWidth=1;
+    for(let i=1;i<3;i++){o.beginPath();o.moveTo(fr.x+fr.w*i/3,fr.y);o.lineTo(fr.x+fr.w*i/3,fr.y+fr.h);o.stroke();
+      o.beginPath();o.moveTo(fr.x,fr.y+fr.h*i/3);o.lineTo(fr.x+fr.w,fr.y+fr.h*i/3);o.stroke();}
+    drawHandles(o,fr);
+    ED.crop={x:(fr.x-left)/eff, y:(fr.y-top)/eff, w:fr.w/eff, h:fr.h/eff};
+  }
+
+  // ── crop interaction: pan, pinch/wheel zoom, and 8 resize handles with snap-back ──
+  function hitHandle(px,py){
+    const fr=cropRect,t=24;
+    const nx=x=>Math.abs(px-x)<t, ny=y=>Math.abs(py-y)<t;
+    const inX=px>fr.x+t&&px<fr.x+fr.w-t, inY=py>fr.y+t&&py<fr.y+fr.h-t;
+    if(nx(fr.x)&&ny(fr.y))return"tl"; if(nx(fr.x+fr.w)&&ny(fr.y))return"tr";
+    if(nx(fr.x)&&ny(fr.y+fr.h))return"bl"; if(nx(fr.x+fr.w)&&ny(fr.y+fr.h))return"br";
+    if(ny(fr.y)&&inX)return"t"; if(ny(fr.y+fr.h)&&inX)return"b";
+    if(nx(fr.x)&&inY)return"l"; if(nx(fr.x+fr.w)&&inY)return"r";
+    return null;
+  }
+  function resizeTo(H,px,py){
+    const F=cropRect, ar=F.w/F.h, IR=ED.imgRect, min=64;
+    px=clamp(px,IR.left,IR.left+IR.dw); py=clamp(py,IR.top,IR.top+IR.dh);
+    let x,y,w,h; const cx0=F.cx, cy0=F.cy;
+    const corner=(ox,oy)=>{ let w2=Math.abs(px-ox),h2=Math.abs(py-oy); if(w2/h2>ar)h2=w2/ar; else w2=h2*ar; w=Math.max(min,w2); h=w/ar; x=px<ox?ox-w:ox; y=py<oy?oy-h:oy; };
+    if(H==="br")corner(F.x,F.y); else if(H==="tl")corner(F.x+F.w,F.y+F.h);
+    else if(H==="tr")corner(F.x,F.y+F.h); else if(H==="bl")corner(F.x+F.w,F.y);
+    else if(H==="r"){ w=Math.max(min,px-F.x); h=w/ar; x=F.x; y=cy0-h/2; }
+    else if(H==="l"){ const R=F.x+F.w; w=Math.max(min,R-px); h=w/ar; x=R-w; y=cy0-h/2; }
+    else if(H==="b"){ h=Math.max(min/ar,py-F.y); w=h*ar; y=F.y; x=cx0-w/2; }
+    else { const B=F.y+F.h; h=Math.max(min/ar,B-py); w=h*ar; y=B-h; x=cx0-w/2; }
+    x=Math.max(x,IR.left,F.x); y=Math.max(y,IR.top,F.y);
+    w=Math.min(w,F.x+F.w-x); h=Math.min(h,F.y+F.h-y);
+    return {x,y,w,h};
+  }
+  function snapBack(fr){
+    const F=cropRect,IR=ED.imgRect;
+    const cover=Math.max(F.w/rotatedSrc.width,F.h/rotatedSrc.height);
+    const zoom2=clamp((IR.eff*(F.w/fr.w))/cover,1,6), effc=cover*zoom2;
+    const scx=(fr.x+fr.w/2-IR.left)/IR.eff, scy=(fr.y+fr.h/2-IR.top)/IR.eff;
+    const dw2=rotatedSrc.width*effc, dh2=rotatedSrc.height*effc;
+    const zx0=ED.zoom,pX0=ED.panX,pY0=ED.panY, panX2=dw2/2-scx*effc, panY2=dh2/2-scy*effc;
+    const t0=performance.now(), D=280;
+    (function step(){
+      const t=Math.min(1,(performance.now()-t0)/D), e=1-Math.pow(1-t,3);
+      ED.zoom=zx0+(zoom2-zx0)*e; ED.panX=pX0+(panX2-pX0)*e; ED.panY=pY0+(panY2-pY0)*e;
+      const lf={x:fr.x+(F.x-fr.x)*e,y:fr.y+(F.y-fr.y)*e,w:fr.w+(F.w-fr.w)*e,h:fr.h+(F.h-fr.h)*e};
+      drawCrop(t<1?lf:undefined);
+      if(t<1)requestAnimationFrame(step); else { const zs=document.getElementById("zoomSlider"); if(zs)zs.value=ED.zoom; renderGroupBar(); }
+    })();
+  }
+  // double-tap / double-click reverts the crop to defaults (de-zoom + un-rotate), animated
+  function resetCrop(){
+    if(!cropEdited())return;
+    if(ED.rotation!==0){ ED.rotation=0; initCrop(); renderGroupBar(); return; }
+    const z0=ED.zoom,pX0=ED.panX,pY0=ED.panY, t0=performance.now(), D=260;
+    (function step(){
+      const t=Math.min(1,(performance.now()-t0)/D), e=1-Math.pow(1-t,3);
+      ED.zoom=z0+(1-z0)*e; ED.panX=pX0-pX0*e; ED.panY=pY0-pY0*e;
+      drawCrop();
+      if(t<1)requestAnimationFrame(step); else { ED.zoom=1;ED.panX=0;ED.panY=0; const zs=document.getElementById("zoomSlider"); if(zs)zs.value=1; drawCrop(); renderGroupBar(); }
+    })();
+  }
+  const pointers=new Map();
+  let panStart=null,pinchStart=null,rsz=null,lastCropTap=0;
+  const ptDist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  function setZoom(z){ED.zoom=clamp(z,1,6);const zs=document.getElementById("zoomSlider");if(zs)zs.value=ED.zoom;drawCrop();renderGroupBar();}
+  cropOverlay.addEventListener("pointerdown",e=>{
+    if(ED.mode!=="crop")return;
+    if(pointers.size===0){ const now=e.timeStamp; if(now-lastCropTap<320){ lastCropTap=0; resetCrop(); return; } lastCropTap=now; }
+    cropOverlay.setPointerCapture(e.pointerId);
+    const r=cropOverlay.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top;
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pointers.size===2){const p=[...pointers.values()];pinchStart={dist:ptDist(p[0],p[1]),zoom:ED.zoom};panStart=null;rsz=null;return;}
+    const H=hitHandle(px,py);
+    if(H){ rsz={H,frame:null}; } else { panStart={panX:ED.panX,panY:ED.panY,x:e.clientX,y:e.clientY}; }
+  });
+  cropOverlay.addEventListener("pointermove",e=>{
+    if(!pointers.has(e.pointerId))return;
+    const r=cropOverlay.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top;
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pointers.size>=2&&pinchStart){const p=[...pointers.values()];setZoom(pinchStart.zoom*ptDist(p[0],p[1])/pinchStart.dist);return;}
+    if(rsz){ const nf=resizeTo(rsz.H,px,py); rsz.frame=nf; drawCrop(nf); }
+    else if(panStart){ED.panX=panStart.panX+(e.clientX-panStart.x);ED.panY=panStart.panY+(e.clientY-panStart.y);drawCrop();}
+  });
+  function endPtr(e){
+    pointers.delete(e.pointerId);pinchStart=null;
+    if(rsz){ const fr=rsz.frame; rsz=null; if(fr) snapBack(fr); else drawCrop(); }
+    if(pointers.size===1){const p=[...pointers.values()][0];panStart={panX:ED.panX,panY:ED.panY,x:p.x,y:p.y};}
+    else if(pointers.size===0){panStart=null;}
+    renderGroupBar();
+  }
+  cropOverlay.addEventListener("pointerup",endPtr);
+  cropOverlay.addEventListener("pointercancel",endPtr);
+  cropOverlay.addEventListener("wheel",e=>{if(ED.mode!=="crop")return;e.preventDefault();setZoom(ED.zoom*(e.deltaY<0?1.08:0.926));},{passive:false});
+
+  // ── adjustment preview ──────────────────────────────────
+  let debounceT=null, curToken=0;
+  function layoutPreview(){
+    const {W,H}=stageSize();const pad=20, up=34;   // nudge up so the centre matches crop mode
+    const ar=ED.crop.w/ED.crop.h;
+    // the off-white MAT fills the available stage; the photo is inset within it
+    const mat=fitContain(ar,1,W-pad*2,H-pad*2);
+    const mW=mat.w, mH=mat.h, mx=(W-mW)/2, my=(H-mH)/2-up;
+    photoMat.style.left=mx+"px";photoMat.style.top=my+"px";photoMat.style.width=mW+"px";photoMat.style.height=mH+"px";
+    const k=0.16;                                   // mat border ≈ 8% each side
+    const pW=mW*(1-k), pH=mH*(1-k), px=(W-pW)/2, py=(H-pH)/2-up;
+    [crispCanvas,dithCanvas].forEach(c=>{c.style.left=px+"px";c.style.top=py+"px";c.style.width=pW+"px";c.style.height=pH+"px";});
+  }
+  function ditherOpts(){return {...ED.cfg.dither, noise:ED.cfg.dither_noise};}
+  function renderCrisp(){
+    renderTo(crispCanvas,rotatedSrc,ED.crop,{tone:ED.cfg,dither:false});
+    crispCanvas.style.imageRendering="auto";
+  }
+  function renderDitherNow(){
+    renderTo(dithCanvas,rotatedSrc,ED.crop,{tone:ED.cfg,dither:ditherOpts()});
+    dithCanvas.style.imageRendering="pixelated";dithCanvas.style.opacity="1";
+  }
+  // Debounced true re-dither. On the Dither page the effect *is* the dither, so we
+  // keep the previous frame visible while a new one renders (no crisp shortcut).
+  function scheduleDither(){
+    renderChip.classList.add("show");
+    if(ED.mode==="image") dithCanvas.style.opacity="0"; // reveal crisp tonal layer under
+    clearTimeout(debounceT);
+    const token=++curToken;
+    debounceT=setTimeout(()=>requestAnimationFrame(()=>{
+      if(token!==curToken)return;
+      renderDitherNow();
+      renderChip.classList.remove("show");
+    }), ED.mode==="image"?300:250);
+  }
+  // refresh the toolbar every change so a group's edit-dot appears/vanishes live, then re-dither
+  function previewLive(){ renderGroupBar(); scheduleDither(); }
+
+  // ── Lightroom model: group bar (at rest) → slide-up panel of that group's rows ──
+  const groupBar=document.getElementById("groupBar");
+  const adjPanel=document.getElementById("adjPanel");
+  const panelBody=document.getElementById("panelBody");
+  const edMore=document.getElementById("edMore");
+  const moreMenu=document.getElementById("moreMenu");
+  const BASE=baseCfg();
+  const STAGE_SHORT={"Tonal preparation":"Tonal","Colour enhancement":"Color","Palette LUT":"Palette","Dither kernel":"Kernel"};
+  const GROUP_ICON={
+    "Tonal preparation":'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    "Colour enhancement":'<svg viewBox="0 0 24 24"><path d="M12 3s6 6.4 6 10.5a6 6 0 0 1-12 0C6 9.4 12 3 12 3z"/></svg>',
+    "Palette LUT":'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>',
+    "Dither kernel":'<svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>',
+  };
+  // preset seeds the whole ImageConfig (the pipeline's "Default dither preset" menu)
+  function presetCfg(name){
+    const c=baseCfg();
+    if(name==="atkinson_hue_aware"){c.dither.algorithm="atkinson";c.dither.serpentine=false;}
+    else if(name==="floyd_steinberg_bw"){c.dither.lut_name="bw";c.color_enhance=1.05;c.adaptive_saturate_space="off";c.adaptive_vivid=false;}  // = presets._bw()
+    return c;
+  }
+  // group shows an edit dot when any of its params deviates from the preset default
+  function groupEdited(gr){
+    return gr.rows.some(row=>{
+      const v=getK(ED.cfg,row.k), d=row.t==="slider"?row.det:getK(BASE,row.k);
+      return row.t==="slider"?Math.abs(v-d)>1e-6:v!==d;
+    });
+  }
+  // crop counts as edited once zoomed in, panned, or rotated off the default
+  function cropEdited(){ return ED.zoom>1.001 || Math.abs(ED.panX)>0.5 || Math.abs(ED.panY)>0.5 || ED.rotation!==0; }
+  function refreshAdjust(){ renderGroupBar(); if(ED.panelOpen) renderPanel(); }
+  const CROP_ICON='<svg viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>';
+  function renderGroupBar(){
+    const schema=DITHER_SCHEMA(ED.cfg);
+    groupBar.innerHTML="";
+    // Crop lives in the bottom toolbar alongside the dither groups (same icon-button paradigm)
+    const cb=document.createElement("button");
+    cb.className="group-chip"+(ED.mode==="crop"?" active":"");
+    cb.innerHTML=CROP_ICON+`<span class="gc-lab">Crop</span>`+(cropEdited()?'<span class="gc-dot"></span>':'');
+    cb.addEventListener("click",()=>{ setMode(ED.mode==="crop"?"dither":"crop"); });  // toggle crop ↔ control-free
+    groupBar.appendChild(cb);
+    schema.forEach((gr,i)=>{
+      const on=ED.mode==="dither"&&ED.panelOpen&&i===ED.stage;
+      const b=document.createElement("button");
+      b.className="group-chip"+(on?" active":"");
+      b.innerHTML=(GROUP_ICON[gr.group]||"")+`<span class="gc-lab">${STAGE_SHORT[gr.group]||gr.group}</span>`+(groupEdited(gr)?'<span class="gc-dot"></span>':'');
+      b.addEventListener("click",()=>{
+        if(ED.mode!=="dither"){ setMode("dither"); ED.stage=i; openPanel(); return; }  // from Crop → open this group
+        if(ED.panelOpen && ED.stage===i){ closePanel(); }                        // tap active → control-free
+        else if(ED.panelOpen){ ED.stage=i; renderPanel(); renderGroupBar(); }    // switch group — photo stays put
+        else { ED.stage=i; openPanel(); }                                        // open from control-free
+      });
+      groupBar.appendChild(b);
+    });
+  }
+  const edBottom=document.querySelector(".ed-bottom");
+  function positionPanel(){ adjPanel.style.bottom=edBottom.offsetHeight+"px"; }   // sit the overlay just above the toolbar
+  function openPanel(){ ED.panelOpen=true; positionPanel(); renderPanel(); requestAnimationFrame(()=>adjPanel.classList.add("open")); renderGroupBar(); }
+  function closePanel(){ ED.panelOpen=false; adjPanel.classList.remove("open"); renderGroupBar(); }
+  function renderPanel(){
+    const schema=DITHER_SCHEMA(ED.cfg);
+    if(ED.stage>=schema.length) ED.stage=0;
+    const gr=schema[ED.stage];
+    panelBody.innerHTML="";
+    gr.rows.forEach(row=>panelBody.appendChild(buildPanelRow(row)));
+  }
+  // a row reads as "changed" when its value differs from the default (slider = its detent, else the preset)
+  function rowChanged(row){
+    const v=getK(ED.cfg,row.k), d=row.t==="slider"?row.det:getK(BASE,row.k);
+    return row.t==="slider"?Math.abs(v-d)>1e-6:v!==d;
+  }
+  function buildPanelRow(row){
+    const pct=x=>((x-row.min)/(row.max-row.min))*100;
+    if(row.t==="slider"){
+      const el=document.createElement("div");el.className="prow slider"+(rowChanged(row)?" tweaked":"");
+      const v=getK(ED.cfg,row.k);
+      el.innerHTML=`<div class="prow-head"><span class="prow-lab">${row.lab}</span><span class="prow-val">${fmt(v,row.step)}</span></div>
+        <div class="prow-line"><div class="prow-knob" style="left:${pct(v)}%"></div></div>`;
+      const valEl=el.querySelector(".prow-val"),knob=el.querySelector(".prow-knob");
+      const setV=nv=>{
+        nv=Math.round(nv/row.step)*row.step;
+        if(Math.abs(nv-row.det)<(row.max-row.min)*0.012) nv=row.det;
+        nv=clamp(nv,row.min,row.max);
+        setK(ED.cfg,row.k,nv);
+        const s=fmt(nv,row.step);valEl.textContent=s;el.classList.toggle("tweaked",Math.abs(nv-row.det)>1e-6);
+        knob.style.left=pct(nv)+"%";
+        previewLive();
+      };
+      let startX=0,startV=0,axis=0,dragging=false,lastTap=0;
+      el.addEventListener("pointerdown",e=>{
+        const now=e.timeStamp;
+        if(now-lastTap<300){ setV(row.det); lastTap=0; return; }  // double-tap resets
+        lastTap=now; startX=e.clientX; startV=getK(ED.cfg,row.k); axis=0; dragging=true;
+      });
+      el.addEventListener("pointermove",e=>{
+        if(!dragging)return;
+        const dx=e.clientX-startX;
+        if(axis===0){ if(Math.abs(dx)<6) return; axis="x"; el.setPointerCapture(e.pointerId); el.classList.add("scrubbing"); }
+        setV(startV+(dx/el.getBoundingClientRect().width)*(row.max-row.min));  // drag anywhere on the row
+      });
+      const end=()=>{ dragging=false; axis=0; el.classList.remove("scrubbing"); };
+      el.addEventListener("pointerup",end); el.addEventListener("pointercancel",end);
+      el.addEventListener("lostpointercapture",end);          // release stuck highlight if capture is lost
+      el.addEventListener("dblclick",()=>setV(row.det));       // reliable reset on desktop double-click
+      return el;
+    }
+    if(row.t==="seg"){
+      const el=document.createElement("div");el.className="prow seg"+(rowChanged(row)?" tweaked":"");
+      const v=getK(ED.cfg,row.k);
+      el.innerHTML=`<span class="prow-lab">${row.lab}</span><div class="ios-seg">`+row.opts.map(o=>`<button data-v="${o[0]}"${o[0]===v?' aria-pressed="true"':''}>${o[1]}</button>`).join("")+`</div>`;
+      el.querySelectorAll(".ios-seg button").forEach(b=>b.addEventListener("click",()=>{setK(ED.cfg,row.k,b.dataset.v);renderPanel();previewLive();}));
+      return el;
+    }
+    if(row.t==="toggle"){
+      const el=document.createElement("div");el.className="prow toggle"+(rowChanged(row)?" tweaked":"");
+      const v=getK(ED.cfg,row.k);
+      el.innerHTML=`<span class="prow-lab">${row.lab}</span><button class="ios-switch${v?' on':''}" role="switch" aria-checked="${!!v}"><span></span></button>`;
+      el.querySelector(".ios-switch").addEventListener("click",()=>{setK(ED.cfg,row.k,!getK(ED.cfg,row.k));renderPanel();previewLive();});
+      return el;
+    }
+    if(row.t==="chips"){ // 9-option LUT → pull-down menu (HIG: a menu, not chips)
+      const el=document.createElement("div");el.className="prow menu"+(rowChanged(row)?" tweaked":"");
+      const v=getK(ED.cfg,row.k), sel=row.opts.find(o=>o[0]===v);
+      el.innerHTML=`<span class="prow-lab">${row.lab}</span><button class="menu-btn"><span>${sel?sel[1]:v}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>`;
+      el.querySelector(".menu-btn").addEventListener("click",()=>openChoiceMenu(row));
+      return el;
+    }
+  }
+  function openChoiceMenu(row){
+    const v=getK(ED.cfg,row.k), scr=document.getElementById("editor");
+    const back=document.createElement("div");back.className="choice-back";
+    const menu=document.createElement("div");menu.className="choice-menu";
+    menu.innerHTML=`<div class="choice-title">${row.lab}</div>`+row.opts.map(o=>`<button data-v="${o[0]}" class="${o[0]===v?'sel':''}">${o[1]}${o[0]===v?'<span class="ck">✓</span>':''}</button>`).join("");
+    scr.appendChild(back);scr.appendChild(menu);
+    menu.style.bottom=(edBottom.offsetHeight+10)+"px";   // sit above the bottom toolbar, within the editing space
+    const close=()=>{back.remove();menu.remove();};
+    back.addEventListener("click",close);
+    menu.querySelectorAll("button[data-v]").forEach(b=>b.addEventListener("click",()=>{setK(ED.cfg,row.k,b.dataset.v);close();renderPanel();previewLive();}));
+  }
+  // grabber: tap OR swipe down to minimise the panel
+  const grab=document.getElementById("adjGrabber");
+  let gy=0,gdrag=false;
+  grab.addEventListener("pointerdown",e=>{ gy=e.clientY; gdrag=true; grab.setPointerCapture(e.pointerId); });
+  grab.addEventListener("pointermove",e=>{ if(gdrag && e.clientY-gy>34){ gdrag=false; closePanel(); } });
+  grab.addEventListener("pointerup",()=>{ if(gdrag) closePanel(); gdrag=false; });
+  // tapping the photo minimises the controls so you can judge it full
+  edStage.addEventListener("click",()=>{ if(ED.mode==="dither" && ED.panelOpen) closePanel(); });
+  // ••• overflow menu — Preset / Auto / Reset (kept out of the crowded control area)
+  edMore.addEventListener("click",e=>{ e.stopPropagation(); moreMenu.hidden=!moreMenu.hidden; });
+  document.addEventListener("click",e=>{ if(!moreMenu.hidden && !moreMenu.contains(e.target) && e.target!==edMore) moreMenu.hidden=true; });
+  moreMenu.querySelectorAll("[data-preset]").forEach(b=>b.addEventListener("click",()=>{ED.cfg=presetCfg(b.dataset.preset);moreMenu.hidden=true;refreshAdjust();renderDitherNow();}));
+  document.getElementById("mmAuto").addEventListener("click",()=>{ED.cfg=autoCfgFor(ED.photo);moreMenu.hidden=true;refreshAdjust();renderDitherNow();});
+  document.getElementById("mmReset").addEventListener("click",()=>{ED.cfg=baseCfg();moreMenu.hidden=true;refreshAdjust();renderDitherNow();});
+
+  // mode switching (Crop | Dither)
+  const cropControls=document.getElementById("cropControls");
+  function setMode(m){
+    ED.mode=m;
+    const crop=m==="crop";
+    cropCanvas.style.display=crop?"block":"none";
+    cropOverlay.style.display=crop?"block":"none";
+    crispCanvas.style.display="none";
+    dithCanvas.style.display=crop?"none":"block";
+    photoMat.style.display=crop?"none":"block";
+    cropControls.hidden=!crop;                  // crop-tools bin; the group toolbar stays visible
+    if(crop){ if(ED.panelOpen)closePanel(); renderGroupBar(); drawCrop(); }
+    else{ renderGroupBar(); layoutPreview(); renderDitherNow(); }   // dither PREVIEW only — controls stay closed by default
+  }
+
+  // aspect + rotation
+  const aspH=document.getElementById("aspH"),aspV=document.getElementById("aspV");
+  aspH.onclick=()=>{ED.aspect="H";aspH.setAttribute("aria-pressed",true);aspV.setAttribute("aria-pressed",false);initCrop();};
+  aspV.onclick=()=>{ED.aspect="V";aspV.setAttribute("aria-pressed",true);aspH.setAttribute("aria-pressed",false);initCrop();};
+  document.getElementById("rotL").onclick=()=>{ED.rotation=(ED.rotation+3)%4;initCrop();renderGroupBar();};
+  document.getElementById("rotR").onclick=()=>{ED.rotation=(ED.rotation+1)%4;initCrop();renderGroupBar();};
+  document.getElementById("zoomSlider").addEventListener("input",e=>setZoom(parseFloat(e.target.value)));
+  document.getElementById("zoomSlider").addEventListener("dblclick",resetCrop);
+
+  // open editor with a photo
+  function openEditor(v){
+    ED.photo=v;ED.rotation=0;ED.aspect="H";ED.cfg=autoCfgFor(v);ED.stage=0;ED.panelOpen=false;
+    adjPanel.classList.remove("open");adjPanel.hidden=false;moreMenu.hidden=true;edMore.hidden=false;
+    aspH.setAttribute("aria-pressed",true);aspV.setAttribute("aria-pressed",false);
+    initCrop();setMode("dither");positionPanel();   // default view: photo + toolbar, no controls
+    document.querySelectorAll("#demoPicker button").forEach((b,i)=>b.setAttribute("aria-pressed",i===v));
+  }
+  document.getElementById("edCancel").onclick=()=>{setMode("dither");};
+  document.getElementById("edSubmit").onclick=()=>{
+    const b=document.getElementById("edSubmit");
+    if(b.dataset.busy)return; b.dataset.busy="1";
+    const t=b.innerHTML;
+    b.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 13l4 4L19 7"/></svg>';
+    setTimeout(()=>{b.innerHTML=t;delete b.dataset.busy;},1400);
+  };
+
+  // demo photo picker
+  const picker=document.getElementById("demoPicker");
+  SCENES.forEach((s,i)=>{
+    const b=document.createElement("button");b.title=s.name;b.setAttribute("aria-pressed",i===0);
+    const cv=document.createElement("canvas");
+    renderTo(cv,PHOTOS[i],{x:0,y:0,w:PHOTOS[i].width,h:PHOTOS[i].height},{tone:null,dither:false});
+    b.appendChild(cv);b.onclick=()=>openEditor(i);picker.appendChild(b);
+  });
+
+  // initial editor
+  openEditor(0);
+  window.addEventListener("resize",()=>{positionPanel();if(ED.mode==="crop")drawCrop();else{layoutPreview();renderDitherNow();}});
+
+})();
+</script>

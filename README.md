@@ -44,9 +44,18 @@ Everything you'd want from a photo frame: accurate colours, full privacy, a clea
 
 ## The web app
 
-<img src="images/ui.png" width="500">
+<img src="images/ui_v2_gallery.png" width="600">
 
-Three tabs: **Images** (your photo library — upload, preview, manage), **Screens** (live status of each frame — battery, WiFi, last seen, next update, per-frame orientation), and **Config** (refresh schedule and conversion settings). Everything updates live without a page reload. For a full walkthrough of every feature see the **[user manual](docs/manual.md)**.
+Your control centre for everything: upload and browse photos, preview exactly how each one will look on the six-colour screen, manage your frames, and change any setting — all live, with no page reloads. It works just as well on a phone as on a computer.
+
+The server ships with two interfaces, and both talk to the same backend:
+
+- **Modern app** — a redesigned, mobile-first interface at **`/hokku/app`** (the recommended default).
+- **Classic page** — the original three-tab interface (Images, Screens, Config) at **`/hokku/ui`**, unchanged.
+
+The plain address `http://<your-server>:8080/` opens whichever you set as the default (`"default_ui"` in `config.json`). 
+
+For a full, illustrated walkthrough of every feature on both phone and computer, see the **[web app guide in the manual »](docs/manual.md#1-the-web-app)**.
 
 ## System Requirements
 
