@@ -121,6 +121,11 @@ class AppConfig:
     #: Empty string disables mDNS advertisement entirely.
     mdns_hostname: str = "hokku"
 
+    #: Which interface the bare "/" serves: "classic" (the original page) or
+    #: "modern" (the redesigned app). A real field, not a loose config-only key,
+    #: so it survives config saves (asdict/to_dict) instead of being silently dropped.
+    default_ui: str = "classic"
+
     def cache_slug(self) -> str:
         """Path-safe fingerprint of fields that affect cached panel output."""
         payload = {
