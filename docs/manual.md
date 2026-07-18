@@ -9,9 +9,10 @@ This manual covers both web interfaces, the frame's day-to-day behaviour, and wh
    - [1.2 The gallery](#12-the-gallery)
    - [1.3 Opening a photo: detail and actions](#13-opening-a-photo-detail-and-actions)
    - [1.4 Uploading photos and watching progress](#14-uploading-photos-and-watching-progress)
-   - [1.5 Your frames](#15-your-frames)
-   - [1.6 Settings](#16-settings)
-   - [1.7 Server information](#17-server-information)
+   - [1.5 Editing a photo](#15-editing-a-photo)
+   - [1.6 Your frames](#16-your-frames)
+   - [1.7 Settings](#17-settings)
+   - [1.8 Server information](#18-server-information)
 2. [The classic interface](#2-the-classic-interface)
    - [2.1 Images](#21-images)
    - [2.2 Screens](#22-screens)
@@ -24,9 +25,21 @@ This manual covers both web interfaces, the frame's day-to-day behaviour, and wh
 
 ---
 
+&nbsp;
+
 ## 1. The web app
 
-Hokku comes with two web interfaces, and both talk to the same server, so your photos, frames, and settings are shared between them. The **modern app** is the default: it is built mobile-first, works equally well on a phone or a computer, and is what the rest of this section describes. The original **classic page** is unchanged and still available — it is documented in [section 2](#2-the-classic-interface). Open either one at `http://<your-server>:8080/` from any browser on your network.
+>  
+> **IMPORTANT:**     *This new webapp is still in beta / development.*   *There will be bugs and issues.  Let me know if you find anything by posting an issue in my fork.*
+> 
+&nbsp;
+Hokku comes with two web interfaces, and both talk to the same server.
+Your photos, frames, and settings are shared between them. 
+
+- **The Modern app**: This UI is the default: it is built mobile-first, works equally well on a phone or a computer, and is what the rest of this section describes. 
+- **The original classic page**:  is unchanged and still available — it is documented in [section 2](#2-the-classic-interface). Open either one at `http://<your-server>:8080/` from any browser on your network.
+
+&nbsp;
 
 ### 1.1 Opening the app and switching interfaces
 
@@ -35,6 +48,8 @@ Hokku comes with two web interfaces, and both talk to the same server, so your p
 *The gallery — the app's home screen, on a computer.*
 
 The modern app gives you a photo gallery, a detail view that previews how each photo will look on the six-colour screen, management of your connected frames, and every setting in one place. Because it shares the same server as the classic page, nothing about your frames or library changes when you move between them.
+
+&nbsp;
 
 > **Switching between the two**
 >
@@ -45,9 +60,17 @@ The modern app gives you a photo gallery, a detail view that previews how each p
 >
 > The plain address `http://<your-server>:8080/` opens whichever one you set as the default. To choose, open your `config.json` and set `"default_ui": "modern"` for the new app, or `"classic"` for the original (the built-in default). The change takes effect the next time you open the page — no restart needed.
 
+&nbsp;
+
 ### 1.2 The gallery
 
 The gallery is the app's home screen, and it looks and works the same on a phone or a computer.
+
+<a href="../images/ui_v2_mobile.png"><img src="../images/ui_v2_mobile.png" height="720" alt="The same gallery on a phone; pinch to resize the grid."></a>
+
+*The same gallery on a phone; pinch to resize the grid.*
+
+&nbsp;
 
 **Live previews** — every photo appears as a thumbnail of its **converted** six-colour render (what the frame will actually display, not the original), so you can catch anything that dithers poorly before it goes on the wall. The most recently uploaded photos appear first.
 
@@ -59,19 +82,28 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 **Status badges** — a photo still being converted shows a **Converting** badge; anything that failed to convert is set aside in the failed panel (see [1.4](#14-uploading-photos-and-watching-progress)).
 
-<a href="../images/ui_v2_mobile.png"><img src="../images/ui_v2_mobile.png" height="720" alt="The same gallery on a phone; pinch to resize the grid."></a>
-
-*The same gallery on a phone; pinch to resize the grid.*
+&nbsp;
 
 ### 1.3 Opening a photo: detail and actions
 
-**Opening it** — on a computer, **click** a photo to open its detail view, or **right-click** it (or use the **⋯** button in its corner) to reach its actions without opening the full view. On a phone, **press and hold** a photo to bring up its action sheet, then choose **View details** to open the detail view — every action, opening the detail included, lives in that sheet.
+**Opening it** — *on a computer*, **click** a photo to open its detail view, or **right-click** it (or use the **⋯** button in its corner) to reach its actions without opening the full view. 
+
+*On a phone*, **press and hold** a photo to bring up its action sheet, then choose **View details** to open the detail view — every action, opening the detail included, lives in that sheet.
 
 <a href="../images/ui_v2_detail.png"><img src="../images/ui_v2_detail.png" width="560" alt="The detail view: the six-colour E-ink render, photo info, and actions."></a>
 
 *The detail view: the six-colour E-ink render, photo info, and actions.*
 
+&nbsp;
+
 **Two views** — the toggle at the top switches between the **E-ink render** (how it will look on the frame) and the **Original**.
+
+<a href="../images/ui_v2_two_views.png"><img src="../images/ui_v2_two_views.png" width="560" alt="Two buttons let you swap between dithered image and orignal photo."></a>
+
+*Two buttons at the top of 'View Image Details...' panel lets you switch between E-Ink Preview and Original Image*
+
+
+&nbsp;
 
 **Info and Technical** — two tabs beneath list the photo's details: dimensions, orientation, file size, colour or black-and-white, how much zoom-to-fill it needs, when it was last displayed, how many times it has been shown, its conversion time, and how many faces were detected.
 
@@ -79,13 +111,19 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 **Open full size** — click the image itself to open it full size in a new tab.
 
-**On display and Up next** — when a frame is showing this photo, an **On display** line names the frame; when it is queued to show on a frame next, an **Up next** line shows which frame and when.
+&nbsp;
 
-<a href="../images/ui_v2_ctxmenu.png"><img src="../images/ui_v2_ctxmenu.png" width="560" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>
+**On display and Up next** — when a frame is showing this photo, an **On display** line names the frame; when it is queued to show on a frame next, an **Up next** line shows which frame and when. In normal use the server rotates through your library fairly — every photo gets equal screen time, with new uploads going first. 
 
-*Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame.*
 
-In normal use the server rotates through your library fairly — every photo gets equal screen time, with new uploads going first. **The actions** on a photo let you step in, and they are the same wherever you open them:
+<a href="../images/ui_v2_on_display.png"><img src="../images/ui_v2_on_display.png" width="430" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>  &nbsp; &nbsp; &nbsp; &nbsp;   &nbsp; &nbsp; &nbsp; &nbsp;  <a href="../images/ui_v2_up_next.png"><img src="../images/ui_v2_up_next.png" height="340" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>
+
+*Photo details page shows you what frame a photo is displaying on (right) and when a photo is up next on a frame. (left)* 
+
+&nbsp;
+
+
+**The actions** on a photo let you step in, and they are the same wherever you open them:
 
 - **Send to a frame** — with more than one frame connected, choose which frame should show this photo at its next refresh. If the photo's orientation does not match the frame's, Hokku asks you to confirm (“… shows landscape — send anyway?”) before sending.
 - **Show next** — with a single frame, queue the photo to be shown next.
@@ -93,35 +131,122 @@ In normal use the server rotates through your library fairly — every photo get
 - **Delete** — remove the photo and all of its cached renders; a second tap confirms.
 - **Retry conversion** and **View error** — shown in place of the above for a photo that failed to convert.
 
-On a phone, the press-and-hold sheet shows the same list, with a preview of the photo above it.
+<a href="../images/ui_v2_ctxmenu.png"><img src="../images/ui_v2_ctxmenu.png" width="560" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>
 
-<a href="../images/ui_v2_mobile_sheet.png"><img src="../images/ui_v2_mobile_sheet.png" height="720" alt="On a phone, press and hold a photo for the same actions."></a>
+*Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame.*
 
-*On a phone, press and hold a photo for the same actions.*
+&nbsp;
 
-<a href="../images/ui_v2_mobile_detail.png"><img src="../images/ui_v2_mobile_detail.png" height="720" alt="The detail view on a phone."></a>
+**On a phone,** the press-and-hold sheet shows the same list, with a preview of the photo above it.
 
-*The detail view on a phone.*
+<a href="../images/ui_v2_mobile_sheet.png"><img src="../images/ui_v2_mobile_sheet.png" height="720" alt="On a phone, press and hold a photo for the same actions."></a> &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_detail.png"><img src="../images/ui_v2_mobile_detail.png" height="720" alt="The detail view on a phone."></a>
+
+*The detail view on a phone. (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp;  *On a phone, press and hold a photo for the same actions. (right)*
+
+
+&nbsp; 
+
 
 ### 1.4 Uploading photos and watching progress
 
 **Adding photos** — use the **Upload** button, or drag files anywhere onto the page; you can add many at once. Hokku accepts JPEG, PNG, HEIC/HEIF, AVIF, WebP, and JPEG XL, and rotates phone photos to their correct orientation automatically. On a phone, Upload opens your camera roll.
 
+**One photo opens the editor** — add a **single** photo and it opens straight in the [editor](#15-editing-a-photo), so you can crop it and preview the six-colour conversion before it's added. Add **several** at once and they skip the editor, converting right away with the server's automatic settings. Either way, your originals are kept.
+
+&nbsp; 
+
+**Upload progress** — while photos upload, a tile in the header shows how many are in flight and the percentage complete; click it for a popover with the full progress.
+
 <a href="../images/ui_v2_upload.png"><img src="../images/ui_v2_upload.png" width="560" alt="Uploading: the progress tile and its popover at the top of the header."></a>
 
 *Uploading: the progress tile and its popover at the top of the header.*
 
-**Upload progress** — while photos upload, a tile in the header shows how many are in flight and the percentage complete; click it for a popover with the full progress.
+&nbsp;
+
+**Conversion** — once an upload finishes, each photo is converted to the six-colour palette in the background, and the tile switches to a converting count with a rough time estimate. The server adapts the conversion to each photo — black-and-white images and faces are detected locally and handled differently (see [dithering.md](dithering.md)) — and gallery thumbnails appear as each one finishes, so you never have to wait.
 
 <a href="../images/ui_v2_progress.png"><img src="../images/ui_v2_progress.png" width="560" alt="Converting: the same tile counts down each photo with a time estimate."></a>
 
 *Converting: the same tile counts down each photo with a time estimate.*
 
-**Conversion** — once an upload finishes, each photo is converted to the six-colour palette in the background, and the tile switches to a converting count with a rough time estimate. The server adapts the conversion to each photo — black-and-white images and faces are detected locally and handled differently (see [dithering.md](dithering.md)) — and gallery thumbnails appear as each one finishes, so you never have to wait.
+&nbsp;
 
 **Failed photos** — occasionally a photo can't be converted (a corrupt file, one too large to decode, or an unsupported format). It isn't lost: a **failed** tile summarises how many, and its **Review** action lists each one with its error so you can retry or delete them, individually or all at once.
 
-### 1.5 Your frames
+&nbsp;
+
+### 1.5 Editing a photo
+
+Any photo can be **cropped, straightened, and fine-tuned** — before it goes on the wall, or long after — in a full-screen editor that shows the real six-colour conversion as you work. Nothing you do here ever changes your original file.
+
+<a href="../images/ui_v2_editor.png"><img src="../images/ui_v2_editor.png" width="560" alt="The photo editor: the live six-colour preview, the Auto pipeline badge, the three-dot presets, and the crop and adjustment tools."></a>
+
+*The editor opens on the live six-colour preview, with the tools down the side.*
+
+&nbsp;
+
+**Two ways in - Upload Button and *Edit Photo...* from image context menu (right click or hold press)** 
+
+
+
+- **Upload Button:** Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft.Cancel discards it, Submit adds it. 
+
+- For a photo already in your library, use its **Edit photo…** action — right-click it (or the **⋯** in its corner) on a computer, press and hold it on a phone, or find it in the detail view's actions.
+
+&nbsp;
+
+<a href="../images/ui_v2_mobile_editor_sheet.png"><img src="../images/ui_v2_mobile_editor_sheet.png" height="470" alt="Edit photo… in the press-and-hold action sheet on a phone."></a>
+
+*Every ready photo carries an Edit photo… action — here in the desktop menu.*
+
+<a href="../images/ui_v2_upload_btn.png"><img src="../images/ui_v2_upload_btn.png" width="300" alt="Edit photo… in a photo's right-click menu on a computer."></a>
+
+*Adding a single photo from the upload button*
+
+&nbsp;
+
+**The Auto badge — what the server chose.** At the top of the tools, an **Auto** badge names the pipeline the server picked for this photo by analysing it — *Standard photo*, *Portrait* (when it detects faces), or *Black & white* — along with the dither preset that pipeline resolves to. That's your starting point; everything else is a tweak from there.
+
+**Crop and straighten.** The **Crop** tool is the familiar pan, pinch-or-scroll to zoom, and drag-the-corners crop, with an **aspect** toggle for the frame's two shapes (Horizontal 4:3 / Vertical 3:4) and 90° **rotate**. Double-tap to reset. The crop icon toggles — tap it again to step back out to the clean preview.
+
+<a href="../images/ui_v2_editor_crop.png"><img src="../images/ui_v2_editor_crop.png" width="560" alt="Crop mode: the aspect toggle, rotate, and zoom controls over the crop grid."></a>
+
+*Crop mode — set the shape, straighten, and frame the shot.*
+
+**Press and hold to see the original.** The preview always shows the **dithered** six-colour result. To compare it with the untouched photo, **press and hold** the preview: it swaps to the original for as long as you hold, and snaps back when you let go. A quick tap does nothing, so you can't trigger it by accident. It's the fastest way to judge how faithfully a photo survived the conversion.
+
+<a href="../images/ui_v2_editor_peek.png"><img src="../images/ui_v2_editor_peek.png" width="560" alt="Holding the preview swaps in the un-dithered original for a before-and-after."></a>
+
+*Hold the preview for the before; release for the six-colour after.*
+
+&nbsp;
+
+**Pipeline presets — the ••• menu.** The **•••** button (by the badge on a computer, in the header on a phone) swaps the whole conversion pipeline at once: **Default**, **Face**, or **B&W**, plus **Auto (best-guess)** to return to the server's own choice and **Reset all** to drop every tweak. Reach for it when the automatic pick isn't what you want — for instance forcing **B&W** on a photo the detector read as colour.
+
+<a href="../images/ui_v2_editor_preset.png"><img src="../images/ui_v2_editor_preset.png" height="400" alt="The three-dot menu swaps the whole pipeline: Default, Face, B&W, Auto best-guess, and Reset all."></a> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_editor_preset.png"><img src="../images/ui_v2_mobile_editor_preset.png" height="400" alt="The same three-dot preset menu opened in the editor on a phone."></a>
+
+*The ••• pipeline presets on a computer … (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  *… and the same menu on a phone. (right)*
+
+&nbsp;
+
+
+**Fine-tuning the conversion.** Past the presets, the **Tonal**, **Color**, **Palette**, and **Kernel** tools expose the same controls as the Settings dither editor — tonal preparation, colour enhancement, the palette-matching LUT, and the dither kernel — with the preview updating live as you drag, and a dot marking any group you've changed. For what each control does and why, see [dithering.md](dithering.md).
+
+<a href="../images/ui_v2_mobile_editor.png"><img src="../images/ui_v2_mobile_editor.png" height="720" alt="The editor on a phone: the preview fills the screen with the tools along the bottom."></a>
+
+*On a phone the preview fills the screen and the tools sit along the bottom.*
+
+**Non-destructive, and re-editable.** Editing never alters your original — the server keeps it and simply renders a fresh six-colour version from your crop and settings. Re-open the same photo any time and the editor comes back exactly as you left it, every crop and adjustment restored, so you can nudge one value or hit **Reset all** and start over. Edit as often as you like.
+
+<a href="../images/ui_v2_editor_detail.png"><img src="../images/ui_v2_editor_detail.png" width="560" alt="A photo's detail view, with Edit photo… among its actions and its full info."></a>
+
+*Edit photo… also lives in the detail view, beside the photo's info.*
+
+**After you submit.** The server re-renders the photo in the background, and its **gallery thumbnail becomes the new six-colour render** — so what you see in the grid is always what the frame will actually display. If the photo is currently on a frame, it updates there on that frame's next refresh.
+
+&nbsp;
+
+### 1.6 Your frames
 
 **Opening the panel** — the **Frames** button in the header opens a panel of every frame that has connected to this server. On a computer it drops down and stays open while you browse the gallery.
 
@@ -149,7 +274,9 @@ On a phone, the press-and-hold sheet shows the same list, with a preview of the 
 
 **Multiple frames** — you can run as many frames as you like from one server. Each is tracked separately, keeps its own orientation, and draws from the same photo library.
 
-### 1.6 Settings
+&nbsp;
+
+### 1.7 Settings
 
 **Opening Settings** — the **gear** button opens Settings. On a computer the categories sit beside the controls; on a phone you get a simple list and tap a category to drill in, with a back arrow to return.
 
@@ -167,6 +294,7 @@ On a phone, the press-and-hold sheet shows the same list, with a preview of the 
 
 &nbsp; 
 &nbsp; 
+
 <a href="../images/ui_v2_mobile_settings.png"><img src="../images/ui_v2_mobile_settings.png" height="480" alt="On a phone, Settings is a list you drill into."></a>
 
 *On a phone, Settings is a list you drill into.*
@@ -179,7 +307,9 @@ On a phone, the press-and-hold sheet shows the same list, with a preview of the 
 
 The editor groups every conversion control into five stages — tonal preparation, colour enhancement, dynamic-range compression, palette matching, and the dither kernel — and shows a **live preview** of a real photo rendered with your current settings, updating as you adjust each control. Choose a different preview photo from the row beneath it. For a full explanation of what each control does and why the defaults are what they are, see [dithering.md](dithering.md).
 
-### 1.7 Server information
+&nbsp;
+
+### 1.8 Server information
 
 **The wordmark** — the “hokku.” wordmark in the top-left corner is also the server button, with a green dot when the app is connected to the server. It shows your server's own name: name the server `maestro` during setup and the wordmark reads “maestro.”. Click it for server information.
 
@@ -191,24 +321,30 @@ The editor groups every conversion control into five stages — tonal preparatio
 
 * Clicking the wordmark opens server info — a drawer on a computer.*
 
+&nbsp;
+
 **On a phone** — the same details open as a clean panel grouped into **Server**, **System**, and **Activity**, with Clear cache at the bottom.
 
 <a href="../images/ui_v2_mobile_server.png"><img src="../images/ui_v2_mobile_server.png" height="480" alt="On a phone the same information opens as a panel."></a>
 
 *On a phone the same information opens as a panel.*
 
-
 **The footer** — the current server time and version also appear in the footer at the bottom of every page.
+
+---
+
+&nbsp;
+
+
+## 2. The classic interface
 
 > The classic interface — the original Images / Screens / Config page — is unchanged and documented next, in section 2. 
 > 
 > Screenshots use only the repository's licence-cleared sample photos; never personal photos.
 
----
-
-## 2. The classic interface
-
 The classic page is the original web interface, unchanged. Open it directly at `http://<your-server>:8080/hokku/ui`. It has three sections (tabs) across the top, and everything updates live without a page reload.
+
+&nbsp;
 
 ### 2.1 Images
 

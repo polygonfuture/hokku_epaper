@@ -6,6 +6,9 @@ __pycache__/
 .cache/
 .temp/
 
+# Local-only planning + design mockups: kept on disk, never tracked/pushed
+Plans/
+
 # Runtime DB files that may be created in the source tree by accident
 image_manager.json
 serve_scheduler.json
