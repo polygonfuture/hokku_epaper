@@ -568,6 +568,42 @@ def test_suggested_config_returns_saved_edit(synced_client):
     assert isinstance(body1["image_config"], dict)  # still the Auto baseline
 
 
+def test_edit_flips_effective_orientation_and_preview(synced_client):
+    """Cropping a photo to a new target orientation must flip its effective_orientation in
+    /status (with edited=true) AND the orientation of the /dithered preview it serves. The
+    gallery/detail keyed off native_orientation, so an edited photo kept displaying (and
+    served a thumbnail in) its pre-edit orientation."""
+    from io import BytesIO
+
+    from PIL import Image as _Image
+
+    client, state, name = synced_client
+
+    def entry():
+        files = client.get("/hokku/api/status").get_json()["upload_files"]
+        return next(e for e in files if e["name"] == name)
+
+    e0 = entry()
+    assert e0["edited"] is False
+    assert e0["effective_orientation"] == e0["native_orientation"]   # no edit → effective == native
+    target = "portrait" if e0["native_orientation"] != "portrait" else "landscape"
+
+    cfg = asdict(state.config.image_config_default)
+    edit_crop = {"rotation_quarters": 0, "rect": {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8}, "target": target}
+    assert client.post(f"/hokku/api/image/{name}/edit", json={"image": cfg, "edit_crop": edit_crop}).status_code == 200
+    state.manager.sync()
+    state.manager.wait_for_idle()
+
+    e1 = entry()
+    assert e1["edited"] is True
+    assert e1["effective_orientation"] == target, (e1["effective_orientation"], target)
+
+    png = state.manager.preview_png(name)
+    assert png is not None
+    w, h = _Image.open(BytesIO(png)).size
+    assert (h > w) == (target == "portrait"), f"/dithered preview {w}x{h} is not {target}"
+
+
 def test_edit_invalid_image_type_400(synced_client):
     client, _, name = synced_client
     resp = client.post(f"/hokku/api/image/{name}/edit", json={"image": "not-a-dict"})

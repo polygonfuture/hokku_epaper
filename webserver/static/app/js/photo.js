@@ -184,7 +184,7 @@ function zoomToFill(entry) {
   const a = entry.image_width / entry.image_height;
   const panel = state.config?.panel;
   const land = panel && panel.visual_w && panel.visual_h ? panel.visual_w / panel.visual_h : 4 / 3;
-  const p = entry.native_orientation === "portrait" ? 1 / land : land;
+  const p = entry.effective_orientation === "portrait" ? 1 / land : land;
   return Math.max(a / p, p / a) - 1;   // fraction of extra zoom needed
 }
 
@@ -204,7 +204,7 @@ function ondisplayHTML(name) {
 function detailHTML(entry) {
   const ok = entry.status === "ok";
   const a = arOf(entry);
-  const nat = entry.native_orientation || (a >= 1 ? "landscape" : "portrait");
+  const nat = entry.effective_orientation || entry.native_orientation || (a >= 1 ? "landscape" : "portrait");
   const unit = entry.dimension_unit || "px";
   const dims = entry.image_width && entry.image_height ? `${entry.image_width}×${entry.image_height} ${unit}` : "—";
   const orient = nat === "neutral" ? "Square" : cap(nat);

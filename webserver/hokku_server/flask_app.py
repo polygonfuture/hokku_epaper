@@ -629,6 +629,14 @@ def create_app(
                 "native_orientation": r.native_orientation.value
                 if r.convert_status == ConvertStatus.OK
                 else None,
+                # display orientation: the editor's crop target when edited, else native; plus
+                # whether the image carries an edit crop, so the app lays out the right aspect.
+                # Reportable while an edited image re-renders (target is known from the crop,
+                # no OK needed) — only the native fallback requires an ok-status image.
+                "effective_orientation": r.effective_orientation.value
+                if (r.convert_status == ConvertStatus.OK or (r.edit_crop and r.edit_crop.get("target")))
+                else None,
+                "edited": r.edit_crop is not None,
                 "last_conversion_seconds": r.last_conversion_seconds,
                 "is_bw": obs.is_bw if obs else None,
                 "face_bboxes": [[b.x, b.y, b.w, b.h] for b in obs.face_bboxes]

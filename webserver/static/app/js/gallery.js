@@ -39,10 +39,12 @@ function showsDithered(e) { return e.status === "ok" && framesShowing(e.name).le
 function panelAr(e) {
   const p = state.config?.panel;
   const w = (p && p.visual_w) || 1600, h = (p && p.visual_h) || 1200;
-  return e.native_orientation === "portrait" ? h / w : w / h;
+  return e.effective_orientation === "portrait" ? h / w : w / h;
 }
 function arOf(e) {
-  if (showsDithered(e)) return panelAr(e);
+  // on-frame (dithered thumb) OR any edited photo (its thumbnail is cropped to the panel) →
+  // lay out at the panel aspect in the EFFECTIVE orientation; otherwise the true photo aspect
+  if (showsDithered(e) || e.edited) return panelAr(e);
   return e.image_width && e.image_height ? e.image_width / e.image_height : 4 / 3;
 }
 function dimText(e) {

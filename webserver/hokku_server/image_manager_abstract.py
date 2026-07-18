@@ -423,10 +423,11 @@ class AbstractImageManager(ABC):
         rec = self._records.get(name)
         if rec is None or rec.convert_status != "ok":
             return None
-        # Preview in the image's native orientation. NEUTRAL (square) images
-        # have no native render target — use LANDSCAPE for those.
-        native = rec.native_orientation
-        orientation = native if native != Orientation.NEUTRAL else Orientation.LANDSCAPE
+        # Preview in the image's EFFECTIVE orientation — the editor's crop target when the
+        # image carries an edit, else its native orientation. NEUTRAL (square) has no render
+        # target, so fall back to LANDSCAPE for those.
+        eff = rec.effective_orientation
+        orientation = eff if eff != Orientation.NEUTRAL else Orientation.LANDSCAPE
         s = rec.slug(orientation)
         if not s:
             return None

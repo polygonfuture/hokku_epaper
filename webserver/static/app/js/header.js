@@ -7,6 +7,7 @@
 import { state, subscribe, mutate } from "./state.js";
 import { upload, retryImage, deleteImage, thumbnailUrl } from "./api.js";
 import { $, $$, esc, toast, fmtBytes, fmtEta, isMobileVp, armConfirm, disarm } from "./ui.js";
+import { uploadAndEdit } from "./editor.js";
 
 const statusTiles = $("#status-tiles");
 const statusPop = $("#status-pop");
@@ -135,7 +136,13 @@ function syncTiles() {
 // ══ Upload: native picker + desktop drag-drop → real multipart XHR ══
 const fileInput = $("#file-input");
 $("#upload-btn").addEventListener("click", () => fileInput.click());
-fileInput.addEventListener("change", () => { if (fileInput.files.length) doUpload([...fileInput.files]); fileInput.value = ""; });
+// one file → upload as a draft and open the editor; several → straight into conversion
+fileInput.addEventListener("change", () => {
+  const files = [...fileInput.files];
+  fileInput.value = "";
+  if (files.length === 1) uploadAndEdit(files[0]);
+  else if (files.length) doUpload(files);
+});
 
 async function doUpload(files) {
   const n = files.length;
@@ -172,7 +179,11 @@ window.addEventListener("dragenter", (e) => { if (hasFiles(e)) { dragDepth++; ov
 window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
 window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) overlay.hidden = true; });
 window.addEventListener("drop", (e) => {
-  if (hasFiles(e)) { e.preventDefault(); const f = [...e.dataTransfer.files]; if (f.length) doUpload(f); }
+  if (hasFiles(e)) {
+    e.preventDefault();
+    const f = [...e.dataTransfer.files];
+    if (f.length === 1) uploadAndEdit(f[0]); else if (f.length) doUpload(f);
+  }
   dragDepth = 0; overlay.hidden = true;
 });
 

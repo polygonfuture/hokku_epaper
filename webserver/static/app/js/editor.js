@@ -693,6 +693,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !peditOv
 // Upload ONE file and open it in the editor as a draft (never enters rotation unless
 // submitted). Used by the header's "Upload & edit" single-file path.
 export async function uploadAndEdit(file) {
+  toast("Uploading " + (file.name || "photo") + "…");   // feedback during the (blocking) upload + analyze
   try {
     const { name } = await uploadDraft(file);
     await openEditor(name, { isDraft: true });
