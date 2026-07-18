@@ -2,9 +2,11 @@
 
 Everything you'd want from a photo frame: accurate colours, full privacy, a clean web app, and the ability to run as many frames as you like from one cheap server. Open source replacement firmware and image server for the Hokku / Huessen 13.3" six-colour e-ink frame.
 
+&nbsp;
+
 ## Core features
 
-**Photos, your way**
+### **Photos, your way**
 - **Local-only** — your photos never leave your network. No cloud, no third-party servers, no telemetry. The web app itself makes no external requests — fonts and assets are self-hosted, so nothing is phoned home just by opening a browser tab. Your hardware and open source software means you're in full control.
 - **Drag-and-drop upload** — single files or dozens at a time, straight into the web app, with a live progress list. Works on phones too.
 - **Browse in a grid** — preview exactly what the frame will show before it shows it, original and converted version side by side. Delete anything you don't want with one click.
@@ -13,14 +15,14 @@ Everything you'd want from a photo frame: accurate colours, full privacy, a clea
 - **Landscape or portrait** — flip a switch and everything re-converts to match how the frame is mounted.
 - **Jump the queue** — pick any photo in the library to be the next one shown on the frame.
 
-**Looks good on e-paper**
+### **Looks good on e-paper**
 - **Correct out of the box** — pre-set for the best results on this panel without any tweaking.
 - **Adapts to each photo** — it can tell a black-and-white photo from a colour one, and recognise faces (all done locally, nothing leaves your network), and picks the best conversion approach for each automatically.
 - **No ugly borders** — photos that are close to the right shape get a subtle crop to fill the screen cleanly instead of showing a letterbox band.
 - **Tunable to the nth degree** — three independent conversion profiles (general, black-and-white, faces) with curated presets, plus an advanced panel that exposes nine palette colour-space variants (CIELAB / weighted CIELAB / OKLAB / CAM16-UCS, each with optional hue gating, plus a B&W-only LUT) and chroma-boost / dynamic-range knobs you can run in CIELAB or OKLAB independently. ([Details on dithering](docs/dithering.md))
 - **Colour-accurate** — calibrated against the actual panel, not a theoretical colour profile.
 
-**Smart about frames**
+### **Smart about frames**
 - **Multiple frames, one server** — each frame gets a name and shows up in a dashboard with battery level, WiFi signal, and when it'll next update. Each frame carries its own orientation, so you can mix landscape and portrait frames against the same library.
 - **Fair rotation** — every photo gets its turn. Newly uploaded photos go to the front of the queue; after that, whichever image has been shown least goes next.
 - **Battery lasts months** — the frame uses almost no power between refreshes. The web app shows a battery level for each frame and flags it red when it's getting low.
@@ -33,7 +35,7 @@ Everything you'd want from a photo frame: accurate colours, full privacy, a clea
 - **What happened last refresh** — after every update the frame sends a log of what it did to the server (WiFi connection, image download, display result). Open a frame's details in the web app to read it — no cable, no terminal needed.
 - **Comically over-engineered firmware** — runs at 240 MHz (up from the 160 MHz default) on a dual-core processor with the compiler's maximum optimisations turned on, code and data copied into dedicated high-speed RAM at boot, and cache tuned for the exact chip revision on your board. Completely unnecessary for a frame that wakes up once a day, downloads a picture, and goes back to sleep. We did it anyway. 🚀
 
-**Easy to run**
+### **Easy to run**
 - **Everything through the web app** — upload, browse, configure. No command line, no shared drives to set up.
 - **Fast even on small hardware** — converting a big library of photos uses all available CPU cores and finishes much sooner than doing them one at a time. A Raspberry Pi Zero 2 W handles a multi-frame setup without breaking a sweat.
 - **Bad photos are handled gracefully** — if a photo can't be converted, it's set aside with an explanation rather than silently vanishing. You can retry or remove it with one click.
@@ -42,11 +44,28 @@ Everything you'd want from a photo frame: accurate colours, full privacy, a clea
 - **Runs on basically anything, installs in minutes** — a Debian package for Linux that starts automatically, or run from source on macOS, Windows, or a Raspberry Pi. The firmware comes pre-built and the setup wizard flashes it over USB. No build tools, no command line.
 - **One-click re-convert** — want to try a different look? One button re-processes everything from scratch.
 
-## The web app
+&nbsp;
 
-<img src="images/ui_v2_gallery.png" width="600">
+## The web app - Designed for Desktop and Mobile Use
 
-Your control centre for everything: upload and browse photos, preview exactly how each one will look on the six-colour screen, manage your frames, and change any setting — all live, with no page reloads. It works just as well on a phone as on a computer.
+<a href="images/ui_v2_mobile.png"><img src="images/ui_v2_mobile.png" height="400" alt="The same gallery on a phone; pinch to resize the grid."></a> &nbsp; &nbsp; &nbsp;  <img src="images/ui_v2_gallery.png" width="600">
+
+<small>*Hokku Server Mobile App (left) and Desktop / Tablet Interface (right)*</small>
+
+&nbsp;
+&nbsp;
+
+**Tour control center for everything:**
+
+- Upload and browse photos
+- Preview exactly how each one will look on the six-colour screen
+- Manage your frames, and change any setting — all live, with no page reloads.
+
+**It works just as well on a phone as on a computer.**
+
+&nbsp;
+
+**Two Interfaces - Modern Responsive Web App or Classic Hokku***
 
 The server ships with two interfaces, and both talk to the same backend:
 
@@ -57,6 +76,8 @@ The plain address `http://<your-server>:8080/` opens whichever you set as the de
 
 For a full, illustrated walkthrough of every feature on both phone and computer, see the **[web app guide in the manual »](docs/manual.md#1-the-web-app)**.
 
+&nbsp;
+
 ## System Requirements
 
 **Server side** — any Linux, macOS, Windows, or Raspberry Pi on the same local network as the frame. A Raspberry Pi Zero 2 W is the recommended choice: cheap, silent, always-on, and more than fast enough. Around 512 MB of RAM; a few GB of disk for photos.
@@ -64,6 +85,8 @@ For a full, illustrated walkthrough of every feature on both phone and computer,
 **Frame side** — a Hokku Designs / Huessen 13.3" six-colour e-ink frame (ESP32-S3 inside), a data-capable USB-C cable for first-time setup, and a 2.4 GHz WiFi network.
 
 See **[Hardware](docs/hardware.md)** for where to buy the frame and the recommended Pi kit.
+
+&nbsp;
 
 ## Installation
 
@@ -73,6 +96,8 @@ Hokku loves Pi! If you need to pick one up, the **[hardware guide](docs/hardware
 
 Prefer terminal tabs, mysterious pip errors, and the satisfaction of doing things the hard way? We've got you covered: **[Manual installation guide](docs/install.md)**.
 
+&nbsp;
+
 ## Buttons and LEDs
 
 **The button** on the back of the frame (right-hand side in landscape, lower side in portrait) forces an immediate refresh — pulls the next image from the server right now, ignoring the schedule. Works whether the frame is deep-asleep on battery, plugged into USB, or anywhere in between.
@@ -81,6 +106,8 @@ Prefer terminal tabs, mysterious pip errors, and the satisfaction of doing thing
 
 - **Red** — blinks when a computer is connected over USB. A plain wall charger won't trigger it, though the battery still charges fine either way.
 - **Green** — on while the frame is fetching a new photo over WiFi. Off the rest of the time.
+
+&nbsp;
 
 ## More Documentation
 
@@ -93,6 +120,8 @@ Prefer terminal tabs, mysterious pip errors, and the satisfaction of doing thing
 - **[Hardware facts](docs/hardware_facts.md)** — confirmed GPIO map, SPI config, init sequence, USB-detection findings.
 - **[Changelog](CHANGELOG.md)** — release history.
 - **[Disclaimer](DISCLAIMER.md)** — warranty (none), intended use, reverse-engineering notes, privacy.
+
+&nbsp;
 
 ## Background
 
