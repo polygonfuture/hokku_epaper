@@ -1,0 +1,50 @@
+# Target
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash — reTerminal E1003 has 32MB (vs 16MB on the Spectra-6 frame)
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# Console: UART0 (GPIO43/44 → onboard CH340K → USB-C).
+# The E1003's ESP32-S3 native USB pins (GPIO19/20) are wired to I2C, so the
+# Spectra-6 build's CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG would give a dead
+# console here. UART0 is the IDF default — we just don't override it.
+
+# Partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Compiler — performance build (-O2), not debug (-Og)
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# CPU — 240 MHz (ESP32-S3 max)
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Instruction cache — 32 KB (firmware binary is ~700 KB; 16 KB thrashes)
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+
+# Chip revision — v0.2+ disables the S32C1I SPIRAM workaround. The E1003's
+# ESP32-S3R8 is expected to be >= v0.2; if the first flash bootloops with a
+# PSRAM error, delete this line and rebuild.
+CONFIG_ESP32S3_REV_MIN_2=y
+
+# Run code and rodata from PSRAM — eliminates flash/PSRAM XIP cache contention
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+
+# Log level
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Main task stack (display + WiFi + HTTP needs headroom)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# PSRAM (ESP32-S3R8: 8MB octal/OPI — REQUIRED for the 1.31 MB framebuffer)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# WiFi - allocate buffers in SPIRAM when possible
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+
+# SNTP
+CONFIG_LWIP_SNTP_MAX_SERVERS=2

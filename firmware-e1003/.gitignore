@@ -1,0 +1,6 @@
+build/
+main/secrets.h
+
+# Local provisioning secrets — never commit
+wifi_secrets.txt
+release/

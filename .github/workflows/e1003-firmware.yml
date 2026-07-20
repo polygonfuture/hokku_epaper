@@ -1,0 +1,32 @@
+# Build the reTerminal E1003 firmware (firmware-e1003/) and publish the
+# merged bin as a workflow artifact. Separate workflow file on purpose —
+# it never collides with ci.yml and only runs when the E1003 tree changes.
+name: e1003-firmware
+
+on:
+  push:
+    paths:
+      - "firmware-e1003/**"
+      - ".github/workflows/e1003-firmware.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build E1003 firmware (ESP-IDF)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.3
+          target: esp32s3
+          path: firmware-e1003
+          command: bash ci-build.sh
+
+      - name: Upload merged firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: hokku-firmware-e1003
+          path: firmware-e1003/release/hokku-firmware-e1003_*.bin
+          if-no-files-found: error
