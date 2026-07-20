@@ -45,6 +45,14 @@
   "classifier_face_detect_clahe_keepout": true,
   "mdns_hostname": "hokku",
   "default_ui": "modern",
+  "mono_e1003_sharpen_radius": 1.2,
+  "mono_e1003_sharpen_amount": 170,
+  "mono_e1003_sharpen_threshold": 2,
+  "mono_e1003_use_measured_ramp": false,
+  "mono_e1003_darken_gamma": 1.4,
+  "mono_e1003_split_compare": false,
+  "mono_e1003_shadow_lift": 0.0,
+  "mono_e1003_ab_toggle": false,
   "image_config_bw": {
     "dither": {
       "algorithm": "floyd_steinberg",
