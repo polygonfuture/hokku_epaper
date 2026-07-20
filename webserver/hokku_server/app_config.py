@@ -145,6 +145,21 @@ class AppConfig:
     #: black, can look flat/crushed); raising it maps them to level 1-2 so the
     #: darkest shadows keep dither detail (less crushed, slightly grayer black).
     mono_e1003_shadow_lift: float = 0.0
+    #: Panel-wide mono tone controls (the Custom mono editor). ALL default to a
+    #: no-op so the panel's Faithful default look is unchanged until a slider moves.
+    #: black/white point are bidirectional (±0.3): +black lifts the black floor
+    #: (opens shadows), −black deepens; +white pushes highlights to paper white,
+    #: −white pulls them down. clarity = large-radius local-contrast % (0=off; the
+    #: key "wide DR feel" lever on a short-throw panel). contrast = S-curve strength
+    #: (1.15 default ≈ the shipped look; 1.0 = linear). midtone = direct gamma
+    #: (1.0=off, >1 darker mids). highlights/shadows = regional roll (±0.5).
+    mono_e1003_black_point: float = 0.0
+    mono_e1003_white_point: float = 0.0
+    mono_e1003_clarity: float = 0.0
+    mono_e1003_contrast: float = 1.15
+    mono_e1003_midtone: float = 1.0
+    mono_e1003_highlights: float = 0.0
+    mono_e1003_shadows: float = 0.0
 
     #: mDNS / Bonjour hostname (the part before ``.local``).
     #: The server advertises itself as ``<mdns_hostname>.local`` on the LAN.

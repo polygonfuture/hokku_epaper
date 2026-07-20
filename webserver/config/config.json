@@ -53,6 +53,13 @@
   "mono_e1003_split_compare": false,
   "mono_e1003_shadow_lift": 0.0,
   "mono_e1003_ab_toggle": false,
+  "mono_e1003_black_point": 0.0,
+  "mono_e1003_white_point": 0.0,
+  "mono_e1003_clarity": 0.0,
+  "mono_e1003_contrast": 1.15,
+  "mono_e1003_midtone": 1.0,
+  "mono_e1003_highlights": 0.0,
+  "mono_e1003_shadows": 0.0,
   "image_config_bw": {
     "dither": {
       "algorithm": "floyd_steinberg",

@@ -97,6 +97,21 @@ export async function ditherPreview(name, imageConfig, claheKeepout, signal) {
   return { blobUrl, faceBboxes };
 }
 
+// Live E1003 (mono16) preview: renders the real wire pipeline and decodes through
+// the panel's perceived ramp. `mono` is the flat knob set (see settings.js openMono).
+export async function monoPreview(name, mono, signal) {
+  const res = await fetch(`${API}/dither/preview_mono`, {
+    ...json("POST", { name, mono, max_side_px: 900 }),
+    signal,
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try { const b = await res.json(); if (b.error) msg = b.error; } catch { /* png or empty */ }
+    throw new Error(msg);
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 // ── per-image editor (js/editor.js) ──
 // The editor's opening state for an image: the classifier's own decision plus the
 // source's orientation/dimensions and detection results.

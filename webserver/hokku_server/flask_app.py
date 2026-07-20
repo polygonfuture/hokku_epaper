@@ -225,6 +225,16 @@ def create_app(
                     sharpen_percent=config.mono_e1003_sharpen_amount,
                     sharpen_threshold=config.mono_e1003_sharpen_threshold,
                 )
+                # Panel-wide tone controls (Custom mono editor). No-op by default.
+                _tone = dict(
+                    black_point=config.mono_e1003_black_point,
+                    white_point=config.mono_e1003_white_point,
+                    clarity=config.mono_e1003_clarity,
+                    contrast=config.mono_e1003_contrast,
+                    midtone=config.mono_e1003_midtone,
+                    highlights=config.mono_e1003_highlights,
+                    shadows=config.mono_e1003_shadows,
+                )
                 if config.mono_e1003_ab_toggle:
                     # Each refresh alternates A (uniform 1.40) <-> B (measured).
                     _AB_TOGGLE["measured"] = not _AB_TOGGLE.get("measured", False)
@@ -252,6 +262,7 @@ def create_app(
                         darken_gamma=config.mono_e1003_darken_gamma,
                         shadow_lift=config.mono_e1003_shadow_lift,
                         **_sharp,
+                        **_tone,
                     )
             except Exception:
                 logger.exception("mono16_e1003 render failed for %s", chosen)
@@ -974,6 +985,67 @@ def create_app(
         resp = _png_response(png)
         resp.headers["X-Face-Bboxes"] = json.dumps([list(b) for b in canvas_bboxes])
         return resp
+
+    @app.route("/hokku/api/dither/preview_mono", methods=["POST"])
+    def api_dither_preview_mono():
+        """Render a live E1003 (mono16) preview for the mono tone editor.
+
+        Body: {name: str, mono: {use_measured_ramp, darken_gamma,
+        sharpen_amount, sharpen_radius, sharpen_threshold, shadow_lift},
+        max_side_px?}. Renders through the real wire pipeline and decodes
+        via the PERCEIVED calibrated ramp, so the preview shows what the
+        panel will actually display (compressed blacks/whites included).
+        Returns PNG bytes.
+        """
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "expected JSON object"}), 400
+        name = body.get("name")
+        mono = body.get("mono")
+        if not name or not isinstance(mono, dict):
+            return jsonify({"error": "expected {name, mono}"}), 400
+        try:
+            path = state.manager.original_path(name)
+        except FileNotFoundError:
+            return jsonify({"error": f"image {name!r} not found"}), 404
+
+        # All knobs are clamped again inside render_mono_bin; the .get chain
+        # just falls back to the module defaults for anything omitted.
+        try:
+            binary = mono_e1003.render_mono_bin(
+                path,
+                use_measured_ramp=bool(mono.get("use_measured_ramp", mono_e1003.USE_MEASURED_RAMP)),
+                darken_gamma=float(mono.get("darken_gamma", mono_e1003.MAX_DARKEN_GAMMA)),
+                shadow_lift=float(mono.get("shadow_lift", 0.0)),
+                sharpen_radius=float(mono.get("sharpen_radius", mono_e1003.SHARPEN_RADIUS)),
+                sharpen_percent=int(mono.get("sharpen_amount", mono_e1003.SHARPEN_PERCENT)),
+                sharpen_threshold=int(mono.get("sharpen_threshold", mono_e1003.SHARPEN_THRESHOLD)),
+                black_point=float(mono.get("black_point", 0.0)),
+                white_point=float(mono.get("white_point", 0.0)),
+                clarity=float(mono.get("clarity", 0.0)),
+                contrast=float(mono.get("contrast", mono_e1003.CONTRAST_GAIN)),
+                midtone=float(mono.get("midtone", 1.0)),
+                highlights=float(mono.get("highlights", 0.0)),
+                shadows=float(mono.get("shadows", 0.0)),
+            )
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": f"invalid mono config: {e}"}), 400
+        except Exception:
+            logger.exception("mono preview render failed for %r", name)
+            return jsonify({"error": "render failed"}), 500
+
+        # Uniform perceived decode — validated against glass for both render palettes.
+        img = mono_e1003.mono_bin_to_image(binary)
+        max_side_px = max(64, min(1600, int(body.get("max_side_px") or 900)))
+        if max(img.size) > max_side_px:
+            scale = max_side_px / max(img.size)
+            img = img.resize(
+                (max(1, round(img.width * scale)), max(1, round(img.height * scale))),
+                Image.LANCZOS,
+            )
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return _png_response(buf.getvalue())
 
     return app
 

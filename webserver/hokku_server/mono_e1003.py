@@ -88,6 +88,11 @@ MAX_DARKEN_GAMMA = 1.40
 SHARPEN_RADIUS = 1.2
 SHARPEN_PERCENT = 170
 SHARPEN_THRESHOLD = 2
+# CLARITY: local-contrast pass = a LARGE-radius unsharp mask (the opposite end of
+# the radius axis from acutance sharpening). On a short-throw panel this is the #1
+# lever for a "wide dynamic range" feel — it lifts separation between regions
+# without touching the endpoints or clipping. percent 0 = off.
+CLARITY_RADIUS = 60
 
 
 def _s_curve(t: np.ndarray, gain: float) -> np.ndarray:
@@ -98,19 +103,61 @@ def _s_curve(t: np.ndarray, gain: float) -> np.ndarray:
     return tg / (tg + np.power(1.0 - t, gain))
 
 
-def _tone_map_lstar(l_img: np.ndarray, darken_gamma: float = MAX_DARKEN_GAMMA) -> np.ndarray:
-    """Full tone treatment in L* (0..100): adaptive midtone darkening toward
-    MIDTONE_TARGET_L (darken-only, clamped by ``darken_gamma`` — preserves black
-    and white endpoints), then the contrast S-curve. Shared by renderer + tests.
-    ``darken_gamma`` is a per-request knob (config) so the darkening strength can
-    be re-tuned when the measured palette is in play."""
+def _tone_map_lstar(
+    l_img: np.ndarray,
+    *,
+    darken_gamma: float = MAX_DARKEN_GAMMA,
+    contrast: float = CONTRAST_GAIN,
+    midtone: float = 1.0,
+    black_point: float = 0.0,
+    white_point: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
+) -> np.ndarray:
+    """Full tone treatment in L* (0..100) on a normalized tone t in [0,1]. Every
+    user knob DEFAULTS TO A NO-OP so the panel's default look is unchanged until a
+    slider moves. Stage order — adaptive darken (preset baseline) → endpoint levels
+    → midtone gamma → shadow/highlight roll → contrast S-curve:
+
+      - ``darken_gamma`` — adaptive midtone darkening toward MIDTONE_TARGET_L
+        (darken-only, clamped; the Faithful/Punchy preset baseline).
+      - ``black_point`` / ``white_point`` — bidirectional endpoint levels. +black
+        LIFTS the black floor (opens/greys shadows); −black raises the input black
+        (deepens/crushes). +white pushes highlights toward paper white; −white
+        pulls the white level down. Both 0 = off.
+      - ``midtone`` — direct gamma on t (>1 darkens mids, <1 brightens; 1.0 = off).
+      - ``shadows`` / ``highlights`` — regional roll (+=brighten / −=darken).
+        +shadows lifts the shadow region; −highlights recovers (pulls down) blown
+        highlights, +highlights brightens them.
+      - ``contrast`` — S-curve strength (1.0 = linear; CONTRAST_GAIN = default).
+    """
     t = np.clip(l_img / 100.0, 1e-6, 1.0)
+    # 1. adaptive midtone darkening (preset baseline; preserves endpoints)
     med = float(np.median(t))
     if 0.0 < med < 1.0 and med > MIDTONE_TARGET_L / 100.0:
         g = np.log(MIDTONE_TARGET_L / 100.0) / np.log(med)
         g = min(max(g, 1.0), darken_gamma)
         t = np.power(t, g)
-    t = _s_curve(t, CONTRAST_GAIN)
+    # 2. endpoint levels — one input + one output remap from the two ± knobs
+    if black_point or white_point:
+        in_lo, in_hi = max(0.0, -black_point), 1.0 - max(0.0, white_point)
+        if in_hi - in_lo > 1e-3:
+            t = np.clip((t - in_lo) / (in_hi - in_lo), 0.0, 1.0)
+        out_lo, out_hi = max(0.0, black_point), 1.0 - max(0.0, -white_point)
+        t = out_lo + t * (out_hi - out_lo)
+    # 3. direct midtone gamma
+    if midtone != 1.0:
+        t = np.power(np.clip(t, 1e-6, 1.0), midtone)
+    # 4. regional shadow / highlight roll — both follow the +=brighten / −=darken
+    # convention (Lightroom-style): +shadows lifts the shadow region, +highlights
+    # brightens (−highlights recovers/pulls-down) the highlight region.
+    if shadows:
+        t = np.clip(t + shadows * (1.0 - t) ** 2, 0.0, 1.0)
+    if highlights:
+        t = np.clip(t + highlights * t ** 2, 0.0, 1.0)
+    # 5. global contrast S-curve (1.0 = skip)
+    if contrast and contrast != 1.0:
+        t = _s_curve(t, contrast)
     return 100.0 * t
 
 # 16 evenly spaced gray levels 0..255 (0, 17, ... 255): nibble value == index.
@@ -256,6 +303,13 @@ def render_mono_bin(
     use_measured_ramp: bool = USE_MEASURED_RAMP,
     darken_gamma: float = MAX_DARKEN_GAMMA,
     shadow_lift: float = 0.0,
+    black_point: float = 0.0,
+    white_point: float = 0.0,
+    clarity: float = 0.0,
+    contrast: float = CONTRAST_GAIN,
+    midtone: float = 1.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
 ) -> bytes:
     """Render an original image file to E1003 wire bytes (cached).
 
@@ -274,12 +328,21 @@ def render_mono_bin(
     darken_gamma = float(min(max(darken_gamma, 1.0), 3.0))
     shadow_lift = float(min(max(shadow_lift, 0.0), 0.3))
     use_measured_ramp = bool(use_measured_ramp)
+    black_point = float(min(max(black_point, -0.3), 0.3))
+    white_point = float(min(max(white_point, -0.3), 0.3))
+    clarity = float(min(max(clarity, 0.0), 100.0))
+    contrast = float(min(max(contrast, 1.0), 1.8))
+    midtone = float(min(max(midtone, 0.5), 2.0))
+    highlights = float(min(max(highlights, -0.5), 0.5))
+    shadows = float(min(max(shadows, -0.5), 0.5))
 
     st = path.stat()
     key = (
         str(path), st.st_mtime_ns, st.st_size,
         round(sharpen_radius, 3), sharpen_percent, sharpen_threshold,
         use_measured_ramp, round(darken_gamma, 3), round(shadow_lift, 3),
+        round(black_point, 3), round(white_point, 3), round(clarity, 2),
+        round(contrast, 3), round(midtone, 3), round(highlights, 3), round(shadows, 3),
     )
     with _cache_lock:
         cached = _cache.get(key)
@@ -316,6 +379,12 @@ def render_mono_bin(
     if p1 < 64:  # skip degenerate stretch on very bright/low-contrast images
         arr = np.clip((arr - p1) * (255.0 / (255.0 - p1)), 0, 255)
         gray = Image.fromarray(arr.astype(np.uint8), mode="L")
+    # Clarity: large-radius local-contrast pass BEFORE acutance sharpening (the
+    # two live at opposite ends of the radius axis). Applied to the content image
+    # before any mat paste so the letterbox edge never haloes.
+    if clarity > 0:
+        gray = gray.filter(ImageFilter.UnsharpMask(
+            radius=CLARITY_RADIUS, percent=int(round(clarity)), threshold=0))
     if sharpen_percent > 0:
         gray = gray.filter(ImageFilter.UnsharpMask(
             radius=sharpen_radius, percent=sharpen_percent, threshold=sharpen_threshold))
@@ -330,7 +399,10 @@ def render_mono_bin(
     # MEASURED palette targets the true per-level reflectances (faithful tone).
     levels = _LEVELS_LINEAR_MEASURED if use_measured_ramp else _LEVELS_LINEAR_UNIFORM
     y_img = _srgb_to_linear(np.asarray(gray))
-    l_img = _tone_map_lstar(_lstar_from_y(y_img), darken_gamma=darken_gamma)
+    l_img = _tone_map_lstar(
+        _lstar_from_y(y_img), darken_gamma=darken_gamma, contrast=contrast,
+        midtone=midtone, black_point=black_point, white_point=white_point,
+        highlights=highlights, shadows=shadows)
     lin = _y_from_lstar(l_img).astype(np.float32)
     if use_measured_ramp:
         # Envelope DRC: remap the image's [0,1] range into the panel's ACHIEVABLE
@@ -394,16 +466,22 @@ def _linear_to_srgb(y: np.ndarray):
     return np.clip(np.round(s * 255.0), 0, 255).astype(np.uint8)
 
 
-# sRGB value each level *looks like* on the panel (perceived ramp) — previews
-# decoded through this match the glass, not the theoretical uniform codes.
-_LEVELS_SRGB_PERCEIVED = _linear_to_srgb(_LEVELS_LINEAR)
+# sRGB value each level looks like on-screen for the preview. We decode through
+# the UNIFORM ramp for BOTH render palettes — this is validated against glass:
+# the user A/B'd the two renders on the physical panel and the uniform-decoded
+# preview matches what the panel shows. NOTE: decoding the measured render through
+# the measured reflectances was tried and REJECTED — it showed measured/"punchy"
+# as soft gray, contradicting the glass (where the measured ramp reads dark/crunchy).
+# The measured calibration (0.143 black, glare-inflated) does not describe this
+# unit's actual on-glass appearance, so it is NOT used for the decode.
+_LEVELS_SRGB_PERCEIVED = _linear_to_srgb(_LEVELS_LINEAR_UNIFORM)
 
 
 def mono_bin_to_image(data: bytes) -> Image.Image:
-    """Unpack wire bytes to a panel-accurate grayscale preview (tests/preview).
+    """Unpack wire bytes to a glass-accurate grayscale preview (tests/preview).
 
-    Levels decode through the PERCEIVED calibrated ramp, so the preview shows
-    what the panel will show (compressed blacks/whites included)."""
+    Levels decode through the uniform perceived ramp — validated by the user
+    against the physical panel for both render palettes."""
     if len(data) != MONO_BYTES:
         raise ValueError(f"expected {MONO_BYTES} bytes, got {len(data)}")
     packed = np.frombuffer(data, dtype=np.uint8).reshape(MONO_H, MONO_W // 2)

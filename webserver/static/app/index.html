@@ -251,6 +251,34 @@
   </div>
 </div>
 
+<!-- E1003 mono tone editor — same live-preview shell as the dither editor, but the
+     preview is the real 16-level panel render (POST /dither/preview_mono). -->
+<div class="sheet-overlay" id="mono-modal" hidden>
+  <div class="dither-card" role="dialog" aria-modal="true" aria-label="E1003 mono tone editor">
+    <div class="set-head">
+      <h2 id="mono-title">Custom mono tone</h2>
+      <span class="sp"></span>
+      <button class="detail-close" data-mono-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="dither-main">
+      <div class="dcontrols mono-controls" id="mocontrols"></div>
+      <div class="dpreview">
+        <div class="dprev-lab">Live panel preview <span class="mono-prev-note">· press &amp; hold to compare with pre-edit</span></div>
+        <div class="dprev-stage" id="moprev-stage"><span class="dprev-wrap"><img id="moprev-img" alt="Mono panel preview"><img id="moprev-before" alt="Pre-edit preview"></span></div>
+        <div class="dprev-pick" id="moprev-pick" aria-label="Preview photo"></div>
+      </div>
+    </div>
+    <div class="set-foot">
+      <button class="ghost-btn" id="mono-reset">Reset to saved</button>
+      <span style="flex:1"></span>
+      <button class="ghost-btn" data-mono-close>Cancel</button>
+      <button class="save-btn" id="mono-save">Use these settings</button>
+    </div>
+  </div>
+</div>
+
 <!-- desktop drag-and-drop overlay -->
 <div class="drop-overlay" id="drop-overlay" hidden>
   <div class="drop-card">

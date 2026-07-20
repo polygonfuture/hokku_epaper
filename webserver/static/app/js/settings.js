@@ -8,7 +8,7 @@
 // it's deferred; nothing here opens it.
 
 import { state, refreshConfig, refreshStatus } from "./state.js";
-import { postConfig, clearCache, clearClassifier, scrub, patchScreen, ditherPreview, thumbnailUrl } from "./api.js";
+import { postConfig, clearCache, clearClassifier, scrub, patchScreen, ditherPreview, monoPreview, thumbnailUrl } from "./api.js";
 import { $, $$, esc, toast, isMobileVp, frameColor, armConfirm } from "./ui.js";
 
 // ── config draft (clone on open; every control mutates it; Save POSTs a subset) ──
@@ -273,13 +273,60 @@ function wireFrames() {
   }));
 }
 
+// ══ E1003 MONO (only shown when a mono16_e1003 panel is connected) ══
+const hasMonoPanel = () => Object.values(state.status?.screens || {}).some((s) => s.panel_type === "mono16_e1003");
+// The two on-glass-validated panel looks (see mono_e1003.py). A "preset" here is
+// the full flat mono knob set; "Custom…" opens the mono tone editor (a mono-tailored
+// twin of the colour dither editor) to tweak the same knobs with a live panel
+// preview. Named to match how they READ ON GLASS (user-validated):
+//   • Faithful = UNIFORM ramp — smooth, open gradients, lighter/accurate. The
+//     recommended default (this is the live config's look).
+//   • Punchy   = MEASURED ramp — darker, deeper/crunchier blacks, more contrast.
+// (The measured ramp reads dark on this unit; the earlier labelling had these two
+//  swapped because a decode bug showed the measured render as soft — fixed.)
+// no-op tone defaults shared by both presets — a preset is a full look, so its
+// tone knobs sit at neutral; touching any of them flips the dropdown to "Custom".
+const MONO_TONE_NOOP = {
+  mono_e1003_black_point: 0.0, mono_e1003_white_point: 0.0, mono_e1003_clarity: 0.0,
+  mono_e1003_contrast: 1.15, mono_e1003_midtone: 1.0, mono_e1003_highlights: 0.0, mono_e1003_shadows: 0.0,
+};
+const MONO_KEYS = ["mono_e1003_use_measured_ramp", "mono_e1003_darken_gamma", "mono_e1003_sharpen_amount", "mono_e1003_sharpen_radius", ...Object.keys(MONO_TONE_NOOP)];
+const MONO_PRESETS = {
+  faithful: { mono_e1003_use_measured_ramp: false, mono_e1003_darken_gamma: 1.40, mono_e1003_sharpen_amount: 170, mono_e1003_sharpen_radius: 1.2, ...MONO_TONE_NOOP },
+  punchy:   { mono_e1003_use_measured_ramp: true,  mono_e1003_darken_gamma: 1.05, mono_e1003_sharpen_amount: 170, mono_e1003_sharpen_radius: 1.2, ...MONO_TONE_NOOP },
+};
+const MONO_PRESET_LABELS = { faithful: "Faithful", punchy: "Punchy" };
+const monoPresetMatch = (src) => Object.keys(MONO_PRESETS).find((k) => MONO_KEYS.every((key) => deepEqual(src[key], MONO_PRESETS[k][key]))) || null;
+const applyMonoPreset = (key) => MONO_KEYS.forEach((k) => (draft[k] = clone(MONO_PRESETS[key][k])));
+
+function monoBody() {
+  const cur = monoPresetMatch(draft);
+  const opts = Object.keys(MONO_PRESETS).map((k) => `<option value="${k}"${k === cur ? " selected" : ""}>${MONO_PRESET_LABELS[k]}</option>`).join("");
+  const custom = cur ? "" : '<option value="custom" selected>Custom (edited)</option>';
+  return (
+    '<p class="set-desc">The panel-wide look for the 16-level monochrome E1003. Pick a preset, or open <b>Custom…</b> to tune the tone with a live preview of the actual panel render.</p>' +
+    iGroup(iRow("Tone preset",
+        `<span class="right"><select class="sel-input" id="moPreset">${custom}${opts}</select>` +
+        '<button class="mini-btn" data-mono-custom>Custom…</button></span>'),
+      "Faithful is the smooth, open look — gentle gradients, lighter, accurate (recommended). Punchy pushes contrast with deeper, crunchier blacks. Custom… opens the live editor.") +
+    resetBtnHTML()
+  );
+}
+function wireMono() {
+  const sel = $("#moPreset");
+  sel.addEventListener("change", () => { if (sel.value === "custom") return; applyMonoPreset(sel.value); });
+}
+
 // ── settings shell ──
 const svgIcon = (inner) => `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${inner}</svg>`;
+// Sections whose `gate` returns false are hidden (capability-gating).
+const settingsEntries = () => Object.entries(SETTINGS).filter(([, c]) => !c.gate || c.gate());
 const SETTINGS = {
   refresh: { title: "Refresh Schedule", icon: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), body: refreshBody, wire: wireRefresh, keys: ["refresh_mode", "refresh_interval_minutes", "refresh_image_at_time", "refresh_active_start", "refresh_active_end"] },
   frames:  { title: "Frame Orientation", icon: svgIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>'), body: framesBody, wire: wireFrames, keys: [] },
   detect:  { title: "Smart Photo Detection", icon: svgIcon('<circle cx="9" cy="10" r="3"/><path d="M4 20a5 5 0 0 1 10 0"/><path d="M17 9h4M19 7v4"/>'), body: detectBody, wire: wireDetect, keys: ["classifier_bw_detect_enabled", "classifier_face_detect_enabled", "classifier_face_detect_clahe_keepout", "image_config_bw", "image_config_face"] },
   image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold"] },
+  mono:    { title: "E1003 Mono", icon: svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/><path d="M15 5v14"/>'), body: monoBody, wire: wireMono, keys: MONO_KEYS, gate: hasMonoPanel },
   server:  { title: "Server & Storage", icon: svgIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>'), body: serverBody, wire: wireServer, keys: ["poll_interval_seconds", "debug_fast_refresh", "auto_clear_cache", "mdns_hostname", "image_worker_thread_count"] },
 };
 const setModal = $("#settings-modal"), setBody = $("#set-body"), setNav = $("#set-nav"), setBack = $("#set-back"), setTitle = $("#set-title");
@@ -295,16 +342,19 @@ function renderTab(key) {
   else { setBack.hidden = true; setTitle.textContent = "Settings"; }
 }
 function showSetList() {
-  setBody.innerHTML = '<div class="set-list">' + Object.entries(SETTINGS).map(([k, c]) =>
+  setBody.innerHTML = '<div class="set-list">' + settingsEntries().map(([k, c]) =>
     `<button class="set-li" data-li="${k}">${c.icon}<span>${c.title}</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></span></button>`).join("") + "</div>";
   setBack.hidden = true; setTitle.textContent = "Settings"; setBody.scrollTop = 0;
 }
 export function openSettings(tab) {
   if (!state.config) { toast("Settings still loading…"); return; }
   openDraft();
-  setNav.innerHTML = Object.entries(SETTINGS).map(([k, c]) => `<button data-tab="${k}" role="tab">${c.icon}${c.title}</button>`).join("");
+  setNav.innerHTML = settingsEntries().map(([k, c]) => `<button data-tab="${k}" role="tab">${c.icon}${c.title}</button>`).join("");
+  // If the active tab is gated off (e.g. no mono panel), fall back to the first visible one.
+  let target = tab || activeTab;
+  if (!SETTINGS[target] || (SETTINGS[target].gate && !SETTINGS[target].gate())) target = settingsEntries()[0][0];
   if (isMobileVp() && !tab) showSetList();
-  else renderTab(tab || activeTab);
+  else renderTab(target);
   setModal.hidden = false;
 }
 function closeSettings() { setModal.hidden = true; }
@@ -331,7 +381,8 @@ $("#set-save").addEventListener("click", saveActiveTab);
 setBody.addEventListener("click", (e) => {
   const rb = e.target.closest("[data-reset-defaults]");
   if (rb) { armConfirm(rb, resetActiveTabToDefaults, "Reset this page to defaults?"); return; }
-  const b = e.target.closest("[data-custom]"); if (b) openDither(b.dataset.custom, b.dataset.customLabel);
+  const b = e.target.closest("[data-custom]"); if (b) { openDither(b.dataset.custom, b.dataset.customLabel); return; }
+  const m = e.target.closest("[data-mono-custom]"); if (m) openMono();
 });
 
 // ══ Custom dither editor (desktop) — knobs edit a working copy; live server preview ══
@@ -458,4 +509,160 @@ $("#dither-save").addEventListener("click", () => {
   toast("Dither applied — press Save to keep it");
 });
 
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if (!ditherModal.hidden) closeDither(); else closeSettings(); } });
+// ══ E1003 mono tone editor — the colour dither editor's live-preview model, tailored
+// to the flat mono knobs. The preview is the real 16-level panel render (grayscale =
+// the unmissable "you're editing the mono look" signal). Same desktop-only rule. ══
+const monoModal = $("#mono-modal");
+let monoCfg = null, monoSample = null, monoPrevTimer = null, monoPrevCtrl = null, monoPrevUrl = null;
+// press-and-hold "before" peek: monoBaseCfg is the config the editor OPENED with
+// (your pre-edit baseline); its render is stacked over the live preview and shown
+// only while held. A quick tap must not flash it.
+let monoBaseCfg = null, monoBeforeUrl = null, monoBeforeCtrl = null;
+const MO_PEEK_HOLD_MS = 280, MO_PEEK_MOVE_TOL = 12;
+let moPeekTimer = null, moPeekAt = null, moPeeking = false;
+// The tone-control list (user-agreed). fmt: signed = ±0.00 centred knob, 2dp =
+// 1.15, int = 70, pct = 170%, px = 1.20 px. Every default is a no-op (see
+// MONO_TONE_NOOP) so the panel look is unchanged until a slider moves.
+const MONO_KNOBS = [
+  { key: "mono_e1003_black_point", label: "Black point · deepen ← → lift", min: -0.3, max: 0.3, step: 0.02, fmt: "signed", def: 0 },
+  { key: "mono_e1003_white_point", label: "White point · pull ← → brighten", min: -0.3, max: 0.3, step: 0.02, fmt: "signed", def: 0 },
+  { key: "mono_e1003_clarity", label: "Clarity · local contrast", min: 0, max: 100, step: 5, fmt: "int", def: 0 },
+  { key: "mono_e1003_contrast", label: "Contrast", min: 1.0, max: 1.8, step: 0.05, fmt: "2dp", def: 1.15 },
+  { key: "mono_e1003_midtone", label: "Midtone (gamma) · brighter ← → darker", min: 0.5, max: 2.0, step: 0.05, fmt: "2dp", def: 1.0 },
+  { key: "mono_e1003_highlights", label: "Highlights · recover ← → brighten", min: -0.5, max: 0.5, step: 0.05, fmt: "signed", def: 0 },
+  { key: "mono_e1003_shadows", label: "Shadows · deepen ← → lift", min: -0.5, max: 0.5, step: 0.05, fmt: "signed", def: 0 },
+  { key: "mono_e1003_sharpen_amount", label: "Sharpening", min: 0, max: 300, step: 5, fmt: "pct", def: 170 },
+  { key: "mono_e1003_sharpen_radius", label: "Sharpen radius", min: 0.2, max: 3.0, step: 0.05, fmt: "px", def: 1.2 },
+];
+const MONO_KNOB_BY_KEY = Object.fromEntries(MONO_KNOBS.map((k) => [k.key, k]));
+const monoFmt = (spec, v) =>
+  spec.fmt === "signed" ? (v > 0 ? "+" : "") + (+v).toFixed(2)
+  : spec.fmt === "int" ? String(Math.round(v))
+  : spec.fmt === "pct" ? Math.round(v) + "%"
+  : spec.fmt === "px" ? (+v).toFixed(2) + " px"
+  : (+v).toFixed(2);
+function monoControlsHTML() {
+  const meas = !!monoCfg.mono_e1003_use_measured_ramp;
+  const knob = (spec) => {
+    const v = monoCfg[spec.key], tweaked = Math.abs(v - spec.def) > 1e-9;
+    return `<div class="dknob${tweaked ? " tweaked" : ""}"><div class="dknob-head"><span class="dknob-lab">${spec.label}</span><span class="dknob-val" data-val="${spec.key}">${monoFmt(spec, v)}</span></div>` +
+      `<div class="dtrack"><input type="range" class="dslider" data-knob="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${v}"></div></div>`;
+  };
+  return `<div class="dknob"><div class="dknob-head"><span class="dknob-lab">Tone rendering</span></div>` +
+      `<div class="dseg" data-knob="tone">` +
+        `<button data-opt="faithful"${!meas ? ' class="on"' : ""}>Faithful</button>` +
+        `<button data-opt="punchy"${meas ? ' class="on"' : ""}>Punchy</button></div></div>` +
+    MONO_KNOBS.map(knob).join("");
+}
+function renderMonoControls() {
+  const ctrl = $("#mocontrols");
+  ctrl.innerHTML = monoControlsHTML();
+  ctrl.querySelector('.dseg[data-knob="tone"]').addEventListener("click", (e) => {
+    const b = e.target.closest("[data-opt]"); if (!b) return;
+    monoCfg.mono_e1003_use_measured_ramp = b.dataset.opt === "punchy";
+    ctrl.querySelectorAll('.dseg[data-knob="tone"] button').forEach((x) => x.classList.toggle("on", x === b));
+    scheduleMonoPreview();
+  });
+  ctrl.querySelectorAll(".dslider[data-knob]").forEach((sl) => sl.addEventListener("input", () => {
+    const spec = MONO_KNOB_BY_KEY[sl.dataset.knob], v = +sl.value;
+    monoCfg[spec.key] = v;
+    ctrl.querySelector(`[data-val="${spec.key}"]`).textContent = monoFmt(spec, v);
+    sl.closest(".dknob").classList.toggle("tweaked", Math.abs(v - spec.def) > 1e-9);
+    scheduleMonoPreview();
+  }));
+}
+// map the mono_e1003_* draft keys to the short knob names the preview endpoint reads
+const monoPayload = (cfg = monoCfg) => ({
+  use_measured_ramp: !!cfg.mono_e1003_use_measured_ramp,
+  darken_gamma: +cfg.mono_e1003_darken_gamma,
+  sharpen_amount: +cfg.mono_e1003_sharpen_amount,
+  sharpen_radius: +cfg.mono_e1003_sharpen_radius,
+  black_point: +cfg.mono_e1003_black_point,
+  white_point: +cfg.mono_e1003_white_point,
+  clarity: +cfg.mono_e1003_clarity,
+  contrast: +cfg.mono_e1003_contrast,
+  midtone: +cfg.mono_e1003_midtone,
+  highlights: +cfg.mono_e1003_highlights,
+  shadows: +cfg.mono_e1003_shadows,
+});
+function renderMonoPicker() {
+  const pics = ditherPhotos();
+  $("#moprev-pick").innerHTML = pics.map((t) => `<button data-sample="${esc(t.name)}"${monoSample && monoSample.name === t.name ? ' class="on"' : ""} title="${esc(t.name)}"><img alt="" src="${thumbnailUrl(t)}"></button>`).join("");
+}
+function scheduleMonoPreview() { clearTimeout(monoPrevTimer); monoPrevTimer = setTimeout(runMonoPreview, 400); }
+async function runMonoPreview() {
+  if (!monoSample) return;
+  if (monoPrevCtrl) monoPrevCtrl.abort();
+  monoPrevCtrl = new AbortController();
+  $("#moprev-stage").classList.add("busy");
+  try {
+    const url = await monoPreview(monoSample.name, monoPayload(), monoPrevCtrl.signal);
+    if (monoPrevUrl) URL.revokeObjectURL(monoPrevUrl);
+    monoPrevUrl = url;
+    const img = $("#moprev-img"); img.classList.remove("broken"); img.src = url;
+    $("#moprev-stage").classList.remove("busy");
+  } catch (e) {
+    if (e.name === "AbortError") return;   // superseded by a newer request
+    $("#moprev-stage").classList.remove("busy");
+    $("#moprev-img").classList.add("broken");
+    toast("Preview failed: " + e.message);
+  }
+}
+// render the pre-edit baseline for the current sample into the stacked "before" img
+async function renderMonoBefore() {
+  if (!monoBaseCfg || !monoSample) return;
+  if (monoBeforeCtrl) monoBeforeCtrl.abort();
+  monoBeforeCtrl = new AbortController();
+  try {
+    const url = await monoPreview(monoSample.name, monoPayload(monoBaseCfg), monoBeforeCtrl.signal);
+    if (monoBeforeUrl) URL.revokeObjectURL(monoBeforeUrl);
+    monoBeforeUrl = url;
+    $("#moprev-before").src = url;
+  } catch (e) { if (e.name !== "AbortError") $("#moprev-before").removeAttribute("src"); }
+}
+function endMonoPeek() {
+  clearTimeout(moPeekTimer); moPeekTimer = null; moPeekAt = null;
+  if (moPeeking) { moPeeking = false; monoModal.querySelector(".dprev-wrap").classList.remove("peek"); }
+}
+function openMono() {
+  if (isMobileVp()) { toast("The mono tone editor is desktop-only."); return; }
+  monoCfg = {}; MONO_KEYS.forEach((k) => (monoCfg[k] = clone(draft[k])));
+  monoBaseCfg = clone(monoCfg);   // snapshot the pre-edit baseline for the hold-to-compare peek
+  monoSample = ditherPhotos()[0] || null;
+  renderMonoControls(); renderMonoPicker();
+  $("#moprev-img").removeAttribute("src"); $("#moprev-before").removeAttribute("src");
+  monoModal.hidden = false;
+  if (monoSample) { runMonoPreview(); renderMonoBefore(); } else toast("Upload a photo to preview the mono look.");
+}
+function closeMono() {
+  endMonoPeek();
+  monoModal.hidden = true;
+  clearTimeout(monoPrevTimer); if (monoPrevCtrl) monoPrevCtrl.abort(); if (monoBeforeCtrl) monoBeforeCtrl.abort();
+}
+monoModal.addEventListener("click", (e) => { if (e.target === monoModal || e.target.closest("[data-mono-close]")) closeMono(); });
+$("#moprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; monoSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderMonoPicker(); runMonoPreview(); renderMonoBefore(); });
+// press-and-hold the preview to peek at the pre-edit baseline (a quick tap never flashes it)
+const moStage = $("#moprev-stage");
+moStage.addEventListener("pointerdown", (e) => {
+  if (!monoPrevUrl || !monoBeforeUrl || $("#moprev-img").classList.contains("broken")) return;
+  moPeekAt = { x: e.clientX, y: e.clientY };
+  try { moStage.setPointerCapture(e.pointerId); } catch (_) {}
+  clearTimeout(moPeekTimer);
+  moPeekTimer = setTimeout(() => { moPeeking = true; monoModal.querySelector(".dprev-wrap").classList.add("peek"); }, MO_PEEK_HOLD_MS);
+});
+moStage.addEventListener("pointermove", (e) => {
+  if (!moPeekAt || moPeeking) return;
+  if (Math.hypot(e.clientX - moPeekAt.x, e.clientY - moPeekAt.y) > MO_PEEK_MOVE_TOL) endMonoPeek();
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((ev) => moStage.addEventListener(ev, endMonoPeek));
+moStage.addEventListener("contextmenu", (e) => e.preventDefault());
+moStage.addEventListener("dragstart", (e) => e.preventDefault());
+$("#mono-reset").addEventListener("click", () => { MONO_KEYS.forEach((k) => (monoCfg[k] = clone(state.config.config[k]))); renderMonoControls(); runMonoPreview(); toast("Reset to saved"); });
+$("#mono-save").addEventListener("click", () => {
+  MONO_KEYS.forEach((k) => (draft[k] = clone(monoCfg[k])));
+  closeMono();
+  renderTab(activeTab);   // reflect Custom / matched preset in the dropdown
+  toast("Mono tone applied — press Save to keep it");
+});
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if (!monoModal.hidden) closeMono(); else if (!ditherModal.hidden) closeDither(); else closeSettings(); } });
