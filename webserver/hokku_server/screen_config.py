@@ -23,6 +23,11 @@ class ScreenConfig:
 
     orientation: Orientation = Orientation.LANDSCAPE
     filter_by_orientation: bool = False
+    #: User-set friendly name shown in the UI. "" means "use the frame's
+    #: announced screen_name (the provisioned name)". Purely cosmetic — the
+    #: screen is still keyed internally by its announced name, so renaming
+    #: never breaks telemetry, pins, or per-screen config.
+    display_name: str = ""
 
     def __post_init__(self) -> None:
         assert self.orientation in (Orientation.LANDSCAPE, Orientation.PORTRAIT), (
@@ -33,6 +38,7 @@ class ScreenConfig:
         return {
             "orientation": self.orientation,
             "filter_by_orientation": self.filter_by_orientation,
+            "display_name": self.display_name,
         }
 
     @classmethod
@@ -40,4 +46,5 @@ class ScreenConfig:
         return cls(
             orientation=Orientation(d["orientation"]),
             filter_by_orientation=bool(d.get("filter_by_orientation", False)),
+            display_name=str(d.get("display_name", "")),
         )

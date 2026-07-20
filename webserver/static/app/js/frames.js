@@ -72,7 +72,9 @@ function updateCard(el, name, sc) {
   fover.hidden = !(od > 0);
   if (od > 0) fover.textContent = `⚠ Overdue · ${overdueText(od)}`;
 
-  el.querySelector(".nm-text").textContent = name;
+  const nmText = el.querySelector(".nm-text");
+  nmText.textContent = sc.display_name || name;   // friendly name if set, else the provisioned name
+  nmText.title = sc.display_name ? `Provisioned name: ${name}` : "";
   el.querySelector(".ip").textContent = sc.ip || "—";
   el.querySelector(".fw").textContent = sc.state?.fw || "—";
   const pct = sc.battery_percent;
@@ -107,6 +109,7 @@ let menuFrame = null;
 function openFrameMenu(btn, name) {
   menuFrame = name;
   frameMenu.innerHTML =
+    '<button class="ctx-item" data-fact="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/></svg><span>Rename</span></button>' +
     '<button class="ctx-item" data-fact="diag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>View diagnostics</span></button>' +
     '<button class="ctx-item del" data-fact="remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg><span class="lbl">Remove frame</span></button>';
   frameMenu.hidden = false; frameScrim.hidden = false;
@@ -119,7 +122,8 @@ function closeFrameMenu() { frameMenu.hidden = true; frameScrim.hidden = true; m
 frameScrim.addEventListener("click", closeFrameMenu);
 frameMenu.addEventListener("click", (e) => {
   const b = e.target.closest("[data-fact]"); if (!b) return;
-  if (b.dataset.fact === "diag") { const n = menuFrame; closeFrameMenu(); openFrameDiag(n); }
+  if (b.dataset.fact === "rename") { const n = menuFrame; closeFrameMenu(); openRename(n); }
+  else if (b.dataset.fact === "diag") { const n = menuFrame; closeFrameMenu(); openFrameDiag(n); }
   else if (b.dataset.fact === "remove") armConfirm(b, () => { const n = menuFrame; closeFrameMenu(); removeFrame(n); }, "Confirm remove?");
 });
 
@@ -214,7 +218,39 @@ function removeFrame(name) {
   }).catch((err) => toast("Remove failed: " + err.message));
 }
 
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFrameMenu(); closeFrameDiag(); } });
+// ── rename dialog (sets a server-side display name; the provisioned name stays the internal key) ──
+const renameModal = $("#rename-modal");
+const rnInput = $("#rn-input");
+let renameFrame = null;
+function openRename(name) {
+  const sc = screens()[name]; if (!sc) return;
+  renameFrame = name;
+  $("#rn-dot").style.background = frameColor(name);
+  $("#rn-prov").textContent = name;
+  rnInput.value = sc.display_name || name;
+  renameModal.hidden = false;
+  setTimeout(() => { rnInput.focus(); rnInput.select(); }, 30);
+}
+function closeRename() { renameModal.hidden = true; renameFrame = null; }
+function commitRename(raw) {
+  const name = renameFrame; if (!name) return;
+  const dn = (raw || "").trim();
+  // empty, or identical to the provisioned name => clear the override (reset)
+  const send = (dn === "" || dn === name) ? "" : dn;
+  patchScreen(name, { display_name: send })
+    .then(() => {
+      mutate((st) => { if (st.screens[name]) st.screens[name].display_name = send || null; });
+      toast(send ? `Renamed to “${send}”` : `Reset to ${name}`);
+      closeRename();
+    })
+    .catch((err) => toast("Rename failed: " + err.message));
+}
+$("#rn-save").addEventListener("click", () => commitRename(rnInput.value));
+$("#rn-reset").addEventListener("click", () => commitRename(""));   // "" resets to provisioned
+rnInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(rnInput.value); } });
+renameModal.addEventListener("click", (e) => { if (e.target === renameModal || e.target.closest("[data-rn-close]")) closeRename(); });
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFrameMenu(); closeFrameDiag(); closeRename(); } });
 window.addEventListener("scroll", () => { if (!frameMenu.hidden) closeFrameMenu(); }, true);
 
 subscribe((what) => { if (what === "status") renderFrames(); });

@@ -62,6 +62,10 @@ class ScreenTelemetryEntry:
     frame_state: dict | None
     last_log: str
     last_log_at: float
+    #: Panel type the frame announced via X-Panel-Type (e.g. "mono16_e1003").
+    #: None = a classic Spectra frame that sends no panel-type header. Lets the
+    #: UI capability-gate mono-panel controls to frames that actually have one.
+    panel_type: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -80,6 +84,7 @@ class ScreenTelemetryEntry:
             frame_state=d.get("frame_state"),
             last_log=d.get("last_log", ""),
             last_log_at=float(d.get("last_log_at", 0.0)),
+            panel_type=d.get("panel_type"),
         )
 
 
@@ -248,11 +253,14 @@ class ServeScheduler:
         battery_mv: int | None,
         frame_state: dict | None,
         log: str | None = None,
+        panel_type: str | None = None,
     ) -> None:
         with self._lock:
             now = time.time()
             existing = self._screens.get(screen_name)
             req_count = (existing.request_count + 1) if existing else 1
+            # Sticky: keep the last announced panel type if this call omits it.
+            panel_type = panel_type or (existing.panel_type if existing else None)
 
             # Frame-state may carry a more reliable battery reading.
             if frame_state and isinstance(frame_state.get("bat_mv"), (int, float)):
@@ -300,6 +308,7 @@ class ServeScheduler:
                 else (existing.frame_state if existing else None),
                 last_log=last_log,
                 last_log_at=last_log_at,
+                panel_type=panel_type,
             )
             self._save()
 

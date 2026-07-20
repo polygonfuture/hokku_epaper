@@ -167,6 +167,7 @@ def create_app(
         screen_ip = request.remote_addr or "unknown"
         battery_mv = parse_battery_header(request.headers.get("X-Battery-mV"))
         frame_state = parse_frame_state(request.headers.get("X-Frame-State"))
+        panel_type = request.headers.get("X-Panel-Type") or None
 
         # POST body carries the firmware log (plain text); GET has no body.
         screen_log: str | None = None
@@ -203,6 +204,7 @@ def create_app(
                 battery_mv,
                 frame_state,
                 log=screen_log,
+                panel_type=panel_type,
             )
             if converting:
                 msg, status, label = "Converting images, try again shortly", 503, "Converting"
@@ -213,10 +215,9 @@ def create_app(
             logger.debug("%s: %s told to retry in %ss", label, screen_name, sleep_seconds)
             return resp
 
-        # E1003 mono clients announce themselves per-request; everything else
-        # (scheduling, telemetry, headers) is shared with the Spectra path.
-        # Minimal M2 hook — the general PanelProfile refactor is a later track.
-        panel_type = request.headers.get("X-Panel-Type", "")
+        # E1003 mono clients announce themselves per-request (panel_type read at
+        # the top); everything else (scheduling, telemetry, headers) is shared
+        # with the Spectra path. Minimal M2 hook — PanelProfile refactor later.
         if panel_type == mono_e1003.MONO_PANEL_TYPE:
             try:
                 _sharp = dict(
@@ -268,6 +269,7 @@ def create_app(
                 battery_mv,
                 frame_state,
                 log=screen_log,
+                panel_type=panel_type,
             )
             resp = make_response("Cached binary missing, try again shortly", 503)
             resp.headers["X-Sleep-Seconds"] = str(sleep_seconds)
@@ -282,6 +284,7 @@ def create_app(
             battery_mv,
             frame_state,
             log=screen_log,
+            panel_type=panel_type,
         )
         logger.debug("Serving: %s to %s (sleep_seconds=%s)", chosen, screen_name, sleep_seconds)
 
@@ -616,9 +619,20 @@ def create_app(
                 return jsonify({"error": "filter_by_orientation must be a boolean"}), 400
             updates["filter_by_orientation"] = val
 
+        if "display_name" in body:
+            val = body.get("display_name")
+            if val is None:
+                val = ""   # explicit null == reset to the provisioned name
+            if not isinstance(val, str):
+                return jsonify({"error": "display_name must be a string"}), 400
+            updates["display_name"] = val.strip()[:64]
+
         if updates:
             state.scheduler.set_screen_config(name, replace(current, **updates))
-            state.manager.sync()
+            # display_name is cosmetic; only re-sync when a render-affecting
+            # field (orientation / filter) changed.
+            if "orientation" in updates or "filter_by_orientation" in updates:
+                state.manager.sync()
         return jsonify({"ok": True})
 
     @app.route("/hokku/api/screens/<string:name>/show_next", methods=["POST", "DELETE"])
@@ -753,6 +767,8 @@ def create_app(
                 ),
                 "next_update_at": next_update_at,
                 "state": t.frame_state,
+                "panel_type": t.panel_type,
+                "display_name": scfg.display_name or None,
                 "orientation": scfg.orientation,
                 "filter_by_orientation": scfg.filter_by_orientation,
                 "next_override": scheduler.peek_next_for_screen(sname),

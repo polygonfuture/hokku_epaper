@@ -470,6 +470,15 @@
   .fdiag-ip { margin-left: 6px; font-size: .74rem; color: var(--faint); }
   .fdiag-head .detail-close { position: static; margin-left: auto; }
   #server-modal .fdiag-card { background: var(--bg); }   /* match the main app background, not the elevated tone */
+
+  /* ── rename frame dialog ── */
+  .rn-card { width: min(420px, calc(100vw - 32px)); }
+  .rn-card .fdiag-body { padding: 18px; }
+  .rn-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 1rem; padding: 11px 13px; border: 1px solid var(--hair); border-radius: 10px; background: var(--bg); color: var(--text); }
+  .rn-input::placeholder { color: var(--dim); }
+  .rn-input:focus { outline: none; border-color: var(--hair-2); }
+  .rn-hint { margin: 12px 2px 0; font-size: .8rem; color: var(--dim); line-height: 1.45; }
+  .rn-hint .mono { color: var(--text); }
   #server-modal .sdot { width: 9px; height: 9px; border-radius: 50%; background: var(--online); box-shadow: 0 0 8px color-mix(in srgb, var(--online) 65%, transparent); flex: none; }
   #server-modal .fdiag-title { font-family: var(--mono); }
   /* minimalist chunked key:value sections (no pills — same language as the drawer) */
