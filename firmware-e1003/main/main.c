@@ -902,16 +902,13 @@ static bool perform_refresh(const char *wake_label, int64_t boot_time_us)
     uint8_t *img = NULL;
 
     if (!wifi_connect()) {
-        ESP_LOGE(TAG, "WiFi connect failed");
-        char wifi_err_msg[256];
-        snprintf(wifi_err_msg, sizeof(wifi_err_msg),
-                 "WiFi connect failed.\n"
-                 "\n"
-                 "Will retry in %d s.\n"
-                 "Press button to\n"
-                 "try again now.",
+        /* Silent-keep: leave the last photo on the glass instead of drawing an
+         * error card — a transient WiFi blip shouldn't wipe the user's photo.
+         * The server notices the missed check-in and surfaces "offline" there.
+         * (A richer on-device diagnostics/status-page path is planned later,
+         * once the server-side features land.) */
+        ESP_LOGE(TAG, "WiFi connect failed — keeping last photo, retry in %d s",
                  REFRESH_RETRY_SECONDS);
-        display_message(wifi_err_msg);
         schedule_retry_in(REFRESH_RETRY_SECONDS, "wifi_connect failed");
         log_level_apply(usb_host_present());
         return false;
@@ -934,32 +931,15 @@ static bool perform_refresh(const char *wake_label, int64_t boot_time_us)
     }
 
     if (!img) {
+        /* Silent-keep (see wifi_connect above): no error card on the glass —
+         * keep the last photo and just schedule a retry. */
         if (http_status == 503 && sleep_seconds > 0) {
-            if (sleep_seconds > SERVER_BUSY_DISPLAY_THRESHOLD_S) {
-                char msg[128];
-                snprintf(msg, sizeof(msg),
-                         "Server not ready.\n"
-                         "\n"
-                         "Retrying in %d s.\n"
-                         "Press reset to try\n"
-                         "again now.",
-                         (int)sleep_seconds);
-                display_message(msg);
-            }
+            ESP_LOGW(TAG, "server busy (503) — keeping last photo, retry in %d s",
+                     (int)sleep_seconds);
             schedule_retry_in((int)sleep_seconds, "server busy (503)");
         } else {
-            char msg[384];
-            snprintf(msg, sizeof(msg),
-                     "Image download failed.\n"
-                     "\n"
-                     "Tried to connect to:\n"
-                     "%s\n"
-                     "\n"
-                     "Will retry in %d s.\n"
-                     "Press reset to try\n"
-                     "again now.",
+            ESP_LOGE(TAG, "download failed (%s) — keeping last photo, retry in %d s",
                      config.image_url, REFRESH_RETRY_SECONDS);
-            display_message(msg);
             schedule_retry_in(REFRESH_RETRY_SECONDS, "download failed");
         }
         log_level_apply(usb_host_present());
