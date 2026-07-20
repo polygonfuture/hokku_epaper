@@ -36,6 +36,7 @@ from PIL import Image, UnidentifiedImageError
 from pillow_heif import register_heif_opener
 from werkzeug.utils import secure_filename
 
+from hokku_server import mono_e1003
 from hokku_server.app_config import AppConfig
 from hokku_server.app_state import AppState
 from hokku_server.display import FULL_W, PANEL_H, TOTAL_BYTES, VISUAL_H, VISUAL_W
@@ -135,6 +136,10 @@ def _busy_retry_seconds(config: AppConfig) -> int:
     return min(300, calculate_sleep_seconds(config))
 
 
+# Diagnostic A/B toggle state (mono_e1003_ab_toggle): flips each E1003 refresh.
+_AB_TOGGLE: dict[str, bool] = {}
+
+
 def create_app(
     state: AppState,
     *,
@@ -176,6 +181,15 @@ def create_app(
         # the orientation filter — both orientations are rendered for every OK image.
         forced = scheduler.peek_next_for_screen(screen_name)
         chosen = forced if forced is not None else scheduler.pick_next(orientation=pick_orientation)
+        # A/B-toggle diagnostic pins the image so each refresh swaps only the
+        # tone treatment (A<->B), not the photo. Pins the first image served.
+        if config.mono_e1003_ab_toggle:
+            if _AB_TOGGLE.get("image"):
+                chosen = _AB_TOGGLE["image"]
+            elif chosen is not None:
+                _AB_TOGGLE["image"] = chosen
+        else:
+            _AB_TOGGLE.pop("image", None)
         sleep_seconds = calculate_sleep_seconds(config) if chosen else _busy_retry_seconds(config)
 
         if chosen is None:
@@ -199,7 +213,50 @@ def create_app(
             logger.debug("%s: %s told to retry in %ss", label, screen_name, sleep_seconds)
             return resp
 
-        binary = manager.panel_bytes_for_orientation(chosen, cfg.orientation)
+        # E1003 mono clients announce themselves per-request; everything else
+        # (scheduling, telemetry, headers) is shared with the Spectra path.
+        # Minimal M2 hook — the general PanelProfile refactor is a later track.
+        panel_type = request.headers.get("X-Panel-Type", "")
+        if panel_type == mono_e1003.MONO_PANEL_TYPE:
+            try:
+                _sharp = dict(
+                    sharpen_radius=config.mono_e1003_sharpen_radius,
+                    sharpen_percent=config.mono_e1003_sharpen_amount,
+                    sharpen_threshold=config.mono_e1003_sharpen_threshold,
+                )
+                if config.mono_e1003_ab_toggle:
+                    # Each refresh alternates A (uniform 1.40) <-> B (measured).
+                    _AB_TOGGLE["measured"] = not _AB_TOGGLE.get("measured", False)
+                    meas = _AB_TOGGLE["measured"]
+                    binary = mono_e1003.render_mono_bin(
+                        manager.original_path(chosen),
+                        use_measured_ramp=meas,
+                        darken_gamma=config.mono_e1003_darken_gamma if meas else 1.40,
+                        shadow_lift=config.mono_e1003_shadow_lift,
+                        **_sharp,
+                    )
+                    logger.info("A/B toggle -> %s", "B (measured)" if meas else "A (uniform)")
+                elif config.mono_e1003_split_compare:
+                    binary = mono_e1003.render_split_compare(
+                        manager.original_path(chosen),
+                        gamma_a=1.40,
+                        gamma_b=config.mono_e1003_darken_gamma,
+                        shadow_lift=config.mono_e1003_shadow_lift,
+                        **_sharp,
+                    )
+                else:
+                    binary = mono_e1003.render_mono_bin(
+                        manager.original_path(chosen),
+                        use_measured_ramp=config.mono_e1003_use_measured_ramp,
+                        darken_gamma=config.mono_e1003_darken_gamma,
+                        shadow_lift=config.mono_e1003_shadow_lift,
+                        **_sharp,
+                    )
+            except Exception:
+                logger.exception("mono16_e1003 render failed for %s", chosen)
+                binary = None
+        else:
+            binary = manager.panel_bytes_for_orientation(chosen, cfg.orientation)
         if binary is None:
             # Cache missing (not yet rendered for this orientation) — tell screen to retry.
             sleep_seconds = _busy_retry_seconds(config)

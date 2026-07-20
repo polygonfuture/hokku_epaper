@@ -116,6 +116,36 @@ class AppConfig:
         default_factory=lambda: PRESET_IMAGE_CONFIGS["atkinson_hue_aware"]
     )
 
+    #: E1003 monochrome panel — pre-dither sharpening (global default; a
+    #: per-image override comes later). Kept as plain AppConfig fields, separate
+    #: from the Spectra ``prepare_usm_*`` knobs: the mono and color pipelines are
+    #: distinct and tuned to different values, and an image can go to both panels.
+    #: Defaults are the on-glass-tuned values from mono_e1003.py. radius = halo
+    #: WIDTH (keep small ~1.2), amount = STRENGTH (can run high at a small radius).
+    mono_e1003_sharpen_radius: float = 1.2
+    mono_e1003_sharpen_amount: int = 170
+    mono_e1003_sharpen_threshold: int = 2
+    #: Dither palette: False = uniform sRGB steps (eye-tuned default); True = this
+    #: unit's measured level reflectances (faithful tone). darken_gamma is the
+    #: midtone-darkening clamp — re-tune it when the measured ramp is on.
+    #: Both are hot-reloadable so the two tunes can be A/B'd on glass.
+    mono_e1003_use_measured_ramp: bool = False
+    mono_e1003_darken_gamma: float = 1.40
+    #: Split-screen A/B diagnostic: left half = uniform ramp (γ 1.40), right half
+    #: = measured ramp + envelope (γ = mono_e1003_darken_gamma). For on-glass tone
+    #: comparison; leave False for normal rendering.
+    mono_e1003_split_compare: bool = False
+    #: A/B toggle diagnostic: when true, each E1003 refresh ALTERNATES between
+    #: Version A (uniform, γ1.40) and Version B (measured + envelope, γ =
+    #: mono_e1003_darken_gamma) — so the physical refresh button swaps the two on
+    #: the glass. Overrides split_compare. Leave False for normal rendering.
+    mono_e1003_ab_toggle: bool = False
+    #: Measured-ramp only: extra lift of the envelope's black target above the
+    #: panel's physical floor (0.143). 0 = deepest tones map to level 0 (solid
+    #: black, can look flat/crushed); raising it maps them to level 1-2 so the
+    #: darkest shadows keep dither detail (less crushed, slightly grayer black).
+    mono_e1003_shadow_lift: float = 0.0
+
     #: mDNS / Bonjour hostname (the part before ``.local``).
     #: The server advertises itself as ``<mdns_hostname>.local`` on the LAN.
     #: Empty string disables mDNS advertisement entirely.

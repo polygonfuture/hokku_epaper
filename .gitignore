@@ -35,3 +35,11 @@ webserver/debian/*.substvars
 # Releases
 firmware/release/
 firmware/test/host/Testing/Temporary/CTestCostData.txt
+
+# Stray calibration/test images dropped in the repo root (never committed)
+*.DNG
+*.dng
+/*.JPG
+/e1003-firmware-photo.jpg
+/sensecraft-hmi-firmware-photo.jpg
+/IMG_*.jpg
