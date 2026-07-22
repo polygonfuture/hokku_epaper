@@ -12,6 +12,7 @@
   "debug_fast_refresh": false,
   "auto_clear_cache": false,
   "crop_to_fill_threshold": 0.10,
+  "auto_rotate_fit": false,
   "image_worker_thread_count": 0,
   "image_config_default": {
     "dither": {
@@ -60,6 +61,25 @@
   "mono_e1003_midtone": 1.0,
   "mono_e1003_highlights": 0.0,
   "mono_e1003_shadows": 0.0,
+  "mono_e1003_profile": "faithful",
+  "mono_e1003_sig_enabled": true,
+  "mono_e1003_sig_contrast": 0.735,
+  "mono_e1003_sig_skew": 1.0,
+  "mono_e1003_sig_white": 100.0,
+  "mono_e1003_sig_black": 0.7634,
+  "mono_e1003_lc_enabled": true,
+  "mono_e1003_lc_detail": 1.39,
+  "mono_e1003_lc_highlights": 0.5,
+  "mono_e1003_lc_shadows": 0.5,
+  "mono_e1003_lc_midtone": 0.5,
+  "mono_e1003_basic_enabled": true,
+  "mono_e1003_basic_exposure": 0.0,
+  "mono_e1003_basic_contrast": 0.0,
+  "mono_e1003_basic_highlights": 0.0,
+  "mono_e1003_basic_shadows": 0.0,
+  "mono_e1003_basic_whites": 0.0,
+  "mono_e1003_basic_blacks": 0.0,
+  "mono_e1003_basic_clahe": 0.0,
   "image_config_bw": {
     "dither": {
       "algorithm": "floyd_steinberg",

@@ -37,6 +37,15 @@ if TYPE_CHECKING:
     pass
 
 
+#: When auto-rotate & fit is OFF and the photo's orientation matches the content
+#: canvas, cover-crop (fill) instead of letterboxing only if the aspect mismatch is
+#: at or below this fraction; otherwise letterbox. Mirrors mono_e1003.MAX_COVER_CROP_FRAC
+#: so both pipelines make the same fill-vs-letterbox call. (Orientation MISMATCH in OFF
+#: is handled by sizing the working canvas to the CONTENT orientation and cover-filling,
+#: which fills without bars regardless of this threshold.)
+MAX_COVER_CROP_FRAC = 0.12
+
+
 def transform_bboxes_to_canvas_norm(
     bboxes_norm: tuple[BoundingBox, ...] | None,
     orig_w: int,
@@ -279,6 +288,7 @@ class AbstractImageRenderer(ABC):
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
+        auto_rotate: bool = False,
     ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
         """Fit-or-crop → PIL enhancements → rotate.
 
@@ -309,20 +319,70 @@ class AbstractImageRenderer(ABC):
                     or None
                 )
 
-        portrait = orientation == "portrait"
-        visible_w, visible_h = (canvas_w, canvas_h) if portrait else (canvas_h, canvas_w)
-
+        # ── Framing decision (self-contained; the future frame_decision() body) ──
+        # Mirrors the mono reference (_fit_gray_to_panel / _mono_content_portrait,
+        # mono_e1003.py:336-394). Decides the CONTENT orientation of the working canvas
+        # and whether to cover-fill. Extract-to-shared later — see MAX_COVER_CROP_FRAC.
+        frame_portrait = orientation == "portrait"
         src_w, src_h = img.size
+        src_portrait = src_h > src_w
+        has_manual_crop = crop_rect is not None or bool(rotation_quarters)
+
+        # content orientation: ON follows the FRAME; OFF keeps the CONTENT's own
+        # orientation. `img` has ALREADY been cropped above when a manual crop is present,
+        # so src_portrait reflects the CROP's target orientation — a portrait crop stays
+        # portrait (laid sideways to fill a landscape frame in OFF), never force-flattened
+        # to the frame. (The old code force-set frame orientation on any manual crop, which
+        # cover-cropped a portrait-cropped photo upright into landscape = the auto-rotate-
+        # and-fill bug.)
+        content_portrait = frame_portrait if auto_rotate else src_portrait
+
+        # Working canvas sized to the CONTENT orientation. The two valid shapes are the
+        # canvas dims in either order — (short, long) is portrait, (long, short) is
+        # landscape — chosen by content orientation, NOT by which of canvas_w/canvas_h is
+        # larger (the real panel is portrait-shaped, but callers/tests may pass either
+        # order). The final rotate below maps a landscape working canvas into the panel
+        # buffer, so the output array stays (canvas_h, canvas_w) either way. A content
+        # canvas whose orientation differs from the frame is what makes an OFF
+        # orientation-MISMATCH FILL instead of letterboxing.
+        long_side, short_side = max(canvas_w, canvas_h), min(canvas_w, canvas_h)
+        visible_w, visible_h = (
+            (short_side, long_side) if content_portrait else (long_side, short_side)
+        )
+        # The physical panel array is (canvas_h, canvas_w); a working canvas that is not
+        # already in that (visible_h, visible_w) == (canvas_h, canvas_w) arrangement needs
+        # the final -90 rotate to land in the buffer. Derive the rotate flag from shapes so
+        # it is correct for either canvas-arg order.
+        needs_final_rotate = (visible_w, visible_h) != (canvas_w, canvas_h)
+
         scale_fit = min(visible_w / src_w, visible_h / src_h)
         scale_cover = max(visible_w / src_w, visible_h / src_h)
         zoom_ratio = scale_cover / scale_fit - 1.0
+
+        # Does the working (content) canvas orientation differ from the photo's? True only
+        # when auto-rotate reframes a mismatched photo to the frame orientation. In that
+        # case the photo is being deliberately reshaped to fill, so cover-crop against
+        # MAX_COVER_CROP_FRAC (mirrors mono). When they match (the common OFF path,
+        # including OFF orientation-mismatch where content_portrait follows the photo),
+        # the original letterbox-vs-cover logic is preserved UNCHANGED.
+        content_matches_photo = content_portrait == src_portrait
+        cont_aspect = visible_w / visible_h
+        img_aspect = src_w / src_h
+        reframe_small_crop = (not content_matches_photo) and (
+            (1.0 - min(img_aspect, cont_aspect) / max(img_aspect, cont_aspect))
+            <= MAX_COVER_CROP_FRAC
+        )
 
         # A manual crop from the editor already frames the image to the panel aspect, so
         # it must FILL the panel (cover) — never letterbox. Fitting an ~exact-aspect crop
         # left a 1px white line at an edge: int() floors the fit size 1px short of the
         # panel, and the shortfall is white padding forced to white ink. crop_rect ⇒ cover.
-        use_cover = crop_rect is not None or (
-            crop_to_fill_threshold > 0.0 and zoom_ratio <= crop_to_fill_threshold
+        # auto_rotate also fills (it reframes to the panel orientation to avoid bars).
+        use_cover = (
+            crop_rect is not None
+            or auto_rotate
+            or reframe_small_crop
+            or (crop_to_fill_threshold > 0.0 and zoom_ratio <= crop_to_fill_threshold)
         )
 
         keepout_canvas: list[tuple[int, int, int, int]] = []
@@ -384,7 +444,12 @@ class AbstractImageRenderer(ABC):
 
         composed = _apply_prepare_enhancements(composed, cfg, keepout_canvas or None)
 
-        if not portrait:
+        # Rotate the working canvas into the physical panel buffer when it is not already
+        # in the buffer's (canvas_h, canvas_w) arrangement (see needs_final_rotate above).
+        # Gated on shapes, not the frame — so an OFF orientation-mismatch (e.g. portrait
+        # photo, landscape frame) keeps its content-shaped canvas, fills, and the user
+        # turns the frame (mirrors the mono pipeline).
+        if needs_final_rotate:
             composed = composed.rotate(-90, expand=True)
             padding_mask = np.rot90(padding_mask, k=3)
 
@@ -408,6 +473,7 @@ class AbstractImageRenderer(ABC):
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
+        auto_rotate: bool = False,
     ) -> NDArray[np.uint8]:
         """Render to palette indices.
 
@@ -427,6 +493,7 @@ class AbstractImageRenderer(ABC):
         *,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
+        auto_rotate: bool = False,
     ) -> bytes:
         """Full-resolution panel → wire bytes."""
         idx = self.render_indices(
@@ -440,6 +507,7 @@ class AbstractImageRenderer(ABC):
             clahe_keepout_bboxes_norm=clahe_keepout_bboxes_norm,
             rotation_quarters=rotation_quarters,
             crop_rect=crop_rect,
+            auto_rotate=auto_rotate,
         )
         return indices_to_panel_bytes(idx)
 

@@ -256,7 +256,7 @@
 <div class="sheet-overlay" id="mono-modal" hidden>
   <div class="dither-card" role="dialog" aria-modal="true" aria-label="E1003 mono tone editor">
     <div class="set-head">
-      <h2 id="mono-title">Custom mono tone</h2>
+      <h2 id="mono-title">Tone Preset Editor — Custom E1003 Profile</h2>
       <span class="sp"></span>
       <button class="detail-close" data-mono-close aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -307,13 +307,36 @@
       </div>
     </div>
     <div class="more-menu" id="moreMenu" hidden>
-      <div class="mm-sec">Pipeline preset</div>
-      <button class="mm-item" data-preset="floyd_steinberg_hue_aware">Default</button>
-      <button class="mm-item" data-preset="atkinson_hue_aware">Face</button>
-      <button class="mm-item" data-preset="floyd_steinberg_bw">B&amp;W</button>
-      <div class="mm-div"></div>
-      <button class="mm-item" id="mmAuto">↺ Auto (best-guess)</button>
-      <button class="mm-item" id="mmReset">Reset all</button>
+      <!-- Colour (Spectra 6) preset section — shown while editing the Color appearance -->
+      <div class="mm-grp" id="mmColorGrp">
+        <div class="mm-sec">Pipeline preset</div>
+        <button class="mm-item" data-preset="floyd_steinberg_hue_aware">Default</button>
+        <button class="mm-item" data-preset="atkinson_hue_aware">Face</button>
+        <button class="mm-item" data-preset="floyd_steinberg_bw">B&amp;W</button>
+        <div class="mm-div"></div>
+        <button class="mm-item" id="mmAuto">↺ Auto (best-guess)</button>
+        <button class="mm-item" id="mmReset">Reset all</button>
+      </div>
+      <!-- E1003 mono tone-preset section — shown while editing the E1003 Mono appearance.
+           Presets stamp their dtcore knob values into the editable Custom controls. -->
+      <div class="mm-grp" id="mmMonoGrp" hidden>
+        <div class="mm-sec">Tone preset</div>
+        <button class="mm-item" data-mono-preset="bw_contrast">B&amp;W Contrast</button>
+        <button class="mm-item" data-mono-preset="faithful">Faithful (approx.)</button>
+        <div class="mm-div"></div>
+        <button class="mm-item" id="mmMonoReset">↺ Reset to defaults</button>
+      </div>
+    </div>
+    <!-- "Editing for" appearance switch (Color · Spectra 6 / E1003 Mono). Shown only
+         when a mono panel is registered; the mono preview renders grayscale = the mode
+         signal. Each appearance stores its own values (colour = edit_image_config,
+         mono = edit_mono). Wired in editor.js. -->
+    <div class="ed-appearance" id="edAppearance" hidden>
+      <span class="app-lab">Editing for</span>
+      <div class="app-seg" id="appSeg" role="group" aria-label="Editing for">
+        <button data-app="color" aria-pressed="true">Color · Spectra&nbsp;6</button>
+        <button data-app="mono" aria-pressed="false">E1003 Mono</button>
+      </div>
     </div>
     <!-- classifier auto-decision: which pipeline the server picked (B&W / Face / Default),
          so the starting point is visible. Set by editor.js from suggested_config. -->
@@ -338,6 +361,11 @@
           <div class="p-title" id="pTitle"><span id="pTitleText">Tonal</span>
             <button class="pt-reset" id="pReset">Reset group</button></div>
           <div class="crop-panel" id="cropPanel" hidden>
+            <!-- E1003 mono crop follow/fork state (shown only in the Mono appearance) -->
+            <div class="mono-crop-chip" id="monoCropChip" hidden>
+              <span class="mcc-state" id="mccState"></span>
+              <button class="mcc-action" id="mccAction"></button>
+            </div>
             <div class="cp-block">
               <span class="cp-lab">Aspect</span>
               <div class="aspect-seg" role="group" aria-label="Crop aspect">

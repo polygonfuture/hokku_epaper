@@ -294,6 +294,106 @@ def _calibration_bin(path: Path) -> bytes:
     return data
 
 
+def _dtcore_key(d):
+    """Hashable, rounded rep of the dtcore control dict for the render cache."""
+    if d is None:
+        return None
+    def norm(x):
+        if isinstance(x, dict):
+            return tuple(sorted((k, norm(v)) for k, v in x.items()))
+        if isinstance(x, bool):
+            return x
+        if isinstance(x, float):
+            return round(x, 4)
+        return x
+    return norm(d)
+
+
+def _norm_crop_rect(crop_rect):
+    """Validate a normalized (x, y, w, h) crop rect; None (or a degenerate rect) means
+    'no crop' (auto fit/letterbox). Coordinates are in the ROTATED frame, 0..1."""
+    if not crop_rect or len(crop_rect) != 4:
+        return None
+    try:
+        x, y, w, h = (float(v) for v in crop_rect)
+    except (TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    # a full-frame rect is a no-op crop — treat as None so it inherits the auto path
+    if x <= 0 and y <= 0 and w >= 1 and h >= 1:
+        return None
+    return (x, y, w, h)
+
+
+def _crop_key(crop_rect):
+    """Hashable rounded rep of a crop rect for the render cache."""
+    if crop_rect is None:
+        return None
+    return tuple(round(v, 4) for v in crop_rect)
+
+
+def _mono_content_portrait(src_portrait, rotation_quarters, crop_rect,
+                           auto_rotate=False, frame_portrait=False):
+    """Whether the render composed PORTRAIT content (rotated 90° into the landscape wire
+    buffer). Mirrors _fit_gray_to_panel's decision so previews can un-rotate to upright.
+
+    A manual crop/rotation always fills the landscape buffer directly (never rotated), so
+    it is never portrait-content. Otherwise ON follows the frame, OFF follows the photo."""
+    if crop_rect is not None or rotation_quarters:
+        return False
+    return bool(frame_portrait) if auto_rotate else bool(src_portrait)
+
+
+def _fit_gray_to_panel(gray, tw, th, rotation_quarters, crop_rect,
+                       auto_rotate=False, frame_portrait=False):
+    """Bring a grayscale source to the (tw, th) LANDSCAPE wire buffer (tw>=th).
+
+    The E1003 panel is physically landscape and the firmware does no rotation, so a
+    PORTRAIT-oriented result must be composed upright on a portrait content canvas and
+    then rotated 90° into the landscape wire buffer (view by turning the frame). This
+    mirrors the colour path's "portrait working-canvas → final rotate".
+
+    ``frame_portrait``: the frame's configured orientation (the E1003 mount).
+    ``auto_rotate`` policy (no manual crop):
+      • OFF (default): keep the PHOTO's own orientation; you turn the frame to match.
+      • ON: reframe (cover-crop) to the FRAME's orientation, upright; view at the mount.
+
+    Manual crop wins over the policy — the editor already framed to the panel aspect, so
+    apply its rotation+crop and cover-fill the landscape buffer directly."""
+    if crop_rect is not None or rotation_quarters:
+        from .image_abc import _apply_crop_rotation
+        gray = _apply_crop_rotation(gray, rotation_quarters, crop_rect)
+        return ImageOps.fit(gray, (tw, th), Image.Resampling.LANCZOS)
+
+    src_portrait = gray.height > gray.width
+    # content orientation: ON follows the FRAME; OFF follows the PHOTO
+    content_portrait = frame_portrait if auto_rotate else src_portrait
+    # content canvas: landscape = (tw, th); portrait = (th, tw) (rotated into the buffer)
+    cw, ch = (th, tw) if content_portrait else (tw, th)
+
+    if auto_rotate:
+        # reframe to the content orientation, upright — cover-crop to fill it.
+        content = ImageOps.fit(gray, (cw, ch), Image.Resampling.LANCZOS)
+    else:
+        # keep the photo's orientation: cover when the aspect mismatch is small, else
+        # letterbox on paper white (the legacy behaviour, now on the content canvas).
+        cont_aspect = cw / ch
+        img_aspect = gray.width / gray.height
+        crop_frac = 1.0 - min(img_aspect, cont_aspect) / max(img_aspect, cont_aspect)
+        if crop_frac <= MAX_COVER_CROP_FRAC:
+            content = ImageOps.fit(gray, (cw, ch), Image.Resampling.LANCZOS)
+        else:
+            content = ImageOps.contain(gray, (cw, ch), Image.Resampling.LANCZOS)
+
+    # portrait content is composed upright on a (th, tw) canvas — rotate 90° into the
+    # (tw, th) landscape wire buffer so the firmware displays it correctly when the
+    # frame is physically turned to portrait.
+    if content_portrait:
+        content = content.transpose(PORTRAIT_ROTATE)
+    return content
+
+
 def render_mono_bin(
     path: Path,
     *,
@@ -310,8 +410,20 @@ def render_mono_bin(
     midtone: float = 1.0,
     highlights: float = 0.0,
     shadows: float = 0.0,
+    dtcore: dict | None = None,
+    rotation_quarters: int = 0,
+    crop_rect: tuple[float, float, float, float] | None = None,
+    auto_rotate: bool = False,
+    frame_portrait: bool = False,
 ) -> bytes:
     """Render an original image file to E1003 wire bytes (cached).
+
+    When ``dtcore`` is given (the B&W Contrast / Custom profile), the tone stage
+    is the verified darktable+Lightroom port in :mod:`mono_tone` instead of the
+    legacy ramp path (which stays frozen as the "Faithful" preset). ``dtcore`` is
+    ``{"sigmoid": {...}, "local_contrast": {...}, "basic": {...}}`` (render_tone
+    kwargs); sharpening (Details) is the existing ``sharpen_*`` args, applied to
+    the toned content before the mat.
 
     Sharpening defaults to the module constants (the on-glass-tuned 1.2/170/2).
     ``use_measured_ramp`` picks the dither palette (uniform vs this unit's
@@ -335,6 +447,10 @@ def render_mono_bin(
     midtone = float(min(max(midtone, 0.5), 2.0))
     highlights = float(min(max(highlights, -0.5), 0.5))
     shadows = float(min(max(shadows, -0.5), 0.5))
+    rotation_quarters = int(rotation_quarters) % 4
+    crop_rect = _norm_crop_rect(crop_rect)
+    auto_rotate = bool(auto_rotate)
+    frame_portrait = bool(frame_portrait)
 
     st = path.stat()
     key = (
@@ -343,6 +459,8 @@ def render_mono_bin(
         use_measured_ramp, round(darken_gamma, 3), round(shadow_lift, 3),
         round(black_point, 3), round(white_point, 3), round(clarity, 2),
         round(contrast, 3), round(midtone, 3), round(highlights, 3), round(shadows, 3),
+        _dtcore_key(dtcore),
+        rotation_quarters, _crop_key(crop_rect), auto_rotate, frame_portrait,
     )
     with _cache_lock:
         cached = _cache.get(key)
@@ -355,20 +473,40 @@ def render_mono_bin(
         # tone/dither step (explicit product requirement).
         gray = img.convert("L")
 
-    if gray.height > gray.width:
-        gray = gray.transpose(PORTRAIT_ROTATE)
+    # Editor crop (if any) frames the image to the panel; else auto fit/letterbox.
+    gray = _fit_gray_to_panel(gray, MONO_W, MONO_H, rotation_quarters, crop_rect, auto_rotate, frame_portrait)
 
-    # Fill vs letterbox: cover-crop when the aspect mismatch is small (a
-    # sliver of crop beats bars), letterbox on paper-white when large — e.g.
-    # a square medium-format frame on the 4:3 panel would lose ~24% of its
-    # height to a cover-crop. The white mat reads naturally on e-ink.
-    panel_aspect = MONO_W / MONO_H
-    img_aspect = gray.width / gray.height
-    crop_frac = 1.0 - min(img_aspect, panel_aspect) / max(img_aspect, panel_aspect)
-    if crop_frac <= MAX_COVER_CROP_FRAC:
-        gray = ImageOps.fit(gray, (MONO_W, MONO_H), Image.Resampling.LANCZOS)
-    else:
-        gray = ImageOps.contain(gray, (MONO_W, MONO_H), Image.Resampling.LANCZOS)
+    # ── dtcore tone path (B&W Contrast / Custom): darktable sigmoid + local-laplacian
+    #    + Lightroom-matched Basic + CLAHE, run on the CONTENT (before the mat so the
+    #    local-contrast never haloes the letterbox edge). Faithful uses the legacy path below. ──
+    if dtcore is not None:
+        from . import mono_tone
+        toned = mono_tone.render_tone(
+            np.asarray(gray),
+            sigmoid=dtcore.get("sigmoid"),
+            local_contrast=dtcore.get("local_contrast"),
+            basic=dtcore.get("basic"),
+        )
+        out = Image.fromarray(toned, mode="L")
+        if sharpen_percent > 0:  # Details: acutance sharpening on the toned content
+            out = out.filter(ImageFilter.UnsharpMask(
+                radius=sharpen_radius, percent=sharpen_percent, threshold=sharpen_threshold))
+        if out.size != (MONO_W, MONO_H):
+            mat = Image.new("L", (MONO_W, MONO_H), 255)
+            mat.paste(out, ((MONO_W - out.width) // 2, (MONO_H - out.height) // 2))
+            out = mat
+        lin = _srgb_to_linear(np.asarray(out)).astype(np.float32)
+        idx = _fs_dither_linear(lin, _LEVELS_LINEAR_UNIFORM)
+        packed = ((idx[:, 0::2] << 4) | (idx[:, 1::2] & 0x0F)).astype(np.uint8)
+        data = packed.tobytes()
+        assert len(data) == MONO_BYTES, f"mono pack produced {len(data)} bytes"
+        with _cache_lock:
+            while len(_cache) >= _CACHE_MAX:
+                _cache.pop(next(iter(_cache)))
+            _cache[key] = data
+        logger.info("mono16_e1003 (dtcore) rendered: %s (%d bytes)", path.name, len(data))
+        return data
+
     # Black-point-only stretch. A full autocontrast pushed the image's natural
     # highlights (e.g. a light backdrop at ~83% tone) up to paper white, which
     # read as washed out next to SenseCraft's render — measured on-glass:
@@ -478,7 +616,9 @@ _LEVELS_SRGB_PERCEIVED = _linear_to_srgb(_LEVELS_LINEAR_UNIFORM)
 
 
 def mono_bin_to_image(data: bytes) -> Image.Image:
-    """Unpack wire bytes to a glass-accurate grayscale preview (tests/preview).
+    """Unpack wire bytes to a glass-accurate grayscale image, exactly as the panel shows
+    it (landscape 1872×1404). Portrait content reads SIDEWAYS here — use
+    ``mono_bin_to_upright_image`` for a legible UI preview.
 
     Levels decode through the uniform perceived ramp — validated by the user
     against the physical panel for both render palettes."""
@@ -489,3 +629,94 @@ def mono_bin_to_image(data: bytes) -> Image.Image:
     idx[:, 0::2] = packed >> 4
     idx[:, 1::2] = packed & 0x0F
     return Image.fromarray(_LEVELS_SRGB_PERCEIVED[idx], mode="L")
+
+
+def mono_bin_to_upright_image(data: bytes, content_portrait: bool) -> Image.Image:
+    """Decode wire bytes to an UPRIGHT, legible preview for the UI. When the render
+    composed portrait content (rotated 90° into the landscape buffer for a physically
+    turned frame), un-rotate it back so the thumbnail/preview reads upright as a portrait
+    image — instead of the sideways wire decode. Landscape content is returned as-is."""
+    img = mono_bin_to_image(data)
+    if content_portrait:
+        img = img.transpose(Image.Transpose.ROTATE_270)   # inverse of PORTRAIT_ROTATE
+    return img
+
+
+def render_mono_preview_image(
+    path: Path,
+    *,
+    dtcore: dict,
+    sharpen_radius: float = SHARPEN_RADIUS,
+    sharpen_percent: float = SHARPEN_PERCENT,
+    sharpen_threshold: int = SHARPEN_THRESHOLD,
+    max_side: int = 900,
+    rotation_quarters: int = 0,
+    crop_rect: tuple[float, float, float, float] | None = None,
+    auto_rotate: bool = False,
+    frame_portrait: bool = False,
+    upright: bool = False,
+) -> Image.Image:
+    """Fast PREVIEW-only render of the dtcore (B&W Contrast / Custom) tone path.
+
+    Runs the SAME pipeline as ``render_mono_bin``'s dtcore branch — fit/letterbox,
+    ``mono_tone.render_tone`` (sigmoid + local-laplacian + Basic + CLAHE), acutance
+    sharpen, dither, decode through the perceived ramp — but at ``max_side`` instead
+    of the native 1872x1404, so the expensive local-laplacian runs on ~4x fewer
+    pixels. Returns the glass-accurate L preview directly (no wire packing).
+
+    PREVIEW-ONLY: the frame-serve / save path never calls this — it uses
+    ``render_mono_bin`` at full res, byte-for-byte unchanged. A preview is allowed
+    to differ marginally from the save (local contrast / CLAHE scale with resolution),
+    exactly as it already does after the post-render LANCZOS downscale.
+    """
+    from . import mono_tone
+
+    rotation_quarters = int(rotation_quarters) % 4
+    crop_rect = _norm_crop_rect(crop_rect)
+    auto_rotate = bool(auto_rotate)
+    frame_portrait = bool(frame_portrait)
+
+    with Image.open(path) as img:
+        img = ImageOps.exif_transpose(img)
+        gray = img.convert("L")
+
+    # Preview canvas: the panel geometry scaled down so max(side) == max_side. The
+    # tone pipeline + letterbox mat all run at this reduced size. Editor crop (if any)
+    # frames the image to the panel; else the auto_rotate + frame-orientation policy does.
+    scale = min(1.0, max_side / float(MONO_W))
+    pw, ph = max(1, round(MONO_W * scale)), max(1, round(MONO_H * scale))
+    content = _fit_gray_to_panel(gray, pw, ph, rotation_quarters, crop_rect, auto_rotate, frame_portrait)
+
+    # Staged tone: the fit content is identified by (path, mtime, size, crop) so a
+    # Tone-page drag (basic_*/CLAHE only) reuses the cached sigmoid+local-laplacian result
+    # and re-runs just the cheap Basic/CLAHE tail. Crop is part of the identity so a
+    # different crop can't reuse a stale intermediate.
+    st = path.stat()
+    id_key = (str(path), st.st_mtime_ns, pw, ph, content.size, rotation_quarters, _crop_key(crop_rect), auto_rotate, frame_portrait)
+    toned = mono_tone.render_tone_staged(
+        np.asarray(content),
+        id_key=id_key,
+        sigmoid=dtcore.get("sigmoid"),
+        local_contrast=dtcore.get("local_contrast"),
+        basic=dtcore.get("basic"),
+    )
+    out = Image.fromarray(toned, mode="L")
+    sharpen_percent = int(min(max(sharpen_percent, 0), 400))
+    if sharpen_percent > 0:
+        out = out.filter(ImageFilter.UnsharpMask(
+            radius=float(min(max(sharpen_radius, 0.0), 5.0)),
+            percent=sharpen_percent, threshold=int(min(max(sharpen_threshold, 0), 255))))
+    if out.size != (pw, ph):
+        mat = Image.new("L", (pw, ph), 255)
+        mat.paste(out, ((pw - out.width) // 2, (ph - out.height) // 2))
+        out = mat
+    lin = _srgb_to_linear(np.asarray(out)).astype(np.float32)
+    idx = _fs_dither_linear(lin, _LEVELS_LINEAR_UNIFORM)
+    preview = Image.fromarray(_LEVELS_SRGB_PERCEIVED[idx], mode="L")
+    # For a legible UI preview, un-rotate portrait content (composed sideways into the
+    # landscape buffer) back to upright — so the editor shows the photo the right way up.
+    if upright:
+        src_portrait = gray.height > gray.width
+        if _mono_content_portrait(src_portrait, rotation_quarters, crop_rect, auto_rotate, frame_portrait):
+            preview = preview.transpose(Image.Transpose.ROTATE_270)
+    return preview

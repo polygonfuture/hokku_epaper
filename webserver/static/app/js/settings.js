@@ -177,6 +177,8 @@ function imageBody() {
     iGroup('<div class="iset-row"><span class="iset-lab">Zoom to fill</span><span class="range-val" id="imFillVal">' + fillPct + '%</span></div>' +
       `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="100" step="1" value="${fillPct}"></div>`,
       "Max zoom-in allowed to remove letterbox bars. 0% = always letterbox; higher crops more.") +
+    iGroup(iRow("Auto-rotate &amp; fit to frame", iTog("auto_rotate_fit", !!draft.auto_rotate_fit)),
+      "On: crop &amp; rotate every photo to fill its frame's orientation (a portrait on a landscape frame becomes an upright landscape crop). Off: photos keep their own orientation — off-orientation photos letterbox upright (colour) or need the frame physically turned (E1003 mono).") +
     resetBtnHTML()
   );
 }
@@ -185,6 +187,10 @@ function wireImage() {
   wirePreset("imPreset", "image_config_default", updDesc);
   const fill = $("#imFill"), fv = $("#imFillVal");
   fill.addEventListener("input", () => { fv.textContent = fill.value + "%"; draft.crop_to_fill_threshold = +fill.value / 100; });
+  // the toggle's data-toggle IS the draft key directly (no TKEY indirection here)
+  $$('[data-toggle="auto_rotate_fit"]').forEach((sw) => sw.addEventListener("click", () => {
+    const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on); draft.auto_rotate_fit = on;
+  }));
 }
 
 // ══ SERVER ══
@@ -286,35 +292,41 @@ const hasMonoPanel = () => Object.values(state.status?.screens || {}).some((s) =
 //  swapped because a decode bug showed the measured render as soft — fixed.)
 // no-op tone defaults shared by both presets — a preset is a full look, so its
 // tone knobs sit at neutral; touching any of them flips the dropdown to "Custom".
-const MONO_TONE_NOOP = {
-  mono_e1003_black_point: 0.0, mono_e1003_white_point: 0.0, mono_e1003_clarity: 0.0,
-  mono_e1003_contrast: 1.15, mono_e1003_midtone: 1.0, mono_e1003_highlights: 0.0, mono_e1003_shadows: 0.0,
-};
-const MONO_KEYS = ["mono_e1003_use_measured_ramp", "mono_e1003_darken_gamma", "mono_e1003_sharpen_amount", "mono_e1003_sharpen_radius", ...Object.keys(MONO_TONE_NOOP)];
-const MONO_PRESETS = {
-  faithful: { mono_e1003_use_measured_ramp: false, mono_e1003_darken_gamma: 1.40, mono_e1003_sharpen_amount: 170, mono_e1003_sharpen_radius: 1.2, ...MONO_TONE_NOOP },
-  punchy:   { mono_e1003_use_measured_ramp: true,  mono_e1003_darken_gamma: 1.05, mono_e1003_sharpen_amount: 170, mono_e1003_sharpen_radius: 1.2, ...MONO_TONE_NOOP },
-};
-const MONO_PRESET_LABELS = { faithful: "Faithful", punchy: "Punchy" };
-const monoPresetMatch = (src) => Object.keys(MONO_PRESETS).find((k) => MONO_KEYS.every((key) => deepEqual(src[key], MONO_PRESETS[k][key]))) || null;
-const applyMonoPreset = (key) => MONO_KEYS.forEach((k) => (draft[k] = clone(MONO_PRESETS[key][k])));
+// E1003 tone PROFILE selector. The dropdown only switches mono_e1003_profile —
+// it never overwrites the Custom control values (those persist independently):
+//   • Faithful    = the frozen legacy ramp render (never edited).
+//   • B&W Contrast = the fixed darktable+Lightroom-matched preset.
+//   • Custom       = the editable dtcore controls (opens the 3-page editor).
+const MONO_PROFILES = [["faithful", "Faithful"], ["bw_contrast", "B&W Contrast"], ["custom", "Custom…"]];
+// Config keys the mono section owns: the profile + the editable dtcore/sharpen
+// controls. Faithful's legacy ramp keys stay frozen in config and aren't touched.
+const MONO_KEYS = [
+  "mono_e1003_profile",
+  "mono_e1003_sig_enabled", "mono_e1003_sig_contrast", "mono_e1003_sig_skew", "mono_e1003_sig_white", "mono_e1003_sig_black",
+  "mono_e1003_lc_enabled", "mono_e1003_lc_detail", "mono_e1003_lc_highlights", "mono_e1003_lc_shadows", "mono_e1003_lc_midtone",
+  "mono_e1003_basic_enabled", "mono_e1003_basic_exposure", "mono_e1003_basic_contrast", "mono_e1003_basic_highlights",
+  "mono_e1003_basic_shadows", "mono_e1003_basic_whites", "mono_e1003_basic_blacks", "mono_e1003_basic_clahe",
+  "mono_e1003_sharpen_amount", "mono_e1003_sharpen_radius", "mono_e1003_sharpen_threshold",
+];
 
 function monoBody() {
-  const cur = monoPresetMatch(draft);
-  const opts = Object.keys(MONO_PRESETS).map((k) => `<option value="${k}"${k === cur ? " selected" : ""}>${MONO_PRESET_LABELS[k]}</option>`).join("");
-  const custom = cur ? "" : '<option value="custom" selected>Custom (edited)</option>';
+  const profile = draft.mono_e1003_profile || "faithful";
+  const opts = MONO_PROFILES.map(([v, l]) => `<option value="${v}"${v === profile ? " selected" : ""}>${l}</option>`).join("");
   return (
-    '<p class="set-desc">The panel-wide look for the 16-level monochrome E1003. Pick a preset, or open <b>Custom…</b> to tune the tone with a live preview of the actual panel render.</p>' +
-    iGroup(iRow("Tone preset",
-        `<span class="right"><select class="sel-input" id="moPreset">${custom}${opts}</select>` +
-        '<button class="mini-btn" data-mono-custom>Custom…</button></span>'),
-      "Faithful is the smooth, open look — gentle gradients, lighter, accurate (recommended). Punchy pushes contrast with deeper, crunchier blacks. Custom… opens the live editor.") +
+    '<p class="set-desc">The panel-wide look for the 16-level monochrome E1003. <b>Faithful</b> is the frozen classic render; <b>B&amp;W&nbsp;Contrast</b> is the darktable+Lightroom-matched preset; <b>Custom</b> opens the live 3-page editor.</p>' +
+    iGroup(iRow("Tone profile",
+        `<span class="right"><select class="sel-input" id="moPreset">${opts}</select>` +
+        '<button class="mini-btn" data-mono-custom>Edit custom…</button></span>'),
+      "Faithful never changes. B&W Contrast is a fixed filmic look. Custom is your own tuned settings — Edit custom… opens the editor (Tone · Advanced Local Contrast · Details) with a live panel preview.") +
     resetBtnHTML()
   );
 }
 function wireMono() {
   const sel = $("#moPreset");
-  sel.addEventListener("change", () => { if (sel.value === "custom") return; applyMonoPreset(sel.value); });
+  sel.addEventListener("change", () => {
+    draft.mono_e1003_profile = sel.value;
+    if (sel.value === "custom") openMono();
+  });
 }
 
 // ── settings shell ──
@@ -325,7 +337,7 @@ const SETTINGS = {
   refresh: { title: "Refresh Schedule", icon: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), body: refreshBody, wire: wireRefresh, keys: ["refresh_mode", "refresh_interval_minutes", "refresh_image_at_time", "refresh_active_start", "refresh_active_end"] },
   frames:  { title: "Frame Orientation", icon: svgIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>'), body: framesBody, wire: wireFrames, keys: [] },
   detect:  { title: "Smart Photo Detection", icon: svgIcon('<circle cx="9" cy="10" r="3"/><path d="M4 20a5 5 0 0 1 10 0"/><path d="M17 9h4M19 7v4"/>'), body: detectBody, wire: wireDetect, keys: ["classifier_bw_detect_enabled", "classifier_face_detect_enabled", "classifier_face_detect_clahe_keepout", "image_config_bw", "image_config_face"] },
-  image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold"] },
+  image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold", "auto_rotate_fit"] },
   mono:    { title: "E1003 Mono", icon: svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/><path d="M15 5v14"/>'), body: monoBody, wire: wireMono, keys: MONO_KEYS, gate: hasMonoPanel },
   server:  { title: "Server & Storage", icon: svgIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>'), body: serverBody, wire: wireServer, keys: ["poll_interval_seconds", "debug_fast_refresh", "auto_clear_cache", "mdns_hostname", "image_worker_thread_count"] },
 };
@@ -442,12 +454,17 @@ function renderDitherCats() {
 function renderDitherControls() {
   const ctrl = $("#dcontrols"), stage = DITHER_STAGES[ditherStage];
   ctrl.innerHTML = stage.knobs.map(ditherKnobHTML).join("");
-  ctrl.querySelectorAll(".dslider[data-knob]").forEach((sl) => sl.addEventListener("input", () => {
-    const key = sl.dataset.knob, v = +sl.value; setKnob(editCfg, key, v);
-    ctrl.querySelector(`[data-val="${key}"]`).textContent = v;
-    sl.closest(".dknob").classList.toggle("tweaked", v !== KNOB_DEFAULTS[key]);
-    schedulePreview();
-  }));
+  ctrl.querySelectorAll(".dslider[data-knob]").forEach((sl) => {
+    const key = sl.dataset.knob;
+    const apply = (v) => {
+      setKnob(editCfg, key, v); sl.value = v;
+      ctrl.querySelector(`[data-val="${key}"]`).textContent = v;
+      sl.closest(".dknob").classList.toggle("tweaked", v !== KNOB_DEFAULTS[key]);
+      schedulePreview();
+    };
+    sl.addEventListener("input", () => apply(+sl.value));
+    sl.addEventListener("dblclick", () => apply(KNOB_DEFAULTS[key]));   // double-click a slider to reset it to default
+  });
   ctrl.querySelectorAll(".dseg[data-knob]").forEach((seg) => seg.addEventListener("click", (e) => { const b = e.target.closest("[data-opt]"); if (!b) return; setKnob(editCfg, seg.dataset.knob, b.dataset.opt); seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); schedulePreview(); }));
   ctrl.querySelectorAll("select[data-knob]").forEach((se) => se.addEventListener("change", () => { setKnob(editCfg, se.dataset.knob, se.value); schedulePreview(); }));
   ctrl.querySelectorAll(".sw[data-knob]").forEach((sw) => sw.addEventListener("click", () => { const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on); setKnob(editCfg, sw.dataset.knob, on); schedulePreview(); }));
@@ -513,77 +530,110 @@ $("#dither-save").addEventListener("click", () => {
 // to the flat mono knobs. The preview is the real 16-level panel render (grayscale =
 // the unmissable "you're editing the mono look" signal). Same desktop-only rule. ══
 const monoModal = $("#mono-modal");
-let monoCfg = null, monoSample = null, monoPrevTimer = null, monoPrevCtrl = null, monoPrevUrl = null;
+let monoCfg = null, monoSample = null, monoPrevTimer = null, monoPrevCtrl = null, monoPrevUrl = null, monoPrevKey = null;
 // press-and-hold "before" peek: monoBaseCfg is the config the editor OPENED with
 // (your pre-edit baseline); its render is stacked over the live preview and shown
 // only while held. A quick tap must not flash it.
 let monoBaseCfg = null, monoBeforeUrl = null, monoBeforeCtrl = null;
 const MO_PEEK_HOLD_MS = 280, MO_PEEK_MOVE_TOL = 12;
 let moPeekTimer = null, moPeekAt = null, moPeeking = false;
-// The tone-control list (user-agreed). fmt: signed = ±0.00 centred knob, 2dp =
-// 1.15, int = 70, pct = 170%, px = 1.20 px. Every default is a no-op (see
-// MONO_TONE_NOOP) so the panel look is unchanged until a slider moves.
-const MONO_KNOBS = [
-  { key: "mono_e1003_black_point", label: "Black point · deepen ← → lift", min: -0.3, max: 0.3, step: 0.02, fmt: "signed", def: 0 },
-  { key: "mono_e1003_white_point", label: "White point · pull ← → brighten", min: -0.3, max: 0.3, step: 0.02, fmt: "signed", def: 0 },
-  { key: "mono_e1003_clarity", label: "Clarity · local contrast", min: 0, max: 100, step: 5, fmt: "int", def: 0 },
-  { key: "mono_e1003_contrast", label: "Contrast", min: 1.0, max: 1.8, step: 0.05, fmt: "2dp", def: 1.15 },
-  { key: "mono_e1003_midtone", label: "Midtone (gamma) · brighter ← → darker", min: 0.5, max: 2.0, step: 0.05, fmt: "2dp", def: 1.0 },
-  { key: "mono_e1003_highlights", label: "Highlights · recover ← → brighten", min: -0.5, max: 0.5, step: 0.05, fmt: "signed", def: 0 },
-  { key: "mono_e1003_shadows", label: "Shadows · deepen ← → lift", min: -0.5, max: 0.5, step: 0.05, fmt: "signed", def: 0 },
-  { key: "mono_e1003_sharpen_amount", label: "Sharpening", min: 0, max: 300, step: 5, fmt: "pct", def: 170 },
-  { key: "mono_e1003_sharpen_radius", label: "Sharpen radius", min: 0.2, max: 3.0, step: 0.05, fmt: "px", def: 1.2 },
+// ── Custom editor: control specs across 3 left-menu pages. Values are stored in the
+// engine's own units (basic tonals in [-1,1], exposure in EV, sigmoid/lc/clahe raw);
+// the fmt fns render them Lightroom/darktable-style. Defaults = the B&W Contrast
+// starting point (Basic neutral) so a fresh Custom equals the fixed preset. ──
+const moLR = (v) => (v > 0 ? "+" : "") + Math.round(v * 100);          // basic tonal: -1..1 shown ±100
+const moEV = (v) => (v > 0 ? "+" : "") + (+v).toFixed(1) + " EV";      // exposure
+const moP100 = (v) => Math.round(v * 100) + "%";                       // lc hi/sh: 0..2 -> %
+const moDetail = (v) => Math.round(v * 100 + 100) + "%";              // lc detail: darktable +100 offset
+const moPct = (v) => Math.round(v) + "%", moPx = (v) => (+v).toFixed(2) + " px", moInt = (v) => String(Math.round(v));
+const mo2 = (v) => (+v).toFixed(2), mo3 = (v) => (+v).toFixed(3), mo2pct = (v) => (+v).toFixed(2) + "%", mo4pct = (v) => (+v).toFixed(4) + "%";
+const moSk = (v) => (v > 0 ? "+" : "") + (+v).toFixed(2);
+const MONO_PAGES = [
+  { id: "tone", label: "Tone", hint: "Lightroom Basic", toggle: { key: "mono_e1003_basic_enabled", label: "Basic" }, knobs: [
+    { key: "mono_e1003_basic_exposure", label: "Exposure", min: -5, max: 5, step: 1 / 3, def: 0, neutral: 0, fmt: moEV },
+    { key: "mono_e1003_basic_contrast", label: "Contrast", min: -1, max: 1, step: 0.01, def: 0, neutral: 0, fmt: moLR },
+    { key: "mono_e1003_basic_highlights", label: "Highlights", min: -1, max: 1, step: 0.01, def: 0, neutral: 0, fmt: moLR },
+    { key: "mono_e1003_basic_shadows", label: "Shadows", min: -1, max: 1, step: 0.01, def: 0, neutral: 0, fmt: moLR },
+    { key: "mono_e1003_basic_whites", label: "Whites", min: -1, max: 1, step: 0.01, def: 0, neutral: 0, fmt: moLR },
+    { key: "mono_e1003_basic_blacks", label: "Blacks", min: -1, max: 1, step: 0.01, def: 0, neutral: 0, fmt: moLR },
+    { key: "mono_e1003_basic_clahe", label: "Local contrast (CLAHE)", min: 0, max: 5, step: 0.25, def: 0, fmt: mo2 },
+  ] },
+  { id: "advanced", label: "Advanced Local Contrast", hint: "darktable sigmoid + local-laplacian", groups: [
+    { toggle: { key: "mono_e1003_sig_enabled", label: "Sigmoid" }, knobs: [
+      { key: "mono_e1003_sig_contrast", label: "Contrast", min: 0.7, max: 3, step: 0.001, def: 0.735, neutral: 1.5, fmt: mo3 },
+      { key: "mono_e1003_sig_skew", label: "Skew", min: -1, max: 1, step: 0.01, def: 1.0, neutral: 0, fmt: moSk },
+      { key: "mono_e1003_sig_white", label: "Target white", min: 50, max: 100, step: 0.1, def: 100, neutral: 100, fmt: mo2pct },
+      { key: "mono_e1003_sig_black", label: "Target black", min: 0, max: 5, step: 0.0001, def: 0.7634, neutral: 0, fmt: mo4pct },
+    ] },
+    { toggle: { key: "mono_e1003_lc_enabled", label: "Local contrast" }, knobs: [
+      { key: "mono_e1003_lc_detail", label: "Detail", min: -1, max: 4, step: 0.01, def: 1.39, neutral: 0.25, fmt: moDetail }, /* dt default 125% -> 0.25 */
+      { key: "mono_e1003_lc_highlights", label: "Highlights", min: 0, max: 2, step: 0.01, def: 0.5, neutral: 0.5, fmt: moP100 },
+      { key: "mono_e1003_lc_shadows", label: "Shadows", min: 0, max: 2, step: 0.01, def: 0.5, neutral: 0.5, fmt: moP100 },
+      { key: "mono_e1003_lc_midtone", label: "Midtone range", min: 0.001, max: 1, step: 0.005, def: 0.5, neutral: 0.5, fmt: mo3 },
+    ] },
+  ] },
+  { id: "details", label: "Details", hint: "Pre-dither sharpening", knobs: [
+    { key: "mono_e1003_sharpen_amount", label: "Sharpening", min: 0, max: 300, step: 5, def: 170, fmt: moPct },
+    { key: "mono_e1003_sharpen_radius", label: "Radius", min: 0.2, max: 3, step: 0.05, def: 1.2, fmt: moPx },
+    { key: "mono_e1003_sharpen_threshold", label: "Threshold", min: 0, max: 10, step: 1, def: 2, fmt: moInt },
+  ] },
 ];
-const MONO_KNOB_BY_KEY = Object.fromEntries(MONO_KNOBS.map((k) => [k.key, k]));
-const monoFmt = (spec, v) =>
-  spec.fmt === "signed" ? (v > 0 ? "+" : "") + (+v).toFixed(2)
-  : spec.fmt === "int" ? String(Math.round(v))
-  : spec.fmt === "pct" ? Math.round(v) + "%"
-  : spec.fmt === "px" ? (+v).toFixed(2) + " px"
-  : (+v).toFixed(2);
-function monoControlsHTML() {
-  const meas = !!monoCfg.mono_e1003_use_measured_ramp;
-  const knob = (spec) => {
-    const v = monoCfg[spec.key], tweaked = Math.abs(v - spec.def) > 1e-9;
-    return `<div class="dknob${tweaked ? " tweaked" : ""}"><div class="dknob-head"><span class="dknob-lab">${spec.label}</span><span class="dknob-val" data-val="${spec.key}">${monoFmt(spec, v)}</span></div>` +
-      `<div class="dtrack"><input type="range" class="dslider" data-knob="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${v}"></div></div>`;
-  };
-  return `<div class="dknob"><div class="dknob-head"><span class="dknob-lab">Tone rendering</span></div>` +
-      `<div class="dseg" data-knob="tone">` +
-        `<button data-opt="faithful"${!meas ? ' class="on"' : ""}>Faithful</button>` +
-        `<button data-opt="punchy"${meas ? ' class="on"' : ""}>Punchy</button></div></div>` +
-    MONO_KNOBS.map(knob).join("");
+const moKnobsOf = (p) => (p.knobs || []).concat(...(p.groups || []).map((g) => g.knobs));
+const MONO_KNOB_BY_KEY = Object.fromEntries(MONO_PAGES.flatMap(moKnobsOf).map((k) => [k.key, k]));
+let monoPage = "tone";
+function moKnobHTML(spec) {
+  const v = monoCfg[spec.key], tweaked = Math.abs(v - spec.def) > 1e-9;
+  // Detent marks each slider's HOME reference, not the geometric centre: the
+  // darktable factory default for the sigmoid/local-contrast sliders (contrast 1.5,
+  // detail 125%, ...), and the neutral 0 for the Lightroom Basic sliders. Rarely 50%.
+  // Omit the tick where no meaningful home exists (CLAHE, sharpening).
+  const hasDet = spec.neutral !== undefined;
+  const detPct = hasDet ? ((spec.neutral - spec.min) / (spec.max - spec.min)) * 100 : 0;
+  return `<div class="dknob${tweaked ? " tweaked" : ""}"><div class="dknob-head"><span class="dknob-lab">${spec.label}</span><span class="dknob-val" data-val="${spec.key}">${spec.fmt(v)}</span></div>` +
+    `<div class="dtrack${hasDet ? "" : " no-detent"}"${hasDet ? ` style="--det:${detPct.toFixed(2)}%"` : ""}><input type="range" class="dslider" data-knob="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${v}"></div></div>`;
+}
+const moToggleHTML = (tg) => `<label class="mono-toggle"><input type="checkbox" data-toggle="${tg.key}"${monoCfg[tg.key] ? " checked" : ""}><span>${tg.label}</span></label>`;
+function moPageHTML(page) {
+  if (page.groups) return page.groups.map((g) => `<div class="mono-group">${moToggleHTML(g.toggle)}${g.knobs.map(moKnobHTML).join("")}</div>`).join("");
+  return (page.toggle ? `<div class="mono-group">${moToggleHTML(page.toggle)}${(page.knobs || []).map(moKnobHTML).join("")}</div>` : (page.knobs || []).map(moKnobHTML).join(""));
 }
 function renderMonoControls() {
   const ctrl = $("#mocontrols");
-  ctrl.innerHTML = monoControlsHTML();
-  ctrl.querySelector('.dseg[data-knob="tone"]').addEventListener("click", (e) => {
-    const b = e.target.closest("[data-opt]"); if (!b) return;
-    monoCfg.mono_e1003_use_measured_ramp = b.dataset.opt === "punchy";
-    ctrl.querySelectorAll('.dseg[data-knob="tone"] button').forEach((x) => x.classList.toggle("on", x === b));
-    scheduleMonoPreview();
+  const page = MONO_PAGES.find((p) => p.id === monoPage) || MONO_PAGES[0];
+  ctrl.innerHTML =
+    '<div class="mono-menu">' + MONO_PAGES.map((p) => `<button class="mono-mbtn${p.id === monoPage ? " on" : ""}" data-page="${p.id}"><span>${p.label}</span><small>${p.hint}</small></button>`).join("") + "</div>" +
+    `<div class="mono-page">${moPageHTML(page)}</div>`;
+  ctrl.querySelectorAll(".mono-mbtn").forEach((b) => b.addEventListener("click", () => { monoPage = b.dataset.page; renderMonoControls(); }));
+  ctrl.querySelectorAll("[data-toggle]").forEach((c) => c.addEventListener("change", () => { monoCfg[c.dataset.toggle] = c.checked; scheduleMonoPreview(); }));
+  ctrl.querySelectorAll(".dslider[data-knob]").forEach((sl) => {
+    const spec = MONO_KNOB_BY_KEY[sl.dataset.knob];
+    const apply = (v) => {
+      monoCfg[spec.key] = v; sl.value = v;
+      ctrl.querySelector(`[data-val="${spec.key}"]`).textContent = spec.fmt(v);
+      sl.closest(".dknob").classList.toggle("tweaked", Math.abs(v - spec.def) > 1e-9);
+      scheduleMonoPreview();
+    };
+    // Magnetic detent: while dragging, pull the value to the slider's home (spec.neutral)
+    // when it lands within 2% of the track — so it visibly snaps at the tick mark.
+    const snap = (v) => {
+      if (spec.neutral === undefined) return v;
+      const band = (spec.max - spec.min) * 0.02;
+      return Math.abs(v - spec.neutral) <= band ? spec.neutral : v;
+    };
+    sl.addEventListener("input", () => apply(snap(+sl.value)));
+    sl.addEventListener("dblclick", () => apply(spec.def));   // double-click a slider to reset it to default
   });
-  ctrl.querySelectorAll(".dslider[data-knob]").forEach((sl) => sl.addEventListener("input", () => {
-    const spec = MONO_KNOB_BY_KEY[sl.dataset.knob], v = +sl.value;
-    monoCfg[spec.key] = v;
-    ctrl.querySelector(`[data-val="${spec.key}"]`).textContent = monoFmt(spec, v);
-    sl.closest(".dknob").classList.toggle("tweaked", Math.abs(v - spec.def) > 1e-9);
-    scheduleMonoPreview();
-  }));
 }
-// map the mono_e1003_* draft keys to the short knob names the preview endpoint reads
+// map the mono_e1003_* draft keys to the short flat keys the preview endpoint reads
+// (profile "custom" -> the backend builds the dtcore dict from these via _build_dtcore)
 const monoPayload = (cfg = monoCfg) => ({
-  use_measured_ramp: !!cfg.mono_e1003_use_measured_ramp,
-  darken_gamma: +cfg.mono_e1003_darken_gamma,
+  profile: "custom",
   sharpen_amount: +cfg.mono_e1003_sharpen_amount,
   sharpen_radius: +cfg.mono_e1003_sharpen_radius,
-  black_point: +cfg.mono_e1003_black_point,
-  white_point: +cfg.mono_e1003_white_point,
-  clarity: +cfg.mono_e1003_clarity,
-  contrast: +cfg.mono_e1003_contrast,
-  midtone: +cfg.mono_e1003_midtone,
-  highlights: +cfg.mono_e1003_highlights,
-  shadows: +cfg.mono_e1003_shadows,
+  sharpen_threshold: +cfg.mono_e1003_sharpen_threshold,
+  sig_enabled: !!cfg.mono_e1003_sig_enabled, sig_contrast: +cfg.mono_e1003_sig_contrast, sig_skew: +cfg.mono_e1003_sig_skew, sig_white: +cfg.mono_e1003_sig_white, sig_black: +cfg.mono_e1003_sig_black,
+  lc_enabled: !!cfg.mono_e1003_lc_enabled, lc_detail: +cfg.mono_e1003_lc_detail, lc_highlights: +cfg.mono_e1003_lc_highlights, lc_shadows: +cfg.mono_e1003_lc_shadows, lc_midtone: +cfg.mono_e1003_lc_midtone,
+  basic_enabled: !!cfg.mono_e1003_basic_enabled, basic_exposure: +cfg.mono_e1003_basic_exposure, basic_contrast: +cfg.mono_e1003_basic_contrast, basic_highlights: +cfg.mono_e1003_basic_highlights, basic_shadows: +cfg.mono_e1003_basic_shadows, basic_whites: +cfg.mono_e1003_basic_whites, basic_blacks: +cfg.mono_e1003_basic_blacks, basic_clahe: +cfg.mono_e1003_basic_clahe,
 });
 function renderMonoPicker() {
   const pics = ditherPhotos();
@@ -592,11 +642,18 @@ function renderMonoPicker() {
 function scheduleMonoPreview() { clearTimeout(monoPrevTimer); monoPrevTimer = setTimeout(runMonoPreview, 400); }
 async function runMonoPreview() {
   if (!monoSample) return;
+  // Dedupe: skip the round-trip when the effective payload is unchanged (detent snaps,
+  // dbl-click resets to the current value, re-opening the same sample). Keyed on the
+  // sample name + the exact payload we'd send.
+  const payload = monoPayload();
+  const key = monoSample.name + "|" + JSON.stringify(payload);
+  if (key === monoPrevKey && monoPrevUrl) return;
   if (monoPrevCtrl) monoPrevCtrl.abort();
   monoPrevCtrl = new AbortController();
   $("#moprev-stage").classList.add("busy");
   try {
-    const url = await monoPreview(monoSample.name, monoPayload(), monoPrevCtrl.signal);
+    const url = await monoPreview(monoSample.name, payload, monoPrevCtrl.signal);
+    monoPrevKey = key;
     if (monoPrevUrl) URL.revokeObjectURL(monoPrevUrl);
     monoPrevUrl = url;
     const img = $("#moprev-img"); img.classList.remove("broken"); img.src = url;
@@ -627,10 +684,13 @@ function endMonoPeek() {
 function openMono() {
   if (isMobileVp()) { toast("The mono tone editor is desktop-only."); return; }
   monoCfg = {}; MONO_KEYS.forEach((k) => (monoCfg[k] = clone(draft[k])));
+  monoCfg.mono_e1003_profile = "custom";   // opening the editor = editing the Custom profile
+  monoPage = "tone";                        // always land on the first page
   monoBaseCfg = clone(monoCfg);   // snapshot the pre-edit baseline for the hold-to-compare peek
   monoSample = ditherPhotos()[0] || null;
   renderMonoControls(); renderMonoPicker();
   $("#moprev-img").removeAttribute("src"); $("#moprev-before").removeAttribute("src");
+  monoPrevUrl = null; monoPrevKey = null;   // cleared img -> force a fresh render even if the payload repeats
   monoModal.hidden = false;
   if (monoSample) { runMonoPreview(); renderMonoBefore(); } else toast("Upload a photo to preview the mono look.");
 }
@@ -657,7 +717,7 @@ moStage.addEventListener("pointermove", (e) => {
 ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => moStage.addEventListener(ev, endMonoPeek));
 moStage.addEventListener("contextmenu", (e) => e.preventDefault());
 moStage.addEventListener("dragstart", (e) => e.preventDefault());
-$("#mono-reset").addEventListener("click", () => { MONO_KEYS.forEach((k) => (monoCfg[k] = clone(state.config.config[k]))); renderMonoControls(); runMonoPreview(); toast("Reset to saved"); });
+$("#mono-reset").addEventListener("click", () => { MONO_KEYS.forEach((k) => (monoCfg[k] = clone(state.config.config[k]))); monoCfg.mono_e1003_profile = "custom"; renderMonoControls(); runMonoPreview(); toast("Reset to saved"); });
 $("#mono-save").addEventListener("click", () => {
   MONO_KEYS.forEach((k) => (draft[k] = clone(monoCfg[k])));
   closeMono();

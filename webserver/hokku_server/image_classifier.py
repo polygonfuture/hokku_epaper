@@ -52,6 +52,8 @@ class ImageClassifierDecision:
     image_config: ImageConfig
     crop_to_fill_threshold: float
     clahe_keepout_bboxes: tuple[BoundingBox, ...] | None
+    #: Global auto-rotate & fit policy copied per-image (like crop_to_fill_threshold).
+    auto_rotate: bool = False
 
 
 class ImageClassifier:
@@ -96,6 +98,7 @@ class ImageClassifier:
             image_config=chosen,
             crop_to_fill_threshold=cfg.crop_to_fill_threshold,
             clahe_keepout_bboxes=keepout,
+            auto_rotate=bool(getattr(cfg, "auto_rotate_fit", False)),
         )
 
     def observations_for(self, sha1: str) -> Observations:

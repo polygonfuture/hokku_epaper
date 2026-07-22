@@ -28,6 +28,7 @@ def render_one(
     clahe_keepout_bboxes: tuple[dict, ...] | None = None,
     rotation_quarters: int = 0,
     crop_rect: tuple[float, float, float, float] | None = None,
+    auto_rotate: bool = False,
 ) -> tuple[bytes, bytes]:
     """Render one image inside a worker process.
 
@@ -93,6 +94,7 @@ def render_one(
             clahe_keepout_bboxes_norm=bboxes_norm,
             rotation_quarters=rotation_quarters,
             crop_rect=crop_rect,
+            auto_rotate=auto_rotate,
         )
     preview_bytes = preview_png_from_panel_bytes(panel_bytes, orientation)  # type: ignore[arg-type]
     return panel_bytes, preview_bytes

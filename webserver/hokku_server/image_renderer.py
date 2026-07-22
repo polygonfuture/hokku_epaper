@@ -404,6 +404,7 @@ class ImageRenderer(AbstractImageRenderer):
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
+        auto_rotate: bool = False,
     ) -> np.ndarray:
         arr, padding_mask = self._prepare_canvas(
             img,
@@ -416,6 +417,7 @@ class ImageRenderer(AbstractImageRenderer):
             clahe_keepout_bboxes_norm=clahe_keepout_bboxes_norm,
             rotation_quarters=rotation_quarters,
             crop_rect=crop_rect,
+            auto_rotate=auto_rotate,
         )
 
         sat_space = cfg.adaptive_saturate_space

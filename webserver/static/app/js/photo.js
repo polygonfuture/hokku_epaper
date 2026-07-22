@@ -6,7 +6,7 @@
 // (deferred), and the per-frame "Send to <frame>" list calls the M1 endpoint.
 
 import { state, subscribe, mutate } from "./state.js";
-import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, originalUrl } from "./api.js";
+import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, ditheredUrlMono, originalUrl } from "./api.js";
 import { $, $$, esc, toast, fmtBytes, fmtAgo, fmtUntil, frameColor } from "./ui.js";
 import { openEditor } from "./editor.js";
 
@@ -15,6 +15,18 @@ const gallery = $("#gallery");
 // ── live lookups from the store (single source of truth) ──
 const entryByName = (name) => (state.status?.upload_files || []).find((e) => e.name === name) || null;
 const screens = () => state.status?.screens || {};
+// friendly label for a frame: the server display name if set, else its provisioned
+// (firmware) name. The provisioned name stays the internal key (data-frame, endpoints).
+const frameLabel = (n) => screens()[n]?.display_name || n;
+// a photo on an E1003 (mono) frame previews as the E1003 render, not the colour dither
+const monoFrameOf = (name) => Object.values(screens()).find((s) => s.last_served === name && s.panel_type === "mono16_e1003") || null;
+const onMonoFrame = (name) => !!monoFrameOf(name);
+// portrait when the mono display shows content portrait (ON follows frame, OFF the photo)
+const monoDisplayPortrait = (e) => {
+  const fr = monoFrameOf(e.name); if (!fr) return false;
+  return state.config?.config?.auto_rotate_fit ? fr.orientation === "portrait" : e.effective_orientation === "portrait";
+};
+const framePreviewUrl = (e) => (onMonoFrame(e.name) ? ditheredUrlMono(e, monoDisplayPortrait(e)) : ditheredUrl(e));
 const arOf = (e) => (e.image_width && e.image_height ? e.image_width / e.image_height : 4 / 3);
 
 // which frames are showing / have queued this image (per-screen, computed as the server does)
@@ -56,7 +68,7 @@ function menuItemsHTML(entry, inDetail) {
     if (names.length >= 2) {
       s += '<div class="ctx-label">Send to a frame</div>';
       s += names.map((n) =>
-        `<button class="ctx-item frame" data-act="send" data-frame="${esc(n)}"><span class="fdot" style="--fc:${frameColor(n)}"></span><span>${esc(n)}</span></button>`).join("");
+        `<button class="ctx-item frame" data-act="send" data-frame="${esc(n)}"><span class="fdot" style="--fc:${frameColor(n)}"></span><span>${esc(frameLabel(n))}</span></button>`).join("");
     } else {
       s += actBtn("shownext", "send", "Show next");
     }
@@ -122,7 +134,7 @@ function openSheet(entry) {
     `<div class="ctx-menu">${menuItemsHTML(entry, false)}</div>`;
   const pv = ctxSheet.querySelector("img");
   pv.addEventListener("error", () => { pv.style.visibility = "hidden"; });
-  pv.src = entry.status === "ok" ? ditheredUrl(entry) : originalUrl(entry);
+  pv.src = entry.status === "ok" ? framePreviewUrl(entry) : originalUrl(entry);
   ctxEl._name = entry.name;
   ctxEl.hidden = false;
 }
@@ -194,7 +206,7 @@ function ondisplayHTML(name) {
     const t = queued
       ? (fmtUntil(sc.next_update_at) === "overdue" ? "overdue" : "in " + fmtUntil(sc.next_update_at))
       : fmtAgo(sc.last_seen);
-    return `<div class="orow${queued ? " queued" : ""}" style="--fc:${frameColor(f)}"><span class="d"></span><span class="fn">${esc(f)}</span><span class="t">${esc(t)}</span></div>`;
+    return `<div class="orow${queued ? " queued" : ""}" style="--fc:${frameColor(f)}"><span class="d"></span><span class="fn">${esc(sc.display_name || f)}</span><span class="t">${esc(t)}</span></div>`;
   }).join("");
   const show = showingFrames(name), next = queuedFrames(name);
   return (show.length ? `<div class="ondisplay"><div class="oh">On display</div>${rows(show, false)}</div>` : "")
@@ -276,7 +288,7 @@ function setDetailView(orig) {
   const entry = entryByName(detailEl._name); if (!entry) return;
   const img = detailEl.querySelector("#detail-img");
   img.classList.remove("broken");
-  img.src = orig ? originalUrl(entry) : ditheredUrl(entry);
+  img.src = orig ? originalUrl(entry) : framePreviewUrl(entry);
   detailEl._view = orig ? "orig" : "eink";
   // face boxes are normalized to the ORIGINAL image → only meaningful on that view.
   // Auto-show them on Original (so they're discoverable — the pill toggles them off);
@@ -322,7 +334,7 @@ detailEl.addEventListener("click", (e) => {
   }
   if (e.target.closest("#detail-img")) {
     const entry = entryByName(detailEl._name);
-    if (entry) window.open(detailEl._view === "orig" ? originalUrl(entry) : ditheredUrl(entry), "_blank", "noopener");
+    if (entry) window.open(detailEl._view === "orig" ? originalUrl(entry) : framePreviewUrl(entry), "_blank", "noopener");
     return;
   }
   const btn = e.target.closest(".ctx-item"); if (!btn) return;

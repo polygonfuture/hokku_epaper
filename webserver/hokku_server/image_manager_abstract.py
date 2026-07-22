@@ -87,6 +87,9 @@ def _decision_to_screen_image_config(
         clahe_keepout_bboxes=decision.clahe_keepout_bboxes,
         rotation_quarters=rotation_quarters,
         crop_rect=crop_rect,
+        # precedence: manual crop > auto_rotate > crop_to_fill. A manual crop already
+        # frames to the panel, so auto_rotate is suppressed when one is present.
+        auto_rotate=False if crop_rect else getattr(decision, "auto_rotate", False),
     )
 
 
@@ -382,6 +385,42 @@ class AbstractImageManager(ABC):
                 pass
             self._save_db()
 
+    def set_edit_mono(self, name: str, edit_mono: dict | None) -> None:
+        """Store the per-image E1003 mono tone override (or None to clear it).
+
+        Unlike ``commit_edit``, this does NOT touch the colour pipeline — no
+        PENDING flip, no slug/thumbnail invalidation. The mono panel renders
+        live per request (``serve_binary``), reading ``edit_mono`` there and
+        inheriting the panel-wide ``mono_e1003_*`` default for any missing knob,
+        so a mono edit never re-renders the colour library.
+        """
+        with self._db_lock:
+            rec = self._records.get(name)
+            if rec is None:
+                raise FileNotFoundError(f"Image {name!r} is not registered.")
+            if rec.edit_mono == edit_mono:
+                return  # no-op — don't rewrite the DB
+            self._records[name] = replace(rec, edit_mono=edit_mono)
+            self._save_db()
+
+    def set_edit_crop_mono(self, name: str, edit_crop_mono: dict | None) -> None:
+        """Store the per-image E1003 crop OVERRIDE (or None = follow the colour crop).
+
+        Like ``set_edit_mono`` and for the same reason, this does NOT touch the colour
+        pipeline (no PENDING flip, no slug/thumbnail invalidation): the mono panel renders
+        live per request, reading ``edit_crop_mono`` there and falling back to the colour
+        ``edit_crop`` when it's None (inherit-by-default). A mono crop never re-renders the
+        colour library.
+        """
+        with self._db_lock:
+            rec = self._records.get(name)
+            if rec is None:
+                raise FileNotFoundError(f"Image {name!r} is not registered.")
+            if rec.edit_crop_mono == edit_crop_mono:
+                return  # no-op — don't rewrite the DB
+            self._records[name] = replace(rec, edit_crop_mono=edit_crop_mono)
+            self._save_db()
+
     # ── Reads (lock-free) ───────────────────────────────────────
 
     def panel_bytes_for_orientation(self, name: str, orientation: Orientation) -> bytes | None:
@@ -428,6 +467,18 @@ class AbstractImageManager(ABC):
         # target, so fall back to LANDSCAPE for those.
         eff = rec.effective_orientation
         orientation = eff if eff != Orientation.NEUTRAL else Orientation.LANDSCAPE
+        return self.preview_png_for_orientation(name, orientation)
+
+    def preview_png_for_orientation(self, name: str, orientation: Orientation) -> bytes | None:
+        """Colour preview PNG in a SPECIFIC orientation (both are always rendered), or None
+        on miss. The Frames drawer uses this to mirror what a colour frame actually shows —
+        the frame serves ``panel_bytes_for_orientation(name, cfg.orientation)``, so its card
+        must preview the same orientation, not the photo's effective one."""
+        rec = self._records.get(name)
+        if rec is None or rec.convert_status != "ok":
+            return None
+        if orientation == Orientation.NEUTRAL:
+            orientation = Orientation.LANDSCAPE
         s = rec.slug(orientation)
         if not s:
             return None
@@ -1011,6 +1062,7 @@ class AbstractImageManager(ABC):
             else None,
             cfg.rotation_quarters,
             cfg.crop_rect,
+            cfg.auto_rotate,   # keep position aligned with render_one's params
         )
         logger.debug("Submitted %r for dithering (%s)", name, cfg.orientation)
         self._dispatch_render(

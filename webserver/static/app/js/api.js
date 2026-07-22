@@ -55,7 +55,17 @@ export function bust(entry) {
   return `v=${entry.size_bytes ?? 0}-${entry.last_conversion_seconds ?? 0}`;
 }
 export const thumbnailUrl = (entry) => `${API}/thumbnail/${encodeURIComponent(entry.name)}?${bust(entry)}`;
-export const ditheredUrl = (entry) => `${API}/dithered/${encodeURIComponent(entry.name)}?${bust(entry)}`;
+// the colour dither of the image. `orient` ("landscape"|"portrait") requests the render at
+// a SPECIFIC frame orientation (the Frames drawer passes the frame's orientation so its card
+// mirrors the panel); omit for the photo's own effective orientation (gallery/editor).
+export const ditheredUrl = (entry, orient = null) =>
+  `${API}/dithered/${encodeURIComponent(entry.name)}?${orient ? `orient=${orient}&` : ""}${bust(entry)}`;
+// the E1003 (mono) render of the image — what a mono frame actually shows. `portrait`
+// tells the server the frame's orientation so the render is composed for it. Default the
+// preview is decoded UPRIGHT (legible); `raw` decodes exactly as the glass holds it
+// (portrait content reads sideways) so the Frames drawer card mirrors the physical panel.
+export const ditheredUrlMono = (entry, portrait = false, raw = false) =>
+  `${API}/dithered/${encodeURIComponent(entry.name)}?mono=1${portrait ? "&portrait=1" : ""}${raw ? "&raw=1" : ""}&${bust(entry)}`;
 export const originalUrl = (entry) => `${API}/original/${encodeURIComponent(entry.name)}`;
 
 // ── upload (XHR for real progress events) ──
@@ -99,9 +109,15 @@ export async function ditherPreview(name, imageConfig, claheKeepout, signal) {
 
 // Live E1003 (mono16) preview: renders the real wire pipeline and decodes through
 // the panel's perceived ramp. `mono` is the flat knob set (see settings.js openMono).
-export async function monoPreview(name, mono, signal) {
+// opts (optional): {rotation, crop:[x,y,w,h]} for the mono appearance's framing.
+export async function monoPreview(name, mono, signal, opts = {}) {
+  const body = { name, mono, max_side_px: 900 };
+  if (opts.rotation) body.rotation = opts.rotation;
+  if (opts.crop) body.crop = opts.crop;
+  if (opts.frame_portrait) body.frame_portrait = true;   // E1003 frame orientation
+  if (opts.auto_rotate !== undefined) body.auto_rotate = opts.auto_rotate;
   const res = await fetch(`${API}/dither/preview_mono`, {
-    ...json("POST", { name, mono, max_side_px: 900 }),
+    ...json("POST", body),
     signal,
   });
   if (!res.ok) {
@@ -145,5 +161,13 @@ export function uploadDraft(file) {
 
 // Commit the editor's per-image config + crop; the image (re)renders. image may be
 // null ("use the classifier's decision"); editCrop is {rotation_quarters, rect, target}.
-export const editImage = (name, image, editCrop) =>
-  req(`/image/${encodeURIComponent(name)}/edit`, json("POST", { image, edit_crop: editCrop }));
+// mono (optional) is the per-image E1003 tone override (short knob names) or null to
+// clear it; omit the arg entirely to leave any existing mono override untouched.
+export const editImage = (name, image, editCrop, mono, editCropMono) => {
+  const body = { image, edit_crop: editCrop };
+  if (mono !== undefined) body.mono = mono;
+  // per-image E1003 crop override: null clears it (mono follows the colour crop);
+  // undefined omits the field entirely (leaves any existing override untouched).
+  if (editCropMono !== undefined) body.edit_crop_mono = editCropMono;
+  return req(`/image/${encodeURIComponent(name)}/edit`, json("POST", body));
+};

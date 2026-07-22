@@ -424,7 +424,8 @@
   .dknob-val { font-family: var(--mono); font-size: .74rem; color: var(--dim); font-variant-numeric: tabular-nums; }
   .dknob.tweaked .dknob-lab, .dknob.tweaked .dknob-val { color: var(--text); }
   .dtrack { position: relative; padding: 7px 0; }
-  .dtrack::before { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 2px; height: 9px; background: rgba(255,255,255,.3); border-radius: 1px; pointer-events: none; }   /* centre detent = default */
+  .dtrack::before { content: ""; position: absolute; left: var(--det, 50%); top: 50%; transform: translate(-50%, -50%); width: 2px; height: 9px; background: rgba(255,255,255,.3); border-radius: 1px; pointer-events: none; }   /* detent at slider home (--det, default 50%) */
+  .dtrack.no-detent::before { display: none; }   /* sliders with no meaningful home (CLAHE, sharpening) */
   .dslider { position: relative; -webkit-appearance: none; appearance: none; width: 100%; height: 3px; border-radius: 3px; background: rgba(255,255,255,.15); cursor: pointer; margin: 0; }
   .dslider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 17px; height: 17px; border-radius: 50%; background: var(--bg); border: 2px solid var(--dim); cursor: pointer; }
   .dslider::-moz-range-thumb { width: 17px; height: 17px; border-radius: 50%; background: var(--bg); border: 2px solid var(--dim); cursor: pointer; }
@@ -449,13 +450,28 @@
      stretches its height while max-width clamps width → broken aspect. Opt out of the
      stretch so the 4:3 panel render keeps its shape. Cap the height (the wide 4:3 render
      is width-bound and would otherwise fill the column and cover the photo picker). */
-  .dpreview #moprev-img, .dpreview #moprev-before { align-self: center; max-height: 56vh; }
+  .dpreview #moprev-img, .dpreview #moprev-before { align-self: center; max-width: 100%; max-height: 56vh; }
   /* press-and-hold "before": the pre-edit render, stacked exactly over the live preview */
   #moprev-before { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); visibility: hidden; pointer-events: none; }
   .dprev-wrap.peek #moprev-before { visibility: visible; }
   /* suppress native long-press callout / loupe / drag so only our peek shows */
   #moprev-stage, #moprev-img, #moprev-before { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
   .dprev-lab .mono-prev-note { color: var(--faint); font-weight: 400; letter-spacing: normal; text-transform: none; }
+  /* E1003 mono editor — 3-page left-menu layout (Tone / Advanced Local Contrast / Details) */
+  .dcontrols.mono-controls { flex: 0 0 470px; display: flex; gap: 12px; padding: 12px 12px 12px 14px; overflow: hidden; }
+  .mono-menu { flex: 0 0 128px; display: flex; flex-direction: column; gap: 6px; }
+  .mono-mbtn { display: flex; flex-direction: column; gap: 1px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--hair); background: transparent; color: var(--dim); cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+  .mono-mbtn:hover { color: var(--text); border-color: var(--hair-2); }
+  .mono-mbtn.on { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+  .mono-mbtn span { font-size: .72rem; font-weight: 600; }
+  .mono-mbtn small { font-size: .56rem; opacity: .82; line-height: 1.15; }
+  /* scrollbar-gutter + horizontal padding so the slider thumb never sits under the scrollbar */
+  .mono-page { flex: 1; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 0 12px 0 6px; }
+  .mono-page .dknob { padding: 4px 0; }   /* tight, equidistant spacing between sliders */
+  .mono-group { padding: 2px 0; }
+  .mono-group + .mono-group { margin-top: 8px; border-top: 1px solid var(--hair); padding-top: 8px; }
+  .mono-toggle { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--text); font-weight: 600; margin: 2px 0 4px; cursor: pointer; user-select: none; }
+  .mono-toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
   /* live face boxes over the server preview (preview-space bboxes from X-Face-Bboxes) */
   .dprev-faces { position: absolute; inset: 0; pointer-events: none; }
   .dprev-faces i { position: absolute; border: 2px solid #FF5A47; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
@@ -717,6 +733,14 @@
      the controls panel (#edClassifierPanel, next to the sliders); MOBILE shows the
      header strip (.ed-subbar). editor.js fills both; the media queries pick one. */
   .ed-subbar{display:flex;align-items:center;gap:.45rem;flex:none;padding:.4rem 1.1rem;background:#0F0F13;border-bottom:1px solid rgba(255,255,255,.06);font-size:.72rem;color:#8C8B87;cursor:default}
+  /* "Editing for" appearance switch — a strip shown in BOTH layouts (unlike .ed-subbar,
+     which is desktop-hidden). The mono preview renders grayscale = the mode signal. */
+  .ed-appearance{display:flex;align-items:center;justify-content:center;gap:.6rem;flex:none;padding:.5rem 1.1rem;background:#0F0F13;border-bottom:1px solid rgba(255,255,255,.06)}
+  .ed-appearance[hidden]{display:none}
+  .ed-appearance .app-lab{font-size:.62rem;letter-spacing:.13em;text-transform:uppercase;color:#6F6E6A;font-weight:600}
+  .app-seg{display:flex;background:#16161B;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:3px;gap:2px}
+  .app-seg button{border:0;background:transparent;color:#8C8B87;font-weight:600;font-size:.76rem;padding:.42rem .9rem;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .app-seg button[aria-pressed="true"]{background:#1E1E24;color:#fff}
   /* desktop: the classifier/preset badge and its ••• preset button share a row (••• on the
      right), with the divider under both */
   .ed-badge-row{display:flex;align-items:center;gap:.25rem;margin-bottom:.55rem;padding-bottom:.5rem;border-bottom:1px solid rgba(255,255,255,.08)}
@@ -751,12 +775,19 @@
   /* iOS long-press: suppress the native callout / magnifier loupe / image context preview
      over the stage, so only our own press-and-hold peek shows */
   .ed-stage,#peditDith,#peditDithBefore{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+  /* preview zoom/pan: the stage owns all touch gestures (pinch/pan/peek) so the browser
+     never pans or pinch-zooms it; the rest of the editor scrolls but can't pinch-zoom. */
+  .ed-stage{touch-action:none}
+  .pedit-card{touch-action:pan-x pan-y}
+  .ed-stage.pv-zoomed{cursor:grab}
+  .ed-stage.pv-zoomed:active{cursor:grabbing}
+  #peditDithWrap{transform-origin:50% 50%}
   .render-chip{position:absolute;z-index:5;bottom:.7rem;left:50%;transform:translateX(-50%);font-size:.66rem;letter-spacing:.05em;color:#F3F2EF;background:rgba(10,9,8,.72);padding:.24rem .6rem;border-radius:999px;display:flex;align-items:center;gap:.4rem;opacity:0;transition:.2s}
   .render-chip.show{opacity:1}
   .render-chip .rspin{width:9px;height:9px;border-radius:50%;border:2px solid #EDEBE5;border-right-color:transparent;animation:bspin .7s linear infinite}
   .m-panel{width:0;flex:none;overflow:hidden;background:#0B0C10;border-left:1px solid rgba(255,255,255,.07);transition:width .3s cubic-bezier(.32,.72,0,1)}
   .m-panel.open{width:312px;border-left-color:rgba(255,255,255,.09)}
-  .m-panel-inner{width:312px;height:100%;display:flex;flex-direction:column;padding:1rem .9rem}
+  .m-panel-inner{width:312px;height:100%;display:flex;flex-direction:column;padding:1rem .55rem}
   .adj-grabber{display:none;align-self:center;align-items:center;justify-content:center;width:64px;height:28px;cursor:grab;flex:none;touch-action:none}
   .adj-grabber span{width:38px;height:4px;border-radius:3px;background:rgba(255,255,255,.28)}
   /* touch-shell crop dock (hidden on desktop; shown by JS in crop mode ≤700px) */
@@ -769,7 +800,10 @@
   .p-title{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:#8C8B87;font-weight:700;margin:0 .3rem .7rem;display:flex;align-items:center;gap:.5rem}
   .p-title .pt-reset{margin-left:auto;font-size:.68rem;letter-spacing:.02em;text-transform:none;color:#8C8B87;background:none;border:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
   .p-title .pt-reset:hover{color:#EDEBE5}
-  #groupPanel{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:.1rem;padding-right:.15rem}
+  /* desktop: give the rows ~14px breathing room on each side so slider thumbs/detents
+     clear the panel's left edge AND the scrollbar; scrollbar-gutter reserves the scroll
+     track's width so it never overlaps the controls. */
+  #groupPanel{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:.1rem;padding:0 8px;scrollbar-gutter:stable}
   #groupPanel::-webkit-scrollbar{width:8px}#groupPanel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
   .m-rail{width:82px;flex:none;background:#0F0F13;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;padding:.55rem .4rem;gap:.25rem}
   .rail-btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.32rem;min-height:64px;background:transparent;border:0;border-radius:12px;color:#8C8B87;cursor:pointer;transition:background .12s,color .12s}
@@ -782,6 +816,13 @@
   .crop-panel{display:flex;flex-direction:column;gap:1rem;flex:1}
   .cp-block{display:flex;flex-direction:column;gap:.5rem}
   .cp-lab{font-size:.72rem;color:#8C8B87;font-weight:600;letter-spacing:.01em}
+  /* E1003 mono crop follow/fork state chip */
+  .mono-crop-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03)}
+  .mono-crop-chip.forked{border-color:rgba(120,190,255,.28);background:rgba(120,190,255,.07)}
+  .mcc-state{flex:1;min-width:0;font-size:.74rem;color:#8C8B87;font-weight:500}
+  .mono-crop-chip.forked .mcc-state{color:#bcdcff}
+  .mcc-action{flex:none;border:1px solid rgba(255,255,255,.12);background:transparent;color:#F3F2EF;font:inherit;font-size:.7rem;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;transition:border-color .12s,background .12s}
+  .mcc-action:hover{border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.05)}
   .aspect-seg{display:flex;background:#0F0F13;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:3px;gap:2px}
   .aspect-seg button{flex:1;border:0;background:transparent;color:#8C8B87;font-weight:600;font-size:.8rem;padding:.5rem .3rem;border-radius:7px;cursor:pointer}
   .aspect-seg button[aria-pressed="true"]{background:#1E1E24;color:#fff}
@@ -803,6 +844,7 @@
   .prow.tweaked .prow-knob{border-color:#F3F2EF}
   .prow-line{position:relative;height:22px;margin:0 .5rem;pointer-events:none}
   .prow-line::before{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:3px;border-radius:3px;background:rgba(255,255,255,.15)}
+  .prow-det{position:absolute;top:50%;transform:translate(-50%,-50%);width:2px;height:11px;border-radius:1px;background:rgba(255,255,255,.32);pointer-events:none}   /* dtcore detent at darktable factory default */
   .prow-knob{position:absolute;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;border:2px solid #8C8B87;background:#0B0C10;transition:border-color .12s}
   .prow.slider.scrubbing .prow-knob{border-color:#F3F2EF}
   .prow.slider:hover .prow-knob{border-color:#B8B6B0}

@@ -90,12 +90,26 @@ def test_manual_crop_covers_no_white_padding():
     assert not bool(mask.any()), "manual crop left white padding — should cover, not letterbox"
 
 
+def _four_quadrants(w: int = 800, h: int = 600) -> Image.Image:
+    """A source with four DISTINCT quadrants so every rotation is distinguishable. The
+    old left/right-only _half_red_blue is symmetric top-to-bottom, so under the content-
+    orientation framing (a portrait rotation lands portrait content, rotated into the
+    buffer) a 90° and 180° rotation of it can map to the same buffer — a coincidence of
+    that symmetric image, not of the rotation feature. Four distinct quadrants remove it."""
+    a = np.zeros((h, w, 3), np.uint8)
+    a[: h // 2, : w // 2] = (220, 40, 40)    # TL red
+    a[: h // 2, w // 2 :] = (40, 220, 40)    # TR green
+    a[h // 2 :, : w // 2] = (40, 40, 220)    # BL blue
+    a[h // 2 :, w // 2 :] = (220, 220, 40)   # BR yellow
+    return Image.fromarray(a, "RGB")
+
+
 def test_rotation_quarters_changes_the_canvas():
-    a0 = _prep(_half_red_blue())
-    a1 = _prep(_half_red_blue(), rotation_quarters=1)
-    a2 = _prep(_half_red_blue(), rotation_quarters=2)
-    assert not np.array_equal(a0, a1)
-    assert not np.array_equal(a1, a2)
+    # every distinct rotation must produce a distinct buffer (asymmetric source).
+    outs = [_prep(_four_quadrants(), rotation_quarters=q) for q in range(4)]
+    for i in range(4):
+        for j in range(i + 1, 4):
+            assert not np.array_equal(outs[i], outs[j]), f"rotation q={i} and q={j} coincided"
 
 
 def test_defaults_render_identically_to_no_kwargs():

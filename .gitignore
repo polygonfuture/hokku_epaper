@@ -43,3 +43,12 @@ firmware/test/host/Testing/Temporary/CTestCostData.txt
 /e1003-firmware-photo.jpg
 /sensecraft-hmi-firmware-photo.jpg
 /IMG_*.jpg
+
+# Scratch render artifact from tone/dither dev
+e1003_dtcore_render.png
+
+# Darktable/Lightroom tone-port test harness: local-only source photos, exports,
+# and reference renders. Never tracked/pushed.
+darktable-tests/
+lr_out/
+lr_src/

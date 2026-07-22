@@ -26,7 +26,7 @@ import pytest
 from PIL import Image
 
 from hokku_server.app_config import AppConfig
-from hokku_server.display import TOTAL_BYTES
+from hokku_server.display import FULL_W, PANEL_H, TOTAL_BYTES
 from hokku_server.dither_config import DitherConfig
 from hokku_server.dither_streaming_numba import NumbaStreamingDither
 from hokku_server.image_abc import preview_png_from_panel_bytes
@@ -203,6 +203,72 @@ def test_perfect_fit_no_bands_at_zero_threshold():
     result = _render_indices(img, _noop_cfg(), "portrait", 100, 100, 0.0)
     assert not _has_white_row(result)
     assert not _has_white_column(result)
+
+
+# ── auto-rotate & fit: orientation-mismatch fills instead of letterboxing ─────
+#
+# The Spectra-6 panel buffer is FULL_W×PANEL_H (portrait). When a photo's orientation
+# differs from the frame's, the OLD code letterboxed it against the frame orientation
+# (white bars). The fix sizes the working canvas to the CONTENT orientation so the photo
+# FILLS: OFF keeps the photo's own orientation (laid sideways, user turns the frame); ON
+# reframes/cover-crops to the frame's orientation upright. These tests assert "fills"
+# (no white edge bands) at the REAL panel dims, where the mismatch path actually triggers
+# (the small synthetic canvases above don't exercise it). Mirrors the mono pipeline.
+
+
+def _render_ar(img, orientation, canvas_w, canvas_h, threshold, auto_rotate):
+    from hokku_server.dither_streaming_numba import NumbaStreamingDither
+    from hokku_server.image_renderer import ImageRenderer
+
+    return ImageRenderer(NumbaStreamingDither()).render_indices(
+        img,
+        _noop_cfg(),
+        orientation,
+        canvas_w,
+        canvas_h,
+        threshold,
+        auto_rotate=auto_rotate,
+    )
+
+
+def _no_edge_bands(result) -> bool:
+    return not _has_white_row(result) and not _has_white_column(result)
+
+
+def test_portrait_photo_landscape_frame_off_fills():
+    """Portrait photo on a landscape frame, auto-rotate OFF → fills (no bars). The
+    portrait content is laid sideways into the landscape frame; the user turns the frame."""
+    img = _solid_rgb(FULL_W, PANEL_H)  # portrait content (1200×1600)
+    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.0, auto_rotate=False)
+    assert result.shape == (PANEL_H, FULL_W)
+    assert _no_edge_bands(result), "OFF orientation-mismatch must FILL, not letterbox"
+
+
+def test_landscape_photo_portrait_frame_off_fills():
+    """Landscape photo on a portrait frame, auto-rotate OFF → fills (no bars)."""
+    img = _solid_rgb(PANEL_H, FULL_W)  # landscape content (1600×1200)
+    result = _render_ar(img, "portrait", FULL_W, PANEL_H, 0.0, auto_rotate=False)
+    assert result.shape == (PANEL_H, FULL_W)
+    assert _no_edge_bands(result), "OFF orientation-mismatch must FILL, not letterbox"
+
+
+def test_portrait_photo_landscape_frame_on_fills_upright():
+    """Portrait photo on a landscape frame, auto-rotate ON → reframed to landscape upright,
+    cover-cropped, fills (no bars)."""
+    img = _solid_rgb(FULL_W, PANEL_H)
+    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.0, auto_rotate=True)
+    assert result.shape == (PANEL_H, FULL_W)
+    assert _no_edge_bands(result), "ON must reframe-and-fill, not letterbox"
+
+
+def test_off_same_orientation_zero_threshold_still_letterboxes():
+    """Same-orientation OFF at threshold 0 keeps the legacy letterbox behaviour — the fix
+    must not change the same-orientation path. Portrait photo (narrower than the panel) on
+    a portrait frame with a large aspect gap letterboxes on the sides."""
+    img = _solid_rgb(FULL_W // 2, PANEL_H)  # portrait, much narrower than the panel
+    result = _render_ar(img, "portrait", FULL_W, PANEL_H, 0.0, auto_rotate=False)
+    assert result.shape == (PANEL_H, FULL_W)
+    assert _has_white_column(result), "same-orientation OFF @ threshold 0 must letterbox"
 
 
 # ── ScreenImageConfig cache_slug ─────────────────────────────────────────────

@@ -136,6 +136,36 @@ def test_thumbnail_reflects_edit_crop(
 # ── per-image editor: DRAFT lifecycle + no-re-pend ──────────────────────────
 
 
+def test_set_edit_mono_stores_without_touching_colour_pipeline(
+    app_config: AppConfig, image_manager_factory, make_test_image
+):
+    """The per-image E1003 mono override persists + clears, and — unlike commit_edit
+    — never flips the colour render to PENDING or drops its cached slugs."""
+    upload = Path(app_config.upload_dir)
+    make_test_image(upload / "a.png", size=(400, 300))
+    mgr = image_manager_factory(app_config)
+    mgr.sync()
+    mgr.wait_for_idle()
+    rec0 = mgr.status("a.png")
+    assert rec0.convert_status == "ok" and rec0.edit_mono is None
+    slug_before = rec0.landscape_image_config_slug
+
+    mgr.set_edit_mono("a.png", {"clarity": 60, "black_point": 0.1})
+    rec1 = mgr.status("a.png")
+    assert rec1.edit_mono == {"clarity": 60, "black_point": 0.1}
+    # colour pipeline untouched: still OK, same slug (no re-render queued)
+    assert rec1.convert_status == "ok"
+    assert rec1.landscape_image_config_slug == slug_before
+
+    # survives a reload (round-trips through the DB)
+    mgr2 = image_manager_factory(app_config)
+    assert mgr2.status("a.png").edit_mono == {"clarity": 60, "black_point": 0.1}
+
+    # None clears it
+    mgr.set_edit_mono("a.png", None)
+    assert mgr.status("a.png").edit_mono is None
+
+
 def _png_bytes(w: int = 400, h: int = 300, color=(100, 150, 200)) -> bytes:
     buf = BytesIO()
     _Image.new("RGB", (w, h), color).save(buf, "PNG")

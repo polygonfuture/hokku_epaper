@@ -96,6 +96,14 @@ class AppConfig:
     #: Zoom up to this fraction (e.g. 0.02 = 2 %) to eliminate letterbox bands.
     #: 0.0 = always letterbox (default, safe).
     crop_to_fill_threshold: float = 0.10
+    #: Auto-rotate & fit photos to each frame's native orientation (global, both panels).
+    #: OFF (default): a photo keeps its own orientation — colour letterboxes an
+    #: off-orientation photo upright; the mono E1003 stores a portrait photo rotated
+    #: sideways in its landscape wire buffer (view by physically turning the frame).
+    #: ON: crop + rotate every photo to fill the frame's orientation upright (a portrait
+    #: on a landscape frame becomes an upright landscape crop, losing top/bottom).
+    #: Priority per photo: manual editor crop > auto_rotate_fit > crop_to_fill_threshold.
+    auto_rotate_fit: bool = False
     #: Number of worker processes for parallel image rendering.
     #: 0 = auto (cpu_count − 1, capped by available RAM at ~50 MB/worker).
     #: 1 = serial (legacy default).
@@ -161,6 +169,35 @@ class AppConfig:
     mono_e1003_highlights: float = 0.0
     mono_e1003_shadows: float = 0.0
 
+    #: E1003 tone PROFILE. "faithful" = the frozen legacy ramp pipeline above
+    #: (never edited); "bw_contrast" = the fixed darktable+Lightroom preset;
+    #: "custom" = the editable dtcore controls below. The dtcore path (sigmoid +
+    #: local-laplacian + Lightroom-matched Basic + CLAHE) is verified 1:1 vs
+    #: darktable/Lightroom. A fresh Custom starts from the B&W Contrast values.
+    mono_e1003_profile: str = "faithful"
+    #: darktable sigmoid (scene->display tone).
+    mono_e1003_sig_enabled: bool = True
+    mono_e1003_sig_contrast: float = 0.735
+    mono_e1003_sig_skew: float = 1.0
+    mono_e1003_sig_white: float = 100.0
+    mono_e1003_sig_black: float = 0.7634
+    #: darktable local-laplacian (detail=clarity %, hi/lo/midtone as in bilat.c).
+    mono_e1003_lc_enabled: bool = True
+    mono_e1003_lc_detail: float = 1.39
+    mono_e1003_lc_highlights: float = 0.5
+    mono_e1003_lc_shadows: float = 0.5
+    mono_e1003_lc_midtone: float = 0.5
+    #: Lightroom-matched Basic (exposure in EV; contrast/hl/sh/wh/bk in [-1,1]) +
+    #: CLAHE local contrast (cv2 clipLimit 0-5; 0 = off).
+    mono_e1003_basic_enabled: bool = True
+    mono_e1003_basic_exposure: float = 0.0
+    mono_e1003_basic_contrast: float = 0.0
+    mono_e1003_basic_highlights: float = 0.0
+    mono_e1003_basic_shadows: float = 0.0
+    mono_e1003_basic_whites: float = 0.0
+    mono_e1003_basic_blacks: float = 0.0
+    mono_e1003_basic_clahe: float = 0.0
+
     #: mDNS / Bonjour hostname (the part before ``.local``).
     #: The server advertises itself as ``<mdns_hostname>.local`` on the LAN.
     #: Empty string disables mDNS advertisement entirely.
@@ -181,6 +218,7 @@ class AppConfig:
             "classifier_face_detect_enabled": self.classifier_face_detect_enabled,
             "classifier_face_detect_clahe_keepout": self.classifier_face_detect_clahe_keepout,
             "crop_to_fill_threshold": self.crop_to_fill_threshold,
+            "auto_rotate_fit": self.auto_rotate_fit,   # affects framing -> must invalidate cached renders
         }
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(raw.encode()).hexdigest()[:14]

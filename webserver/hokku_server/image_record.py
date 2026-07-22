@@ -32,10 +32,19 @@ class ImageRecord:
     image_height: int | None = None
     #: Per-image editor overrides (None = use the classifier's decision / auto crop).
     #: edit_image_config: a frozen ImageConfig blob. edit_crop: {rotation_quarters,
-    #: rect{x,y,w,h}, target}. Excluded from __hash__ (dicts are unhashable) but kept
-    #: in equality so round-trips and change-detection still see them.
+    #: rect{x,y,w,h}, target}. edit_mono: a per-image E1003 tone override — the flat
+    #: short-name mono knob set ({black_point, clarity, contrast, ...}); each missing
+    #: knob inherits the panel-wide mono_e1003_* default at serve time (None = fully
+    #: inherit). edit_crop_mono: a per-image E1003 crop OVERRIDE, same shape as edit_crop
+    #: ({rotation_quarters, rect{x,y,w,h}, target}). None = the mono panel FOLLOWS the
+    #: colour edit_crop (inherit-by-default); a value forks an independent mono framing.
+    #: Excluded from __hash__ (dicts are unhashable) but kept in equality so
+    #: round-trips and change-detection still see them. edit_mono/edit_crop_mono are
+    #: tolerated on load (``.get`` below) so no DB version bump / re-render is needed.
     edit_image_config: dict | None = field(default=None, hash=False)
     edit_crop: dict | None = field(default=None, hash=False)
+    edit_mono: dict | None = field(default=None, hash=False)
+    edit_crop_mono: dict | None = field(default=None, hash=False)
 
     def slug(self, orientation: Orientation) -> str | None:
         """Return the cached slug for the given orientation, or None if not yet rendered."""
@@ -100,6 +109,8 @@ class ImageRecord:
             image_height=int(raw_h) if raw_h is not None else None,
             edit_image_config=d.get("edit_image_config"),
             edit_crop=d.get("edit_crop"),
+            edit_mono=d.get("edit_mono"),
+            edit_crop_mono=d.get("edit_crop_mono"),
         )
 
 

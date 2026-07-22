@@ -33,6 +33,10 @@ class ScreenImageConfig:
     #: crop_rect: normalized (x, y, w, h) within the rotated source frame.
     rotation_quarters: int = 0
     crop_rect: tuple[float, float, float, float] | None = None
+    #: Global auto-rotate & fit policy (AppConfig.auto_rotate_fit) at render time.
+    #: True reframes an off-orientation photo to the panel orientation (rotate + cover)
+    #: instead of letterboxing. Part of the cache key so a toggle flip re-renders.
+    auto_rotate: bool = False
 
     def cache_slug(self) -> str:
         # Convert BoundingBox objects to dicts for JSON serialization
@@ -52,6 +56,10 @@ class ScreenImageConfig:
             payload["rotation_quarters"] = self.rotation_quarters
         if self.crop_rect:
             payload["crop_rect"] = list(self.crop_rect)
+        # Only when True, so existing (toggle-OFF) images keep their current slug and
+        # don't force a mass re-render; flipping ON yields a new slug + fresh render.
+        if self.auto_rotate:
+            payload["auto_rotate"] = True
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:14]
 
 
@@ -78,4 +86,5 @@ def _screen_image_config_from_dict(d: dict) -> ScreenImageConfig:
         clahe_keepout_bboxes=keepout,
         rotation_quarters=rotation_quarters,
         crop_rect=crop_rect,
+        auto_rotate=bool(d.get("auto_rotate", False)),
     )

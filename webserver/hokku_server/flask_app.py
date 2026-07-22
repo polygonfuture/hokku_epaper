@@ -220,20 +220,12 @@ def create_app(
         # with the Spectra path. Minimal M2 hook — PanelProfile refactor later.
         if panel_type == mono_e1003.MONO_PANEL_TYPE:
             try:
+                # Sharpen params for the A/B toggle + split-compare diagnostics (the
+                # normal render below spells its own out, with the per-image override).
                 _sharp = dict(
                     sharpen_radius=config.mono_e1003_sharpen_radius,
                     sharpen_percent=config.mono_e1003_sharpen_amount,
                     sharpen_threshold=config.mono_e1003_sharpen_threshold,
-                )
-                # Panel-wide tone controls (Custom mono editor). No-op by default.
-                _tone = dict(
-                    black_point=config.mono_e1003_black_point,
-                    white_point=config.mono_e1003_white_point,
-                    clarity=config.mono_e1003_clarity,
-                    contrast=config.mono_e1003_contrast,
-                    midtone=config.mono_e1003_midtone,
-                    highlights=config.mono_e1003_highlights,
-                    shadows=config.mono_e1003_shadows,
                 )
                 if config.mono_e1003_ab_toggle:
                     # Each refresh alternates A (uniform 1.40) <-> B (measured).
@@ -256,13 +248,13 @@ def create_app(
                         **_sharp,
                     )
                 else:
+                    # Per-image tone override (Photo editor) layered on the panel default.
+                    # The frame's configured orientation drives the mono framing: a portrait
+                    # E1003 gets portrait-composed content rotated into the landscape buffer.
+                    fp = cfg.orientation == Orientation.PORTRAIT
                     binary = mono_e1003.render_mono_bin(
                         manager.original_path(chosen),
-                        use_measured_ramp=config.mono_e1003_use_measured_ramp,
-                        darken_gamma=config.mono_e1003_darken_gamma,
-                        shadow_lift=config.mono_e1003_shadow_lift,
-                        **_sharp,
-                        **_tone,
+                        **_effective_mono_kwargs(config, manager.status(chosen), frame_portrait=fp),
                     )
             except Exception:
                 logger.exception("mono16_e1003 render failed for %s", chosen)
@@ -355,7 +347,44 @@ def create_app(
 
     @app.route("/hokku/api/dithered/<path:name>")
     def api_dithered(name: str):
-        png = state.manager.preview_png(name)
+        # ?mono=1 → the E1003 render (what a mono frame actually shows), so the UI can
+        # preview a photo the way it looks on the E1003 instead of the colour dither.
+        if request.args.get("mono"):
+            rec = state.manager.status(name)
+            if rec is None:
+                abort(404)
+            # ?portrait=1 previews the render for a PORTRAIT-mounted E1003 (the frame's
+            # configured orientation); default landscape. The client passes the orientation
+            # of the frame the photo is on so the thumbnail matches the panel.
+            fp = bool(request.args.get("portrait"))
+            try:
+                binary = mono_e1003.render_mono_bin(
+                    state.manager.original_path(name),
+                    **_effective_mono_kwargs(state.config, rec, frame_portrait=fp),
+                )
+            except FileNotFoundError:
+                abort(404)
+            except Exception:
+                logger.exception("mono dithered render failed for %r", name)
+                abort(500)
+            # ?raw=1 → decode exactly as the glass holds it (portrait content reads
+            # SIDEWAYS) so the Frames drawer card mirrors the physical panel. Default →
+            # UPRIGHT (un-rotate portrait content) for legible gallery/editor previews.
+            buf = io.BytesIO()
+            if request.args.get("raw"):
+                mono_e1003.mono_bin_to_image(binary).save(buf, format="PNG")
+            else:
+                cp = _mono_content_portrait(state.config, rec, frame_portrait=fp)
+                mono_e1003.mono_bin_to_upright_image(binary, cp).save(buf, format="PNG")
+            return _png_response(buf.getvalue())
+        # ?orient=landscape|portrait → the colour render at a SPECIFIC frame orientation
+        # (the Frames drawer passes the frame's orientation so its card mirrors the panel);
+        # omitted → the photo's own effective orientation (gallery/editor default).
+        orient = request.args.get("orient")
+        if orient in ("landscape", "portrait"):
+            png = state.manager.preview_png_for_orientation(name, Orientation(orient))
+        else:
+            png = state.manager.preview_png(name)
         if png is None:
             abort(404)
         return _png_response(png)
@@ -532,6 +561,10 @@ def create_app(
                 # classifier's live "Auto" baseline (the Reset/Auto target).
                 "edit_image_config": rec.edit_image_config,
                 "edit_crop": rec.edit_crop,
+                # per-image E1003 mono tone override (None = inherits the panel default)
+                "edit_mono": rec.edit_mono,
+                # per-image E1003 crop override (None = the mono panel follows edit_crop)
+                "edit_crop_mono": rec.edit_crop_mono,
                 "orientation": orientation_from_dims(w, h).value,
                 "source_w": w,
                 "source_h": h,
@@ -543,7 +576,10 @@ def create_app(
         """Commit the editor's per-image config + crop and queue a (re)render.
 
         Body: {image: ImageConfig dict | null, edit_crop: {rotation_quarters, rect,
-        target} | null}. A null image means "use the classifier's own decision".
+        target} | null, mono: {mono knob set} | null}. A null image means "use the
+        classifier's own decision". ``mono`` is the per-image E1003 tone override
+        (short knob names); null clears it (inherit the panel default). It updates
+        independently of the colour pipeline — no colour re-render.
         """
         if state.manager.status(name) is None:
             return jsonify({"error": f"image {name!r} not found"}), 404
@@ -552,6 +588,10 @@ def create_app(
             return jsonify({"error": "expected JSON object"}), 400
         image_blob = body.get("image")
         edit_crop = body.get("edit_crop")
+        has_mono = "mono" in body
+        mono_blob = body.get("mono")
+        has_crop_mono = "edit_crop_mono" in body
+        crop_mono_blob = body.get("edit_crop_mono")
         if image_blob is not None:
             if not isinstance(image_blob, dict):
                 return jsonify({"error": "image must be an ImageConfig object or null"}), 400
@@ -561,8 +601,18 @@ def create_app(
                 return jsonify({"error": f"invalid image config: {e}"}), 400
         if edit_crop is not None and not isinstance(edit_crop, dict):
             return jsonify({"error": "edit_crop must be an object or null"}), 400
+        if has_mono and mono_blob is not None and not isinstance(mono_blob, dict):
+            return jsonify({"error": "mono must be an object or null"}), 400
+        if has_crop_mono and crop_mono_blob is not None and not isinstance(crop_mono_blob, dict):
+            return jsonify({"error": "edit_crop_mono must be an object or null"}), 400
         try:
             state.manager.commit_edit(name, image_blob, edit_crop)
+            # Only touch the mono overrides when the caller sent the field, so a
+            # colour-only save never clears an existing per-image mono edit/crop.
+            if has_mono:
+                state.manager.set_edit_mono(name, mono_blob)
+            if has_crop_mono:
+                state.manager.set_edit_crop_mono(name, crop_mono_blob)
         except FileNotFoundError:
             return jsonify({"error": f"image {name!r} not found"}), 404
         except ValueError as e:
@@ -1009,40 +1059,77 @@ def create_app(
         except FileNotFoundError:
             return jsonify({"error": f"image {name!r} not found"}), 404
 
+        # Editor crop + rotation for the mono appearance (same wire shape as the colour
+        # /dither/preview endpoint): rotation = integer quarters, crop = normalized
+        # [x, y, w, h] in the rotated frame. Omitted -> the auto fit/letterbox path.
+        rotation_quarters = int(body.get("rotation") or 0)
+        crop_raw = body.get("crop")
+        crop_rect = None
+        if isinstance(crop_raw, (list, tuple)) and len(crop_raw) == 4:
+            try:
+                crop_rect = tuple(float(v) for v in crop_raw)
+            except (TypeError, ValueError):
+                crop_rect = None
+
         # All knobs are clamped again inside render_mono_bin; the .get chain
         # just falls back to the module defaults for anything omitted.
         try:
-            binary = mono_e1003.render_mono_bin(
-                path,
-                use_measured_ramp=bool(mono.get("use_measured_ramp", mono_e1003.USE_MEASURED_RAMP)),
-                darken_gamma=float(mono.get("darken_gamma", mono_e1003.MAX_DARKEN_GAMMA)),
-                shadow_lift=float(mono.get("shadow_lift", 0.0)),
+            common = dict(
                 sharpen_radius=float(mono.get("sharpen_radius", mono_e1003.SHARPEN_RADIUS)),
                 sharpen_percent=int(mono.get("sharpen_amount", mono_e1003.SHARPEN_PERCENT)),
                 sharpen_threshold=int(mono.get("sharpen_threshold", mono_e1003.SHARPEN_THRESHOLD)),
-                black_point=float(mono.get("black_point", 0.0)),
-                white_point=float(mono.get("white_point", 0.0)),
-                clarity=float(mono.get("clarity", 0.0)),
-                contrast=float(mono.get("contrast", mono_e1003.CONTRAST_GAIN)),
-                midtone=float(mono.get("midtone", 1.0)),
-                highlights=float(mono.get("highlights", 0.0)),
-                shadows=float(mono.get("shadows", 0.0)),
             )
+            # auto_rotate: default to the global config, but let the client override per
+            # request (the editor sends auto_rotate:false to preview the un-rotated upright
+            # framing regardless of the global toggle). A manual crop wins over both.
+            ar = body.get("auto_rotate")
+            auto_rotate = bool(ar) if ar is not None else bool(getattr(state.config, "auto_rotate_fit", False))
+            frame_portrait = bool(body.get("frame_portrait"))   # the E1003 frame's orientation
+            crop_kw = dict(rotation_quarters=rotation_quarters, crop_rect=crop_rect,
+                           auto_rotate=auto_rotate, frame_portrait=frame_portrait)
+            profile = mono.get("profile", "faithful")
+            max_side_px = max(64, min(1600, int(body.get("max_side_px") or 900)))
+            # dtcore profiles (B&W Contrast / Custom) render at PREVIEW resolution — the
+            # expensive local-laplacian runs on ~4x fewer pixels than the native panel,
+            # so the live editor stays responsive. The frame-serve/save path is untouched
+            # (still full-res render_mono_bin); a preview may differ marginally, as it
+            # already did after the old post-render downscale.
+            if profile in ("bw_contrast", "custom"):
+                dtcore = BW_CONTRAST_DTCORE if profile == "bw_contrast" else _build_dtcore(mono.get)
+                # upright=True: the editor preview always shows content the right way up
+                # (un-rotates portrait content composed sideways into the landscape buffer).
+                img = mono_e1003.render_mono_preview_image(path, dtcore=dtcore, max_side=max_side_px, upright=True, **common, **crop_kw)
+            else:  # faithful (legacy ramp path) — full-res wire render, then perceived decode
+                binary = mono_e1003.render_mono_bin(
+                    path, **common, **crop_kw,
+                    use_measured_ramp=bool(mono.get("use_measured_ramp", mono_e1003.USE_MEASURED_RAMP)),
+                    darken_gamma=float(mono.get("darken_gamma", mono_e1003.MAX_DARKEN_GAMMA)),
+                    shadow_lift=float(mono.get("shadow_lift", 0.0)),
+                    black_point=float(mono.get("black_point", 0.0)),
+                    white_point=float(mono.get("white_point", 0.0)),
+                    clarity=float(mono.get("clarity", 0.0)),
+                    contrast=float(mono.get("contrast", mono_e1003.CONTRAST_GAIN)),
+                    midtone=float(mono.get("midtone", 1.0)),
+                    highlights=float(mono.get("highlights", 0.0)),
+                    shadows=float(mono.get("shadows", 0.0)),
+                )
+                # upright decode: un-rotate portrait content for the UI preview
+                with Image.open(path) as _im:
+                    _sp = _im.height > _im.width
+                _cp = mono_e1003._mono_content_portrait(_sp, rotation_quarters, crop_rect, auto_rotate, frame_portrait)
+                img = mono_e1003.mono_bin_to_upright_image(binary, _cp)
+                if max(img.size) > max_side_px:
+                    scale = max_side_px / max(img.size)
+                    img = img.resize(
+                        (max(1, round(img.width * scale)), max(1, round(img.height * scale))),
+                        Image.LANCZOS,
+                    )
         except (TypeError, ValueError) as e:
             return jsonify({"error": f"invalid mono config: {e}"}), 400
         except Exception:
             logger.exception("mono preview render failed for %r", name)
             return jsonify({"error": "render failed"}), 500
 
-        # Uniform perceived decode — validated against glass for both render palettes.
-        img = mono_e1003.mono_bin_to_image(binary)
-        max_side_px = max(64, min(1600, int(body.get("max_side_px") or 900)))
-        if max(img.size) > max_side_px:
-            scale = max_side_px / max(img.size)
-            img = img.resize(
-                (max(1, round(img.width * scale)), max(1, round(img.height * scale))),
-                Image.LANCZOS,
-            )
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return _png_response(buf.getvalue())
@@ -1054,3 +1141,106 @@ def _png_response(png_bytes: bytes):
     resp = make_response(png_bytes)
     resp.headers["Content-Type"] = "image/png"
     return resp
+
+
+def _build_dtcore(g) -> dict:
+    """Assemble the render_tone dtcore dict from a flat getter ``g(key, default)``
+    (works over a request body, an edit_mono blob, or a config-backed getter)."""
+    return {
+        "sigmoid": {"enabled": bool(g("sig_enabled", True)), "contrast": float(g("sig_contrast", 0.735)),
+                    "skew": float(g("sig_skew", 1.0)), "white": float(g("sig_white", 100.0)),
+                    "black": float(g("sig_black", 0.7634))},
+        "local_contrast": {"enabled": bool(g("lc_enabled", True)), "detail": float(g("lc_detail", 1.39)),
+                    "highlights": float(g("lc_highlights", 0.5)), "shadows": float(g("lc_shadows", 0.5)),
+                    "midtone": float(g("lc_midtone", 0.5))},
+        "basic": {"enabled": bool(g("basic_enabled", True)), "exposure": float(g("basic_exposure", 0.0)),
+                    "contrast": float(g("basic_contrast", 0.0)), "highlights": float(g("basic_highlights", 0.0)),
+                    "shadows": float(g("basic_shadows", 0.0)), "whites": float(g("basic_whites", 0.0)),
+                    "blacks": float(g("basic_blacks", 0.0)), "clahe": float(g("basic_clahe", 0.0))},
+    }
+
+
+#: Fixed B&W Contrast preset — the dtcore defaults ARE the B&W Contrast values.
+BW_CONTRAST_DTCORE = _build_dtcore(lambda k, d: d)
+
+
+def _crop_kwargs_from_edit(edit_crop) -> dict:
+    """Unpack an edit_crop dict ({rotation_quarters, rect{x,y,w,h}}) into
+    render_mono_bin's rotation_quarters/crop_rect kwargs. Empty dict for no crop."""
+    if not edit_crop:
+        return {}
+    out = {}
+    rq = edit_crop.get("rotation_quarters")
+    if rq:
+        out["rotation_quarters"] = int(rq)
+    rect = edit_crop.get("rect")
+    if rect:
+        try:
+            out["crop_rect"] = (float(rect["x"]), float(rect["y"]), float(rect["w"]), float(rect["h"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+    return out
+
+
+def _mono_content_portrait(config, rec, frame_portrait=False) -> bool:
+    """Whether the mono render for this image composed PORTRAIT content (rotated sideways
+    into the landscape wire buffer) — so a UI preview must un-rotate it to upright. Mirrors
+    the render's decision using the SAME inputs _effective_mono_kwargs uses: a manual mono
+    crop fills landscape directly (never portrait-content); else ON follows the frame, OFF
+    follows the photo's own orientation."""
+    if rec and rec.edit_crop_mono and (rec.edit_crop_mono.get("rect") or rec.edit_crop_mono.get("rotation_quarters")):
+        return False
+    auto_rotate = bool(getattr(config, "auto_rotate_fit", False))
+    w = (rec.image_width or 0) if rec else 0
+    h = (rec.image_height or 0) if rec else 0
+    src_portrait = h > w
+    return mono_e1003._mono_content_portrait(src_portrait, 0, None, auto_rotate, bool(frame_portrait))
+
+
+def _effective_mono_kwargs(config, rec, frame_portrait=False) -> dict:
+    """render_mono_bin kwargs for an image on an E1003 panel: the panel-wide
+    ``mono_e1003_*`` default, overlaid with the image's per-image ``edit_mono``
+    override. Branches on the tone profile — Faithful is the frozen legacy ramp
+    path; B&W Contrast / Custom use the dtcore engine. Shared by the frame serve
+    path + the mono dithered/thumbnail preview so both show the same render.
+
+    Crop: only an explicit per-image ``edit_crop_mono`` is applied (mono never inherits
+    the colour crop). Otherwise the framing is governed by ``auto_rotate`` (global) and
+    ``frame_portrait`` (the E1003's configured orientation): OFF keeps the photo's own
+    orientation, ON reframes to the frame's orientation — both rotated into the landscape
+    wire buffer as needed. A manual mono crop always wins."""
+    edit = rec.edit_mono if (rec and rec.edit_mono) else {}
+    g = edit.get
+    profile = g("profile", config.mono_e1003_profile)
+    sharp = dict(
+        sharpen_radius=g("sharpen_radius", config.mono_e1003_sharpen_radius),
+        sharpen_percent=g("sharpen_amount", config.mono_e1003_sharpen_amount),
+        sharpen_threshold=g("sharpen_threshold", config.mono_e1003_sharpen_threshold),
+    )
+    eff_crop = rec.edit_crop_mono if (rec and rec.edit_crop_mono) else None
+    crop_kw = _crop_kwargs_from_edit(eff_crop)
+    frame_kw = dict(
+        auto_rotate=bool(getattr(config, "auto_rotate_fit", False)),
+        frame_portrait=bool(frame_portrait),
+    )
+    if profile == "bw_contrast":
+        return dict(**sharp, **crop_kw, **frame_kw, dtcore=BW_CONTRAST_DTCORE)
+    if profile == "custom":
+        cg = lambda k, d: edit.get(k, getattr(config, "mono_e1003_" + k, d))
+        return dict(**sharp, **crop_kw, **frame_kw, dtcore=_build_dtcore(cg))
+    # faithful (default): the frozen legacy ramp pipeline
+    return dict(
+        **sharp,
+        **crop_kw,
+        **frame_kw,
+        use_measured_ramp=g("use_measured_ramp", config.mono_e1003_use_measured_ramp),
+        darken_gamma=g("darken_gamma", config.mono_e1003_darken_gamma),
+        shadow_lift=g("shadow_lift", config.mono_e1003_shadow_lift),
+        black_point=g("black_point", config.mono_e1003_black_point),
+        white_point=g("white_point", config.mono_e1003_white_point),
+        clarity=g("clarity", config.mono_e1003_clarity),
+        contrast=g("contrast", config.mono_e1003_contrast),
+        midtone=g("midtone", config.mono_e1003_midtone),
+        highlights=g("highlights", config.mono_e1003_highlights),
+        shadows=g("shadows", config.mono_e1003_shadows),
+    )

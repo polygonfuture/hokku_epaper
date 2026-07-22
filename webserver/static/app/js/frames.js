@@ -5,7 +5,7 @@
 // thumbnails become <img src=/thumbnail>, and every control hits the real backend.
 
 import { state, subscribe, mutate } from "./state.js";
-import { deleteScreen, patchScreen, clearScreenShowNext, thumbnailUrl } from "./api.js";
+import { deleteScreen, patchScreen, clearScreenShowNext, thumbnailUrl, ditheredUrl, ditheredUrlMono } from "./api.js";
 import { $, $$, esc, toast, fmtAgo, fmtUntil, fmtUptime, frameColor, armConfirm, disarm } from "./ui.js";
 
 const fcards = $("#fcards");
@@ -13,6 +13,29 @@ const OVERDUE_GRACE_S = 120;   // wake jitter + clock drift allowance before "ov
 
 const screens = () => state.status?.screens || {};
 const entryByName = (name) => (state.status?.upload_files || []).find((e) => e.name === name) || null;
+
+// The Frames drawer card MIRRORS the physical panel (not the generic upright /thumbnail):
+// it shows the raw frame-oriented render, so a portrait photo on a landscape frame with
+// auto-rotate OFF reads SIDEWAYS in the card exactly as the glass holds it (you turn the
+// frame to view it). The card box is therefore always the FRAME's orientation, and the
+// render is requested at that same orientation for both panel types.
+const isMonoFrame = (sc) => sc?.panel_type === "mono16_e1003";
+function frameContentPortrait(sc, entry) {
+  // content orientation the frame composes (OFF keeps the photo's; ON follows the frame).
+  const autoRotate = !!state.config?.config?.auto_rotate_fit;
+  if (autoRotate) return sc.orientation === "portrait";
+  return entry?.effective_orientation === "portrait";
+}
+function frameCardUrl(sc, entry) {
+  if (!entry) return "";
+  const framePortrait = sc.orientation === "portrait";
+  if (isMonoFrame(sc)) {
+    // raw=true → sideways wire decode (mirrors the glass), composed for the frame orientation.
+    return ditheredUrlMono(entry, frameContentPortrait(sc, entry), true);
+  }
+  // colour: raw render at the frame's configured orientation (also sideways on mismatch).
+  return ditheredUrl(entry, framePortrait ? "portrait" : "landscape");
+}
 // the frame's next image, computed exactly as the server picks it
 const nextForScreen = (sc) => sc.next_override ?? (state.status?.next_images || {})[sc.filter_by_orientation ? sc.orientation : "neutral"] ?? null;
 function overdueSeconds(sc) {
@@ -54,14 +77,18 @@ function makeCard(name) {
 }
 function updateCard(el, name, sc) {
   el.style.setProperty("--fc", frameColor(name));
-  const shape = sc.orientation === "portrait" ? "portrait" : "landscape";   // two-state (no Auto)
-  const thumb = el.querySelector(".fthumb");
-  thumb.className = "fthumb shape-" + shape;
 
   const nowE = entryByName(sc.last_served);
   const upName = nextForScreen(sc), upE = entryByName(upName);
-  setImg(el.querySelector(".c-now"), nowE ? thumbnailUrl(nowE) : "");
-  setImg(el.querySelector(".c-next"), upE ? thumbnailUrl(upE) : "");
+
+  // The card mirrors the raw panel, which is always the FRAME's orientation (portrait
+  // content reads sideways in a landscape frame). So the box is the frame orientation and
+  // the frame-oriented render fills it exactly — object-fit:cover has nothing to crop.
+  const thumb = el.querySelector(".fthumb");
+  thumb.className = "fthumb shape-" + (sc.orientation === "portrait" ? "portrait" : "landscape");
+
+  setImg(el.querySelector(".c-now"), nowE ? frameCardUrl(sc, nowE) : "");
+  setImg(el.querySelector(".c-next"), upE ? frameCardUrl(sc, upE) : "");
   const pinned = !!sc.next_override;
   thumb.classList.toggle("pinned", pinned);
   el.querySelector(".upnext").textContent = pinned ? "Pinned" : "Up next";

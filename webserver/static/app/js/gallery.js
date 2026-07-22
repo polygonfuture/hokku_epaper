@@ -8,7 +8,7 @@
 // and the canvas paint → <img src=/thumbnail>.
 
 import { state, subscribe } from "./state.js";
-import { thumbnailUrl, ditheredUrl } from "./api.js";
+import { thumbnailUrl, ditheredUrl, ditheredUrlMono } from "./api.js";
 import { $, $$, esc, frameColor } from "./ui.js";
 
 const root = document.documentElement;
@@ -36,10 +36,29 @@ function framesShowing(name) {
 // a photo currently ON a frame shows its DITHERED panel preview in the gallery (the true
 // "on the wall" look) — so its tile takes the panel's shape rather than the photo's own.
 function showsDithered(e) { return e.status === "ok" && framesShowing(e.name).length > 0; }
+// the mono (E1003) frame this photo is on, if any → its config (for orientation).
+function monoFrameOf(name) {
+  const screens = state.status?.screens || {};
+  const s = framesShowing(name).find((n) => screens[n]?.panel_type === "mono16_e1003");
+  return s ? screens[s] : null;
+}
+function onMonoFrame(name) { return !!monoFrameOf(name); }
+// the orientation content is displayed in on a mono frame: OFF keeps the photo's own
+// orientation, ON follows the frame's configured orientation. Matches the render's
+// content_portrait so the tile shape + preview un-rotation agree.
+function monoDisplayPortrait(e) {
+  const fr = monoFrameOf(e.name); if (!fr) return false;
+  const autoRotate = !!state.config?.config?.auto_rotate_fit;
+  return autoRotate ? fr.orientation === "portrait" : e.effective_orientation === "portrait";
+}
+const framePreviewUrl = (e) => (onMonoFrame(e.name) ? ditheredUrlMono(e, monoDisplayPortrait(e)) : ditheredUrl(e));
 function panelAr(e) {
   const p = state.config?.panel;
   const w = (p && p.visual_w) || 1600, h = (p && p.visual_h) || 1200;
-  return e.effective_orientation === "portrait" ? h / w : w / h;
+  // a mono-frame tile takes the shape of its UPRIGHT display (portrait when content is
+  // shown portrait); other on-frame tiles use the photo's effective orientation.
+  const portrait = onMonoFrame(e.name) ? monoDisplayPortrait(e) : e.effective_orientation === "portrait";
+  return portrait ? h / w : w / h;
 }
 function arOf(e) {
   // on-frame (dithered thumb) OR any edited photo (its thumbnail is cropped to the panel) →
@@ -52,7 +71,10 @@ function dimText(e) {
   return e.status === "pending" ? "converting" : "—";
 }
 function badgesFor(name) {
-  return framesShowing(name).map((s) => ({ name: s, color: frameColor(s) }));
+  // label = server display name if set, else the provisioned frame name (the key)
+  return framesShowing(name).map((s) => ({
+    name: s, color: frameColor(s), label: state.status?.screens?.[s]?.display_name || s,
+  }));
 }
 
 // ── one tile: built once, then updated in place by paintTile() ──
@@ -81,7 +103,7 @@ function paintTile(el, entry) {
   const slot = el.querySelector(".badges-slot");
   if (badges.length) {
     slot.innerHTML = '<div class="badges">' + badges.map((b) =>
-      `<span class="fbadge" style="--fc:${b.color}"><span class="d"></span>${esc(b.name)}</span>`).join("") + "</div>";
+      `<span class="fbadge" style="--fc:${b.color}"><span class="d"></span>${esc(b.label)}</span>`).join("") + "</div>";
   } else if (conv) {
     slot.innerHTML = '<span class="mark c">Converting</span>';
   } else {
@@ -95,13 +117,13 @@ function paintTile(el, entry) {
   // a11y on the image
   const img = el.querySelector("img");
   img.alt = entry.name
-    + (badges.length ? ", showing on " + badges.map((b) => b.name).join(" and ") : "")
+    + (badges.length ? ", showing on " + badges.map((b) => b.label).join(" and ") : "")
     + (conv ? ", converting" : "");
 
   // thumbnail: the DITHERED panel preview when this photo is on a frame (mirrors the
   // wall), else the normal thumbnail. Only (re)assign src when the cache-bust key
   // changes, so identical images are NOT re-fetched on every poll (no flicker).
-  const url = showsDithered(entry) ? ditheredUrl(entry) : thumbnailUrl(entry);
+  const url = showsDithered(entry) ? framePreviewUrl(entry) : thumbnailUrl(entry);
   if (el.dataset.thumb !== url) { el.dataset.thumb = url; img.src = url; }
 }
 
