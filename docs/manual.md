@@ -189,7 +189,7 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 
 
-- **Upload Button:** Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft.Cancel discards it, Submit adds it. Adding or drag-and-drop multiple photos will bypass the eidtor and used the server's built-in auto-detection dithering pipeline based on its classification engine:  B&W | Face | Deafult 
+- **Upload Button:** Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft. Cancel discards it, Submit adds it. Adding or drag-and-drop multiple photos will bypass the editor and use the server's built-in automatic settings (controllable from the settings page)
 
 - For a photo already in your library, use its **Edit photo…** action — right-click it (or the **⋯** in its corner) on a computer, press and hold it on a phone, or find it in the detail view's actions.
 
