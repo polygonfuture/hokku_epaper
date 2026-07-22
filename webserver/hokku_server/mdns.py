@@ -5,6 +5,31 @@ can reach the server at ``<hostname>.local`` without knowing its IP.
 The service appears as ``Hokku <hostname>._http._tcp.local.`` with a
 ``path=/hokku/ui`` TXT record. Using the hostname in the instance name
 keeps multiple hokku servers on the same LAN from colliding during probing.
+
+────────────────────────────────────────────────────────────────────────────
+RUNNING WITH A VPN (OpenVPN, WireGuard, Tailscale, a commercial VPN client, …)?
+────────────────────────────────────────────────────────────────────────────
+mDNS is made VPN-safe here in two ways, so ``hokku.local`` keeps working even
+while a VPN is connected on the machine hosting the server:
+
+  1. The advertised A record uses the real LAN IP, never the VPN tunnel IP —
+     ``_get_local_ip()`` scores interfaces and skips VPN/virtual adapters
+     (see ``_VIRTUAL_IFACE``).
+  2. Zeroconf is bound to that LAN IP ONLY (see ``start_mdns``). A default
+     ``Zeroconf()`` binds ALL interfaces, so its mDNS *responses* can egress the
+     VPN interface (VPN clients commonly give their adapter a lower interface
+     metric than Wi-Fi) and never reach LAN clients — the e-ink frame then can't
+     resolve ``hokku.local`` even though the record is correct.
+
+If ``hokku.local`` still won't resolve while a VPN is up, the culprit is
+usually the CLIENT machine (e.g. your PC/phone), not this server: the VPN's
+interface has a lower metric, so the OS sends the ``.local`` query to the VPN's
+tunnel DNS first, which returns NXDOMAIN and the OS caches that failure. Fixes,
+in order of robustness: (a) a hosts-file / DNS entry pinning ``hokku.local`` to
+the server's LAN IP (bypasses DNS/VPN entirely); (b) enable "Allow LAN Traffic"
+in the VPN client; (c) ``ipconfig /flushdns`` after the VPN connects to clear
+the stale negative cache. Pair a DHCP reservation with (a) so the IP never
+drifts — zeroconf does not refresh a live A record when the IP changes.
 """
 
 from __future__ import annotations
@@ -16,7 +41,7 @@ import time
 from typing import Any
 
 import psutil
-from zeroconf import ServiceInfo, Zeroconf
+from zeroconf import InterfaceChoice, ServiceInfo, Zeroconf
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +73,7 @@ def _get_local_ip() -> str:
     """Return the best LAN IPv4 to advertise via mDNS.
 
     Prefers a real, up, private (RFC1918) interface over VPN/virtual adapters.
-    A VPN address (e.g. a PIA 10.x tunnel that owns the default route) is one
+    A VPN address (e.g. a 10.x tunnel that owns the default route) is one
     other LAN devices — including the e-paper frame — cannot reach, so we must
     not advertise it as ``<host>.local``. Falls back to the default-route
     address, then loopback.
@@ -105,13 +130,29 @@ def start_mdns(port: int, hostname: str) -> Any:
         properties={"path": "/hokku/ui"},
         server=f"{hostname}.local.",
     )
+    # Bind Zeroconf to the chosen LAN IP ONLY — never every interface. A default
+    # Zeroconf() binds to ALL interfaces including a VPN tunnel (which often gets a
+    # lower interface metric than Wi-Fi), so its mDNS responses can egress the VPN and
+    # never reach LAN clients — the frame then can't resolve hokku.local while the VPN is
+    # up, even though the A record is correct. Pinning to local_ip (which _get_local_ip
+    # already picks, skipping VPN/virtual adapters) keeps announcements on the LAN. Falls
+    # back to Default (default-route iface) then All if the pin is rejected, so a weird
+    # network never leaves the server with no mDNS at all. local_ip is recomputed each
+    # start, so a new DHCP lease is picked up on restart (pair with a DHCP reservation to
+    # pin the IP permanently — zeroconf does not refresh a live A record on IP change).
+    bind_choices = [[local_ip], InterfaceChoice.Default, InterfaceChoice.All]
     last_exc: Exception | None = None
     for attempt in range(1, 4):
         zc = None
+        binding = bind_choices[min(attempt - 1, len(bind_choices) - 1)]
         try:
-            zc = Zeroconf()
+            zc = Zeroconf(interfaces=binding)
             zc.register_service(info)
-            logger.info("Advertised as %s.local (%s:%s)", hostname, local_ip, port)
+            logger.info(
+                "Advertised as %s.local (%s:%s) bound to %s",
+                hostname, local_ip, port,
+                binding if isinstance(binding, list) else binding.name,
+            )
             return zc
         except Exception as exc:
             last_exc = exc
