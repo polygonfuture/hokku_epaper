@@ -141,7 +141,7 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 <a href="../images/ui_v2_mobile_sheet.png"><img src="../images/ui_v2_mobile_sheet.png" height="720" alt="On a phone, press and hold a photo for the same actions."></a> &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_detail.png"><img src="../images/ui_v2_mobile_detail.png" height="720" alt="The detail view on a phone."></a>
 
-*The detail view on a phone. (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp;  *On a phone, press and hold a photo for the same actions. (right)*
+*On a phone, press and hold a photo for the contaxt menu. (left)* &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp;  *The "view details" menu on a phone.  (right)*
 
 
 &nbsp; 
