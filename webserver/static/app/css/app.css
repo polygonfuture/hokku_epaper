@@ -181,8 +181,9 @@
   /* real detail image (dithered PNG or original) — same box as the mockup canvas, smooth */
   .detail-media img { display: block; max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: 3px; box-shadow: 0 8px 30px rgba(0,0,0,.5); cursor: zoom-in; }
   .detail-media img.broken { visibility: hidden; }
-  .dtoggle { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 2; display: inline-flex; background: rgba(0,0,0,.5); border: 1px solid var(--hair-2); border-radius: 9px; padding: 3px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-  .dtoggle button { border: 0; background: transparent; color: var(--dim); font: inherit; font-size: .76rem; font-weight: 500; padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+  .dtoggle { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 2; display: inline-flex; max-width: calc(100% - 28px); background: rgba(0,0,0,.5); border: 1px solid var(--hair-2); border-radius: 9px; padding: 3px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .dtoggle button { border: 0; background: transparent; color: var(--dim); font: inherit; font-size: .76rem; font-weight: 500; padding: 5px 12px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+  @media (max-width: 560px) { .dtoggle button { font-size: .7rem; padding: 5px 8px; } }
   .dtoggle button.on { background: rgba(243,242,239,.95); color: #17171c; font-weight: 600; }
   .detail-side { flex: 0 0 320px; max-width: 340px; display: flex; flex-direction: column; gap: 16px; padding: 22px; overflow-y: auto; }
   .detail-side > * { flex-shrink: 0; }   /* children keep natural height — the panel scrolls instead of squashing/clipping them */

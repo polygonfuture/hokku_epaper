@@ -27,6 +27,12 @@ const monoDisplayPortrait = (e) => {
   return state.config?.config?.auto_rotate_fit ? fr.orientation === "portrait" : e.effective_orientation === "portrait";
 };
 const framePreviewUrl = (e) => (onMonoFrame(e.name) ? ditheredUrlMono(e, monoDisplayPortrait(e)) : ditheredUrl(e));
+// is any E1003 (mono16) frame registered? gates the detail view's "Mono 16 Gray Panel" tab.
+const hasMonoPanel = () => Object.values(screens()).some((s) => s.panel_type === "mono16_e1003");
+// the E1003 mono render for the detail view (not tied to a frame): upright at the photo's
+// own orientation. If the photo IS on a mono frame, follow that frame's display orientation.
+const monoPreviewUrl = (e) =>
+  ditheredUrlMono(e, onMonoFrame(e.name) ? monoDisplayPortrait(e) : e.effective_orientation === "portrait");
 const arOf = (e) => (e.image_width && e.image_height ? e.image_width / e.image_height : 4 / 3);
 
 // which frames are showing / have queued this image (per-screen, computed as the server does)
@@ -237,8 +243,11 @@ function detailHTML(entry) {
     : (thr != null && z <= thr) ? `${Math.round(z * 100)}% · auto-filled`
     : `needs ${Math.round(z * 100)}%${thr != null ? ` (limit ${Math.round(thr * 100)}%)` : ""}`;
 
+  // Spectra 6 · Mono 16 (only when an E1003 is registered) · Original.
+  // (Both panels are e-ink, so the view id is "spectra", not "eink".)
+  const monoTab = hasMonoPanel() ? '<button data-view="mono">Mono 16</button>' : "";
   const toggle = ok
-    ? '<div class="dtoggle"><button data-view="eink" class="on">E-ink render</button><button data-view="orig">Original</button></div>'
+    ? '<div class="dtoggle"><button data-view="spectra" class="on">Spectra 6</button>' + monoTab + '<button data-view="orig">Original</button></div>'
     : "";
   const facePill = faces.length ? '<button class="face-pill" data-faces title="Show detected face boxes" hidden>Faces</button>' : "";
   const faceLayer = faces.length
@@ -284,15 +293,25 @@ function detailHTML(entry) {
 }
 
 const detailEl = $("#detail");
-function setDetailView(orig) {
+// the image URL for a detail view: "orig" | "mono" (E1003) | "spectra" (Spectra 6 / default).
+function detailViewUrl(entry, view) {
+  if (view === "orig") return originalUrl(entry);
+  if (view === "mono") return monoPreviewUrl(entry);
+  return framePreviewUrl(entry);
+}
+function setDetailView(view) {
+  // back-compat: a boolean still means "original or not".
+  if (view === true) view = "orig";
+  else if (view === false) view = "spectra";
   const entry = entryByName(detailEl._name); if (!entry) return;
   const img = detailEl.querySelector("#detail-img");
   img.classList.remove("broken");
-  img.src = orig ? originalUrl(entry) : framePreviewUrl(entry);
-  detailEl._view = orig ? "orig" : "eink";
+  img.src = detailViewUrl(entry, view);
+  detailEl._view = view;
   // face boxes are normalized to the ORIGINAL image → only meaningful on that view.
   // Auto-show them on Original (so they're discoverable — the pill toggles them off);
-  // always hide on E-ink, where the cropped render would misplace them.
+  // hide on the panel renders, where the cropped render would misplace them.
+  const orig = view === "orig";
   const pill = detailEl.querySelector(".face-pill");
   if (pill) {
     pill.hidden = !orig;
@@ -317,7 +336,7 @@ detailEl.addEventListener("click", (e) => {
   const vb = e.target.closest("[data-view]");
   if (vb) {
     detailEl.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b === vb));
-    setDetailView(vb.dataset.view === "orig");
+    setDetailView(vb.dataset.view);
     return;
   }
   const fb = e.target.closest("[data-faces]");
@@ -334,7 +353,7 @@ detailEl.addEventListener("click", (e) => {
   }
   if (e.target.closest("#detail-img")) {
     const entry = entryByName(detailEl._name);
-    if (entry) window.open(detailEl._view === "orig" ? originalUrl(entry) : framePreviewUrl(entry), "_blank", "noopener");
+    if (entry) window.open(detailViewUrl(entry, detailEl._view), "_blank", "noopener");
     return;
   }
   const btn = e.target.closest(".ctx-item"); if (!btn) return;
