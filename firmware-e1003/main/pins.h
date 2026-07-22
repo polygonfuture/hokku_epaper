@@ -45,12 +45,13 @@
  * (GPIO0 low at reset = ROM download mode). */
 
 /* ── LED ─────────────────────────────────────────────────────────────
- * USER_LED polarity: aitjcize's board header treats it as non-inverted
- * (1 = on); the Zephyr DTS says active-low. Bench-verify at M0 — if the
- * LED is inverted on your unit, flip this to 0. */
+ * USER_LED polarity: ACTIVE-LOW on this unit (per the Zephyr DTS; aitjcize's
+ * "non-inverted 1=on" was wrong for the green LED). Bench-confirmed: with the
+ * old ON=1/OFF=0 the firmware's "off" (level 0) drove the LED constantly ON.
+ * So ON drives the pin LOW, OFF drives it HIGH. */
 #define PIN_USER_LED       16
-#define USER_LED_ON         1
-#define USER_LED_OFF        0
+#define USER_LED_ON         0
+#define USER_LED_OFF        1
 
 /* ── Battery ─────────────────────────────────────────────────────────
  * VBAT — R19/R21 10K/10K divider (×2.0) — ADC1_CH0 on GPIO1, gated by a

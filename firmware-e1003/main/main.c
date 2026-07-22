@@ -161,6 +161,15 @@ static const char *current_regime = "boot";
 static volatile bool s_cached_usb_present = false;
 static volatile bool s_cached_charging    = false;
 
+/* KEY0-press confirmation: when the user presses the wake button we drive
+ * USER_LED solid-on for ~2 s as visible "press registered" feedback. Set to
+ * an esp_timer deadline (µs) while the confirmation is active; 0 = inactive.
+ * The charge-blink task defers to this window so the flash is a clean solid
+ * 2 s regardless of charge state, then hands the LED back. Only ever set on
+ * the main task; read by the chg_monitor task (single writer → no lock). */
+#define LED_CONFIRM_MS 2000
+static volatile int64_t s_led_confirm_until_us = 0;
+
 #include "version.h"
 #include "config.h"
 #include "text_render.h"
@@ -643,6 +652,19 @@ static void chg_monitor_task(void *arg)
 {
     bool led_on = false;
     while (1) {
+        /* KEY0 press-confirmation owns the LED for its window: hold it solid
+         * ON and don't touch the blink phase, so the flash is a clean 2 s
+         * regardless of charge state. When the window ends we resume below. */
+        if (s_led_confirm_until_us != 0) {
+            if (esp_timer_get_time() < s_led_confirm_until_us) {
+                gpio_set_level(PIN_USER_LED, USER_LED_ON);
+                led_on = false;  /* restart blink phase cleanly afterwards */
+                vTaskDelay(pdMS_TO_TICKS(50));  /* tight poll so it ends promptly */
+                continue;
+            }
+            s_led_confirm_until_us = 0;  /* window elapsed — hand the LED back */
+            gpio_set_level(PIN_USER_LED, USER_LED_OFF);
+        }
         if (s_cached_charging) {
             led_on = !led_on;
             gpio_set_level(PIN_USER_LED, led_on ? USER_LED_ON : USER_LED_OFF);
@@ -652,6 +674,16 @@ static void chg_monitor_task(void *arg)
         }
         vTaskDelay(pdMS_TO_TICKS(500));  /* 1 Hz blink */
     }
+}
+
+/* Begin the ~2 s KEY0 press-confirmation flash (non-blocking). The
+ * chg_monitor task drives the pin; this only arms the window. Safe to call
+ * before chg_monitor_start() — the window is honoured as soon as the task
+ * runs. Never blocks the refresh flow and never touches sleep state. */
+static void led_confirm_press(void)
+{
+    s_led_confirm_until_us = esp_timer_get_time() + (int64_t)LED_CONFIRM_MS * 1000LL;
+    gpio_set_level(PIN_USER_LED, USER_LED_ON);  /* light immediately */
 }
 
 static void chg_monitor_start(void)
@@ -1237,6 +1269,23 @@ void app_main(void)
 
     /* ── Step 5: hardware init ─────────────────────────────────────── */
     hw_gpio_init();
+
+    /* KEY0 press confirmation: if this boot originates from a wake-button
+     * press — an EXT1 KEY0 wake from deep sleep (BUTTON_WAKE), or a KEY0
+     * press caught while awake (BUTTON_USB / BUTTON_BATT) — flash USER_LED
+     * for ~2 s as visible "press registered" feedback. All three arrive here
+     * as software restarts carrying last_sleep_mode in RTC memory, so this
+     * one check covers every KEY0 origin. Armed AFTER hw_gpio_init() (GPIO16
+     * is now a configured output, driven OFF) and BEFORE chg_monitor_start()
+     * so the blink task honours the window on its first tick instead of
+     * clobbering the LED. Non-blocking — the refresh flow proceeds normally
+     * and the LED reverts to OFF/charge-blink once the 2 s elapse. */
+    if (last_sleep_mode == LAST_SLEEP_MODE_BUTTON_WAKE ||
+        last_sleep_mode == LAST_SLEEP_MODE_BUTTON_USB  ||
+        last_sleep_mode == LAST_SLEEP_MODE_BUTTON_BATT) {
+        led_confirm_press();
+    }
+
     charger_init();
     usb_host_present();          /* prime the cached charger state */
     /* Prime the debouncer too, else the first regime poll sees a stale
