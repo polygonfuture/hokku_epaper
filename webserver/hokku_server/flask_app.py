@@ -61,6 +61,25 @@ logger = logging.getLogger(__name__)
 register_heif_opener()
 
 
+def _is_self_request(remote_addr: str | None) -> bool:
+    """True if a /hokku/screen/ request originates from the server host itself —
+    loopback, or the machine's own LAN IP. Such requests are connectivity tests or
+    health checks, NEVER a real frame, so they must not register a phantom screen
+    (a headerless self-hit would otherwise persist as an "unnamed" frame with the
+    server's own IP). Real frames — named, or unprovisioned with their own LAN IP —
+    are unaffected."""
+    if not remote_addr:
+        return False
+    if remote_addr in ("127.0.0.1", "::1", "localhost"):
+        return True
+    try:
+        from hokku_server.mdns import _get_local_ip
+
+        return remote_addr == _get_local_ip()
+    except Exception:
+        return False
+
+
 def _resolve_template_folder(override: str | None) -> str:
     if override:
         return override
@@ -163,11 +182,20 @@ def create_app(
         scheduler = state.scheduler
         config = state.config
 
+        has_screen_name = "X-Screen-Name" in request.headers
         screen_name = request.headers.get("X-Screen-Name", "unnamed")
         screen_ip = request.remote_addr or "unknown"
         battery_mv = parse_battery_header(request.headers.get("X-Battery-mV"))
         frame_state = parse_frame_state(request.headers.get("X-Frame-State"))
         panel_type = request.headers.get("X-Panel-Type") or None
+
+        # A headerless request from the server host itself (a connectivity test or a
+        # health-check probe, never a real frame) must not register a phantom "unnamed"
+        # screen. Answer 200 so the probe sees the server is alive, but don't touch the
+        # scheduler. Real frames send X-Screen-Name (or, if unprovisioned, hit this from
+        # their own LAN IP) and fall through to normal registration.
+        if not has_screen_name and _is_self_request(request.remote_addr):
+            return make_response("hokku alive", 200)
 
         # POST body carries the firmware log (plain text); GET has no body.
         screen_log: str | None = None
