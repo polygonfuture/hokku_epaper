@@ -98,6 +98,13 @@ if (_mccAction) _mccAction.addEventListener("click", () => {
   if (ED.monoCropFollows) { forkMonoCropIfEditing(); renderRail(); }   // "Frame separately" (crop stays put; now editable independently)
   else { matchSpectraCrop(); }                                        // "↺ Match Spectra"
 });
+
+// "Custom crop · Reset to frame default" chip: shown in the CROP panel, Color appearance
+// only, when this photo carries a saved edit_crop override. Reset clears edit_crop.
+function updateSavedCropChip() {
+  const chip = $("#savedCropChip"); if (!chip) return;
+  chip.hidden = !(ED.hasSavedCrop && !isMono());
+}
 let rotatedSrc = null;   // ED.srcCanvas rotated by ED.rotation (built by buildRotated)
 
 const target = () => (ED.aspect === "H" ? "landscape" : "portrait");
@@ -445,7 +452,11 @@ function setAppearance(a) {
   if (isMono()) renderMonoBefore(); else beforeKey = "";
   syncAppearanceUI();
   renderRail();
-  if (ED.mode === "dither" && ED.panelOpen) renderPanel();
+  // Refresh the open tool panel for the new appearance WITHOUT needing to re-tap the tool:
+  // in crop mode re-run applyPanelState so the crop controls + chips (mono follow/fork and
+  // the saved-crop chip, which is Color-only) swap immediately; in dither, re-render knobs.
+  if (ED.mode === "crop") applyPanelState();
+  else if (ED.mode === "dither" && ED.panelOpen) renderPanel();
   schedulePreview(0);
 }
 $("#appSeg").addEventListener("click", (e) => { const b = e.target.closest("[data-app]"); if (b) setAppearance(b.dataset.app); });
@@ -690,7 +701,7 @@ function applyPanelState() {
   cropPanel.hidden = !showCrop;
   groupPanel.hidden = !showGroup;
   pTitle.hidden = !(showCrop || showGroup);
-  if (showCrop) { pTitleText.textContent = "Crop"; pReset.hidden = !cropEdited(); updateMonoCropChip(); }
+  if (showCrop) { pTitleText.textContent = "Crop"; pReset.hidden = !cropEdited(); updateMonoCropChip(); updateSavedCropChip(); }
   else if (showGroup) renderPanel();
   if (open !== wasOpen || dockShow !== wasDock) startRelayout();
 }
@@ -1013,6 +1024,9 @@ export async function openEditor(name, { isDraft = false } = {}) {
   // start on Color.
   ED.monoBase = monoPanelDefault();
   ED.mono = { ...ED.monoBase, ...sanitizeMonoEdit(sc.edit_mono), profile: "custom" };
+  // a saved edit_crop = this photo carries a manual crop override (vs the frame's auto
+  // framing). Drives the "Custom crop · Reset to frame default" chip in the crop panel.
+  ED.hasSavedCrop = !!sc.edit_crop;
   // mono crop model: a saved edit_crop_mono means the panel was FORKED; else it follows.
   ED.savedCropMono = sc.edit_crop_mono || null;
   ED.monoCropFollows = !ED.savedCropMono;
@@ -1067,6 +1081,31 @@ edSubmit.addEventListener("click", async () => {
     toast("Submit failed: " + e.message);
   } finally {
     edSubmit.innerHTML = orig; delete edSubmit.dataset.busy;
+  }
+});
+
+// "Reset to frame default": clear the saved manual crop (edit_crop → null) so the photo
+// reverts to the frame's automatic framing (classifier crop + orientation policy). Keeps
+// any tonal edit; leaves the mono override untouched. The EDITOR STAYS OPEN — the crop is
+// reset to the default cover view in place, the chip hides, and the preview re-renders.
+const _savedCropReset = $("#savedCropReset");
+if (_savedCropReset) _savedCropReset.addEventListener("click", async () => {
+  if (_savedCropReset.dataset.busy) return;
+  _savedCropReset.dataset.busy = "1";
+  const name = ED.name;
+  const image = deepEqual(ED.cfg, ED.base) ? null : ED.cfg;   // preserve tonal edits
+  try {
+    await editImage(name, image, null);   // edit_crop=null clears the override; mono omitted = untouched
+    ED.hasSavedCrop = false;              // no override anymore → hide the chip
+    // reflect the cleared state in the open editor: default cover crop, no rotation.
+    ED.rotation = 0; ED.zoom = 1; ED.panX = 0; ED.panY = 0;
+    initCrop(); updateSavedCropChip(); renderRail(); schedulePreview(0);
+    mutate();   // gallery/frames pick up the pending re-render
+    toast("Crop reset to frame default");
+  } catch (e) {
+    toast("Reset failed: " + e.message);
+  } finally {
+    delete _savedCropReset.dataset.busy;
   }
 });
 

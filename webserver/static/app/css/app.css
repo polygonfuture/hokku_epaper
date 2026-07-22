@@ -824,6 +824,9 @@
   .mono-crop-chip.forked .mcc-state{color:#bcdcff}
   .mcc-action{flex:none;border:1px solid rgba(255,255,255,.12);background:transparent;color:#F3F2EF;font:inherit;font-size:.7rem;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;transition:border-color .12s,background .12s}
   .mcc-action:hover{border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.05)}
+  /* saved manual-crop override chip (Color appearance): amber accent = "this photo has a custom crop" */
+  .savedcrop-chip{border-color:rgba(240,190,120,.28);background:rgba(240,190,120,.07)}
+  .savedcrop-chip .mcc-state{color:#f0be78}
   .aspect-seg{display:flex;background:#0F0F13;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:3px;gap:2px}
   .aspect-seg button{flex:1;border:0;background:transparent;color:#8C8B87;font-weight:600;font-size:.8rem;padding:.5rem .3rem;border-radius:7px;cursor:pointer}
   .aspect-seg button[aria-pressed="true"]{background:#1E1E24;color:#fff}

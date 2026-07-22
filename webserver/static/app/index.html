@@ -361,6 +361,13 @@
           <div class="p-title" id="pTitle"><span id="pTitleText">Tonal</span>
             <button class="pt-reset" id="pReset">Reset group</button></div>
           <div class="crop-panel" id="cropPanel" hidden>
+            <!-- This photo carries a SAVED manual crop override (shown only when it does,
+                 in the Color appearance). "Reset to frame default" clears edit_crop so the
+                 photo reverts to the frame's automatic framing. -->
+            <div class="mono-crop-chip savedcrop-chip" id="savedCropChip" hidden>
+              <span class="mcc-state">Custom crop</span>
+              <button class="mcc-action" id="savedCropReset">↺ Reset to frame default</button>
+            </div>
             <!-- E1003 mono crop follow/fork state (shown only in the Mono appearance) -->
             <div class="mono-crop-chip" id="monoCropChip" hidden>
               <span class="mcc-state" id="mccState"></span>
