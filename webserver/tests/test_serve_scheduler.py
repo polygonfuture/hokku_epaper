@@ -340,3 +340,52 @@ def test_screen_override_bypasses_orientation_filter(app_config: AppConfig, make
     )
     sched.set_next_for_screen("frame-1", "land.png")
     assert sched.peek_next_for_screen("frame-1") == "land.png"
+
+
+# ── cross-screen de-dup (two frames shouldn't show the same photo) ────────────
+
+
+def _served(sched, screen, image):
+    """Simulate a frame having been served `image` (sets its telemetry last_served)."""
+    sched.mark_served(image, screen_name=screen)
+    sched.record_screen_call(screen, "192.0.2.9", 300, image, None, None)
+
+
+def test_dedup_two_screens_get_different_images(app_config: AppConfig, make_test_image):
+    """With >=2 ready images, a second frame's pick avoids the image the first frame
+    is showing."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    first = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    assert first is not None
+    _served(sched, "frame-1", first)
+    # frame-2 must NOT be handed frame-1's image.
+    second = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2")
+    assert second is not None
+    assert second != first
+
+
+def test_dedup_falls_back_to_repeat_when_one_image(app_config: AppConfig, make_test_image):
+    """Only one ready image: both frames still get served it (a repeat beats serving
+    nothing)."""
+    _, sched = _setup(app_config, make_test_image, ["only.png"])
+    first = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    assert first == "only.png"
+    _served(sched, "frame-1", first)
+    second = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2")
+    assert second == "only.png"  # graceful repeat, not None
+
+
+def test_dedup_none_screen_keeps_shared_pick(app_config: AppConfig, make_test_image):
+    """screen_name=None (UI preview / no frame context) keeps the original shared pick —
+    no de-dup, deterministic least-shown choice."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    # Two calls with no screen context return the same pre-computed choice.
+    assert sched.pick_next(Orientation.NEUTRAL) == sched.pick_next(Orientation.NEUTRAL)
+
+
+def test_dedup_avoids_other_screens_pending_override(app_config: AppConfig, make_test_image):
+    """An image queued (pending override) for another screen is also avoided."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    sched.set_next_for_screen("frame-1", "a.png")   # frame-1 has a.png queued
+    picked = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2")
+    assert picked == "b.png"   # frame-2 avoids frame-1's queued image

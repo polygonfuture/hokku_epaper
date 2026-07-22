@@ -116,7 +116,14 @@ def main() -> None:
     logger.info("Starting server on port %s", config.port)
     _zc = start_mdns(config.port, config.mdns_hostname) if config.mdns_hostname else None
     state._zc = _zc  # hand ownership to AppState so config reloads can restart mDNS
-    app.run(host="0.0.0.0", port=config.port)  # noqa: S104 — intentional: server binds all interfaces
+    # threaded=True: serve each request on its own thread so one slow request never
+    # blocks the others. Critical for the E1003 mono path, which renders live in the
+    # request handler (~20-30 s on a Pi Zero 2 W) — single-threaded, that render froze
+    # every other request (frame polls, UI, the other frame). The shared state it touches
+    # is already lock-guarded (scheduler/classifier/manager DB writes, render caches); the
+    # server was internally multi-threaded (Watcher + optional render pool) already, this
+    # just enables concurrent request serving. No new dependency (Werkzeug supports it).
+    app.run(host="0.0.0.0", port=config.port, threaded=True)  # noqa: S104 — intentional: server binds all interfaces
 
 
 if __name__ == "__main__":

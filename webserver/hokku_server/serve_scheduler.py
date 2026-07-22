@@ -115,13 +115,20 @@ class ServeScheduler:
 
     # ── Rotation ─────────────────────────────────────────────────
 
-    def pick_next(self, orientation: Orientation) -> str | None:
+    def pick_next(self, orientation: Orientation, screen_name: str | None = None) -> str | None:
         """Return the pre-determined next image for the given orientation filter.
 
         orientation=NEUTRAL means no filter — returns the global best next image.
         Reconciles state with manager.list() before returning — adds new
         entries, drops orphans, resets show_index for everyone when a new
         image appears so it gets a fair chance immediately.
+
+        ``screen_name`` (a real frame check-in) enables cross-screen de-dup: the
+        pick avoids images currently shown on — or pending for — OTHER screens, so
+        two frames don't display the same photo. If no un-used image remains (fewer
+        distinct ready images than frames), it falls back to the shared pick (a
+        repeat is better than serving nothing). ``screen_name=None`` (UI preview /
+        no frame context) keeps the original shared-pick behaviour exactly.
         """
         with self._lock:
             ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
@@ -133,6 +140,13 @@ class ServeScheduler:
                 self._save()
                 return None
 
+            # Per-screen de-dup: prefer an image not in use by any OTHER screen.
+            if screen_name is not None:
+                deduped = self._pick_avoiding_other_screens_locked(orientation, ready, screen_name)
+                if deduped is not None:
+                    return deduped
+                # else: nothing un-used left — fall through to the shared pick (repeat).
+
             # If the pre-computed choice for this orientation is still valid, honour it.
             if self._next_for.get(orientation) in ready_names:
                 return self._next_for[orientation]
@@ -141,6 +155,33 @@ class ServeScheduler:
             self._precompute_all_locked(ready)
             self._save()
             return self._next_for.get(orientation)
+
+    def _pick_avoiding_other_screens_locked(
+        self, orientation: Orientation, ready: list[ImageRecord], screen_name: str
+    ) -> str | None:
+        """Least-shown ready image for ``orientation`` that is NOT currently shown on,
+        or pending for, any screen OTHER than ``screen_name``. Returns None when every
+        eligible image is in use elsewhere (caller falls back to a shared pick).
+        Must be called under self._lock."""
+        # Images another screen is displaying (its last_served) or has queued (its
+        # per-screen override). The requesting screen's own image is NOT excluded, so a
+        # frame keeps rotating normally.
+        in_use = {
+            e.last_served
+            for name, e in self._screens.items()
+            if name != screen_name and e.last_served
+        }
+        in_use |= {
+            img for sname, img in self._next_for_screen.items() if sname != screen_name
+        }
+        if orientation == Orientation.NEUTRAL:
+            eligible = ready
+        else:
+            eligible = [r for r in ready if r.matches_orientation_filter(orientation)]
+        candidates = [r.name for r in eligible if r.name not in in_use]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda n: (self._stats[n].show_index, n))
 
     def mark_served(self, name: str, screen_name: str | None = None) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the

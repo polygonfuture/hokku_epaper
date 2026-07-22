@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time as _time
 from dataclasses import asdict, replace
 from datetime import datetime
@@ -156,7 +157,11 @@ def _busy_retry_seconds(config: AppConfig) -> int:
 
 
 # Diagnostic A/B toggle state (mono_e1003_ab_toggle): flips each E1003 refresh.
+# Guarded by _AB_TOGGLE_LOCK because it's the one request-mutated module global, and with
+# threaded request serving two concurrent /hokku/screen/ requests would otherwise interleave
+# its read-modify-write (skipping/repeating an A/B variant or racing the pinned image).
 _AB_TOGGLE: dict[str, bool] = {}
+_AB_TOGGLE_LOCK = threading.Lock()
 
 
 def create_app(
@@ -209,16 +214,21 @@ def create_app(
         # A pending per-screen override wins over rotation. It deliberately bypasses
         # the orientation filter — both orientations are rendered for every OK image.
         forced = scheduler.peek_next_for_screen(screen_name)
-        chosen = forced if forced is not None else scheduler.pick_next(orientation=pick_orientation)
+        # Pass screen_name so pick_next avoids images shown on OTHER frames (de-dup).
+        chosen = forced if forced is not None else scheduler.pick_next(
+            orientation=pick_orientation, screen_name=screen_name
+        )
         # A/B-toggle diagnostic pins the image so each refresh swaps only the
         # tone treatment (A<->B), not the photo. Pins the first image served.
-        if config.mono_e1003_ab_toggle:
-            if _AB_TOGGLE.get("image"):
-                chosen = _AB_TOGGLE["image"]
-            elif chosen is not None:
-                _AB_TOGGLE["image"] = chosen
-        else:
-            _AB_TOGGLE.pop("image", None)
+        # (Locked — request-mutated global under threaded serving.)
+        with _AB_TOGGLE_LOCK:
+            if config.mono_e1003_ab_toggle:
+                if _AB_TOGGLE.get("image"):
+                    chosen = _AB_TOGGLE["image"]
+                elif chosen is not None:
+                    _AB_TOGGLE["image"] = chosen
+            else:
+                _AB_TOGGLE.pop("image", None)
         sleep_seconds = calculate_sleep_seconds(config) if chosen else _busy_retry_seconds(config)
 
         if chosen is None:
@@ -257,8 +267,10 @@ def create_app(
                 )
                 if config.mono_e1003_ab_toggle:
                     # Each refresh alternates A (uniform 1.40) <-> B (measured).
-                    _AB_TOGGLE["measured"] = not _AB_TOGGLE.get("measured", False)
-                    meas = _AB_TOGGLE["measured"]
+                    # (Locked read-modify-write — request-mutated global under threading.)
+                    with _AB_TOGGLE_LOCK:
+                        _AB_TOGGLE["measured"] = not _AB_TOGGLE.get("measured", False)
+                        meas = _AB_TOGGLE["measured"]
                     binary = mono_e1003.render_mono_bin(
                         manager.original_path(chosen),
                         use_measured_ramp=meas,

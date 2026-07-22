@@ -517,7 +517,14 @@ class AbstractImageManager(ABC):
         return self._upload_dir / name
 
     def list(self) -> list[ImageRecord]:
-        return sorted(self._records.values(), key=lambda r: r.name.lower())
+        # Snapshot the values under the lock before iterating: the Watcher/render pool
+        # can add()/remove() records concurrently, and with threaded request serving a
+        # bare sorted(self._records.values()) can raise "dictionary changed size during
+        # iteration". ImageRecord is frozen, so the shallow snapshot is safe to sort
+        # outside the lock.
+        with self._db_lock:
+            records = list(self._records.values())
+        return sorted(records, key=lambda r: r.name.lower())
 
     def status(self, name: str) -> ImageRecord | None:
         return self._records.get(name)
@@ -538,13 +545,20 @@ class AbstractImageManager(ABC):
         if self._progress.total - self._progress.done <= 0:
             return None
 
+        # Snapshot records + inflight under the lock before iterating (twice, below): a
+        # concurrent add()/remove() during a bare .values() iteration would raise
+        # "dictionary changed size during iteration" under threaded request serving.
+        with self._db_lock:
+            all_records = list(self._records.values())
+            inflight = set(self._inflight)
+
         # Exclude images that are currently inflight (already being rendered but
         # still have convert_status="pending" until the worker finishes).
         # Including them inflates the pixel count that needs estimating.
         pending = [
             r
-            for r in self._records.values()
-            if r.convert_status == "pending" and r.name not in self._inflight
+            for r in all_records
+            if r.convert_status == "pending" and r.name not in inflight
         ]
         if not pending:
             return None
@@ -557,7 +571,7 @@ class AbstractImageManager(ABC):
 
         converted_px = [
             r
-            for r in self._records.values()
+            for r in all_records
             if r.last_conversion_seconds is not None and r.image_width and r.image_height
         ]
         if not converted_px:
