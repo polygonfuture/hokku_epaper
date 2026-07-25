@@ -41,6 +41,14 @@ Your photos, frames, and settings are shared between them.
 
 &nbsp;
 
+### Current Known Issues
+When uploading a large batch upload of images from mobile device; and using iOS's "Optimize Storage" feature (keeps the full resolution images in the cloud):
+- Native photo picker interface can hang while it downloads full resolution images from iCloud.  After selecting your images and tapping the blue checkmark "accept", interface may hang.
+
+This same behavior is likely to happen on Android devices as well, if they supoprt this feature. 
+
+&nbsp; 
+
 ### 1.1 Opening the app and switching interfaces
 
 <a href="../images/ui_v2_gallery.png"><img src="../images/ui_v2_gallery.png" width="560" alt="The gallery — the app's home screen, on a computer."></a>
@@ -149,7 +157,11 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 ### 1.4 Uploading photos and watching progress
 
+
 **Adding photos** — use the **Upload** button, or drag files anywhere onto the page; you can add many at once. Hokku accepts JPEG, PNG, HEIC/HEIF, AVIF, WebP, and JPEG XL, and rotates phone photos to their correct orientation automatically. On a phone, Upload opens your camera roll.
+
+> **Note:  On iPhone - a pause after you tap "Add"** — *if you pick many photos and your iPhone uses iCloud **"Optimize iPhone Storage"**, iOS downloads the full-resolution originals from iCloud before handing them over, which can make the picker sit for a while before upload starts. It's iOS fetching your photos, not Hokku. To avoid it, add fewer at a time, let photos finish downloading first, or turn off the optimize storage feature (set Settings → Photos → Download and Keep Originals.)*
+&nbsp; 
 
 **One photo opens the editor** — add a **single** photo and it opens straight in the [editor](#15-editing-a-photo), so you can crop it and preview the six-colour conversion before it's added. Add **several** at once and they skip the editor, converting right away with the server's automatic settings. Either way, your originals are kept.
 
