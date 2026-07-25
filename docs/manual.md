@@ -29,6 +29,12 @@ This manual covers both web interfaces, the frame's day-to-day behaviour, and wh
 
 ## 1. The web app
 
+> ### Current Known Issues
+> When uploading a large batch upload of images from mobile device; and using iOS's "Optimize Storage" feature (keeps the full resolution images in the cloud):
+> - Native photo picker interface can hang while it downloads full resolution images from iCloud.  After selecting your images and tapping the blue checkmark "accept", interface may hang.
+> 
+> Similar behavior may happen on Android devices as well, if they supoprt this feature.  Currently unverified.
+
 >  
 > **IMPORTANT:**     *This new webapp is still in beta / development.*   *There will be bugs and issues.  Let me know if you find anything by posting an issue in my fork.*
 > 
@@ -39,7 +45,7 @@ Your photos, frames, and settings are shared between them.
 - **The Modern app**: This UI is the default: it is built mobile-first, works equally well on a phone or a computer, and is what the rest of this section describes. 
 - **The original classic page**:  is unchanged and still available — it is documented in [section 2](#2-the-classic-interface). Open either one at `http://<your-server>:8080/` from any browser on your network.
 
-&nbsp;
+&nbsp; 
 
 ### 1.1 Opening the app and switching interfaces
 
@@ -150,6 +156,9 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 ### 1.4 Uploading photos and watching progress
 
 **Adding photos** — use the **Upload** button, or drag files anywhere onto the page; you can add many at once. Hokku accepts JPEG, PNG, HEIC/HEIF, AVIF, WebP, and JPEG XL, and rotates phone photos to their correct orientation automatically. On a phone, Upload opens your camera roll.
+
+> **Note:  On iPhone - a pause after you tap "Add"** — *if you pick many photos and your iPhone uses iCloud **"Optimize iPhone Storage"**, iOS downloads the full-resolution originals from iCloud before handing them over, which can make the picker sit for a while before upload starts. It's iOS fetching your photos, not Hokku. To avoid it, add fewer at a time, let photos finish downloading first, or turn off the optimize storage feature (set Settings → Photos → Download and Keep Originals.)*
+&nbsp; 
 
 **One photo opens the editor** — add a **single** photo and it opens straight in the [editor](#15-editing-a-photo), so you can crop it and preview the six-colour conversion before it's added. Add **several** at once and they skip the editor, converting right away with the server's automatic settings. Either way, your originals are kept.
 
