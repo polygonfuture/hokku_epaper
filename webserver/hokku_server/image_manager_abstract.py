@@ -577,7 +577,16 @@ class AbstractImageManager(ABC):
             return *SVG_PROBE_DIMS, None
         try:
             with Image.open(path) as img:
+                # Match how the image is displayed/rendered (open_image_for_render applies
+                # exif_transpose). Without this, a phone portrait stored landscape-with-
+                # Orientation=6 records as LANDSCAPE, wrongly triggering the "shows portrait —
+                # send anyway?" warning and the orientation filter. Swap w/h for the
+                # orientation values that rotate 90/270 or transpose (5-8), matching PIL's
+                # exif_transpose method table (2/3/4 are flips/180° and keep dimensions).
+                orient = img.getexif().get(0x0112, 1)  # 0x0112 = Orientation
                 w, h = img.size
+                if orient in (5, 6, 7, 8):
+                    w, h = h, w
             return w, h, None
         except Exception as e:
             return None, None, f"{type(e).__name__}: {e}"
