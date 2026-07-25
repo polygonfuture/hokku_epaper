@@ -9,7 +9,7 @@
 
 import { state, subscribe } from "./state.js";
 import { thumbnailUrl } from "./api.js";
-import { $, $$, esc, frameColor } from "./ui.js";
+import { $, $$, esc, frameColor, isMobileVp } from "./ui.js";
 
 const root = document.documentElement;
 const gallery = $("#gallery");
@@ -22,6 +22,8 @@ const sizeSlider = $("#size-slider");
 let filter = "mixed";
 const FILTER_LAYOUT = { mixed: "immersive", grouped: "immersive", landscape: "immersive", portrait: "immersive" };
 let immersiveH = +sizeSlider.value || 320;   // adjustable in immersive layout only
+// slider/pinch bounds — SMAX also flips the gallery to one-tile-per-row at max zoom
+const SMIN = +sizeSlider.min || 150, SMAX = +sizeSlider.max || 600;
 
 // keyed tile cache: name → element (survives polls so images aren't re-fetched)
 const tileCache = new Map();
@@ -175,7 +177,9 @@ function updateGallery() {
 
 // ── true justified layout: fill each row by scaling the shared row height while
 //    keeping every tile at its exact AR (never cropped). Ported verbatim. ──
-function justifyGrid(grid, targetH, gap) {
+//    singleColumn (max zoom): one tile per row so EVERY tile — portrait and
+//    landscape alike — spans the full width, with matching widths.
+function justifyGrid(grid, targetH, gap, singleColumn) {
   const W = grid.clientWidth;
   if (!W) return;
   const tiles = [...grid.querySelectorAll(".cell-tile")];   // survive previous rows
@@ -198,6 +202,23 @@ function justifyGrid(grid, targetH, gap) {
     grid.appendChild(jrow);
     row = []; sum = 0;
   };
+  if (singleColumn) {
+    // one tile per row: every tile spans the full width, height follows its AR.
+    // Set width/height explicitly (not flex) so portraits fill exactly like
+    // landscapes — a flex-grow row leaves the tile at ar×W, which is the bug.
+    tiles.forEach((el) => {
+      const a = parseFloat(el.dataset.ar);
+      const jrow = document.createElement("div");
+      jrow.className = "jrow";
+      jrow.style.height = (W / a) + "px";     // full width ÷ aspect = the tile's height
+      el.style.flex = "0 0 auto";
+      el.style.width = W + "px";
+      el.style.height = "";
+      jrow.appendChild(el);
+      grid.appendChild(jrow);
+    });
+    return;
+  }
   tiles.forEach((el) => {
     const a = parseFloat(el.dataset.ar);
     row.push(el); sum += a;
@@ -209,8 +230,12 @@ function justifyAll() {
   const immersive = root.getAttribute("data-layout") === "immersive";
   const h = immersive ? immersiveH : 250;
   const gap = 6;
+  // Mobile only, at (or near) max zoom: switch to one-tile-per-row so portraits
+  // fill the full width exactly like landscapes — their widths match. Desktop keeps
+  // the justified grid at every zoom (never forces a single full-width column).
+  const singleColumn = immersive && isMobileVp() && immersiveH >= SMAX - 1;
   root.style.setProperty("--gap", gap + "px");
-  $$("#gallery .grid").forEach((g) => justifyGrid(g, h, gap));
+  $$("#gallery .grid").forEach((g) => justifyGrid(g, h, gap, singleColumn));
 }
 
 // ── controls: filter tabs, size slider, pinch-zoom, resize ──
@@ -230,9 +255,8 @@ $("#ftabs").addEventListener("click", (e) => {
 
 sizeSlider.addEventListener("input", (e) => { immersiveH = +e.target.value; justifyAll(); });
 
-// mobile pinch-to-zoom (immersive only), clamped to the slider's range
+// mobile pinch-to-zoom (immersive only), clamped to the slider's range (SMIN/SMAX above)
 let pinchD0 = 0, pinchH0 = 0;
-const SMIN = +sizeSlider.min || 150, SMAX = +sizeSlider.max || 600;
 const pdist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 gallery.addEventListener("touchstart", (e) => {
   if (e.touches.length === 2 && root.getAttribute("data-layout") === "immersive") {
