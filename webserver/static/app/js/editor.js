@@ -1116,7 +1116,7 @@ function closeEditor() {
   renderChip.classList.remove("show");
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   endPeek(); beforeKey = ""; beforeImg.removeAttribute("src");
-  monoBeforeName = null; if (monoBeforeCtrl) monoBeforeCtrl.abort();
+  monoBeforeKey = null; if (monoBeforeCtrl) monoBeforeCtrl.abort();
   if (monoBeforeUrl) { URL.revokeObjectURL(monoBeforeUrl); monoBeforeUrl = null; }
   const draftToDrop = ED.isDraft ? ED.name : null;
   ED.name = null; ED.srcCanvas = null; rotatedSrc = null; ED.isDraft = false;
