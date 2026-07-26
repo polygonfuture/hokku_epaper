@@ -82,9 +82,14 @@ class ImageRecord:
         return self.native_orientation
 
     def matches_orientation_filter(self, orientation: Orientation) -> bool:
-        """True if this image is eligible when a screen filters by the given orientation."""
+        """True if this image is eligible when a screen filters by the given orientation.
+
+        Uses ``effective_orientation`` so a manual crop redefines eligibility: a landscape
+        source cropped to portrait is portrait-eligible (and no longer landscape-eligible),
+        matching how it renders and what the detail view reports. A square source with no
+        crop still matches either filter (effective_orientation == NEUTRAL)."""
         assert orientation != Orientation.NEUTRAL, "pass LANDSCAPE or PORTRAIT to a filter"
-        return self.native_orientation in (Orientation.NEUTRAL, orientation)
+        return self.effective_orientation in (Orientation.NEUTRAL, orientation)
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -44,9 +44,11 @@ const queuedFrames = (name) => Object.keys(screens()).filter((s) => nextForScree
 // — the server renders both orientations — but we warn before pinning it.
 function mismatched(entry, sc) {
   if (!sc.filter_by_orientation) return false;
-  const nat = entry.native_orientation;
-  if (!nat || nat === "neutral") return false;   // square fits either panel
-  return nat !== sc.orientation;
+  // effective_orientation reflects a manual crop (a landscape source cropped to portrait
+  // is portrait), matching the server's matches_orientation_filter + the detail view.
+  const eff = entry.effective_orientation || entry.native_orientation;
+  if (!eff || eff === "neutral") return false;   // square fits either panel
+  return eff !== sc.orientation;
 }
 
 // ── shared action menu (used by the touch sheet, desktop menu, and detail panel) ──
