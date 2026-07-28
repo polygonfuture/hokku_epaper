@@ -287,8 +287,19 @@ const aspH = $("#aspH"), aspV = $("#aspV");
 function syncAspectUI() {
   aspH.setAttribute("aria-pressed", ED.aspect === "H");
   aspV.setAttribute("aria-pressed", ED.aspect === "V");
-  $("#aspIcoH").hidden = ED.aspect !== "H";
-  $("#aspIcoV").hidden = ED.aspect !== "V";
+  // The mobile single-button aspToggle shows the orientation the crop will BECOME on tap
+  // (the action/target), NOT the current one: a Horizontal crop shows the Vertical icon
+  // (tap → vertical), and vice-versa. (Desktop uses the two separate aspH/aspV buttons above.)
+  // Toggle the [hidden] ATTRIBUTE via setAttribute/removeAttribute — NOT the `.hidden` IDL
+  // property: `.hidden` does not exist on SVGElement (it's an HTMLElement property), so
+  // `svg.hidden = true` is a silent no-op and the icon never hides. The attribute + the
+  // `.pedit-card [hidden]{display:none!important}` rule does the hiding correctly.
+  const setHidden = (id, hide) => {
+    const el = $("#" + id); if (!el) return;
+    if (hide) el.setAttribute("hidden", ""); else el.removeAttribute("hidden");
+  };
+  setHidden("aspIcoH", ED.aspect === "H");   // H crop → hide H, show the V-target icon
+  setHidden("aspIcoV", ED.aspect === "V");   // V crop → hide V, show the H-target icon
 }
 function setAspect(a) { forkMonoCropIfEditing(); ED.aspect = a; syncAspectUI(); initCrop(); applyPanelState(); renderRail(); }
 function rotBy(d) { forkMonoCropIfEditing(); ED.rotation = (ED.rotation + d) % 4; initCrop(); renderRail(); applyPanelState(); }
@@ -491,9 +502,11 @@ function monoFramePortrait() {
   return !!s && s.orientation === "portrait";
 }
 function monoCropOpts() {
-  // A forked mono crop sends its own framing; while following, send only the frame
-  // orientation so the server's auto fit/rotate path frames for the E1003, returned upright.
-  if (ED.monoCropFollows) return { frame_portrait: monoFramePortrait() };
+  // Mono INHERITS the colour crop while following (server: _effective_mono_kwargs falls back
+  // to edit_crop when edit_crop_mono is None). When mono is following, the live crop view
+  // already holds the Spectra crop (switchAppearance loadCrop(colorCropSnap)), so send it —
+  // sending no crop here made the editor mono preview auto-frame while the real render used
+  // the inherited crop (they disagreed). A forked mono crop sends its own framing.
   const nc = normCrop();
   return { rotation: ED.rotation, crop: [nc.x, nc.y, nc.w, nc.h], frame_portrait: monoFramePortrait() };
 }
