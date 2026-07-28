@@ -95,6 +95,52 @@ def test_multiple_slots_picks_nearest_future():
     assert 7_000 <= result <= 7_300, f"Expected ~7200 s, got {result}"
 
 
+# ── slot-boundary grace (double-refresh fix) ──────────────────────────────────
+# A frame's RTC wake drifts (minutes over a multi-hour sleep), so it can wake shortly BEFORE a
+# scheduled slot. Previously the sleep was floored to 60 s and the frame re-served the SAME slot
+# a minute later — a double e-ink repaint. A wake within _SLOT_GRACE_SECONDS of a slot (either
+# side) must now target the NEXT slot, not that one.
+
+
+def _sleep_at(hour, minute, second=0, times=("0600", "1200", "1800")):
+    now = _fake_now(hour, minute, second)
+    cfg = _cfg(debug_fast_refresh=False, refresh_image_at_time=list(times))
+    with patch("hokku_server.time_utils.datetime") as mock_dt:
+        mock_dt.now.return_value = now
+        return calculate_sleep_seconds(cfg)
+
+
+def test_wake_just_before_slot_skips_to_next_slot():
+    """Waking 30 s before noon must sleep to 18:00 (~6 h), NOT ~30 s back to noon."""
+    result = _sleep_at(11, 59, 30)
+    assert 21_000 <= result <= 22_000, f"Expected ~6h to 18:00, got {result}s (double-refresh bug)"
+
+
+def test_wake_a_few_minutes_before_slot_skips_to_next_slot():
+    """Waking 3 min early (typical RTC drift) must skip noon and target 18:00."""
+    result = _sleep_at(11, 57, 0)
+    assert 21_000 <= result <= 22_000, f"Expected ~6h to 18:00, got {result}s"
+
+
+def test_wake_on_the_slot_targets_next_slot():
+    """Waking exactly at noon targets 18:00 (6 h), unchanged from prior correct behavior."""
+    result = _sleep_at(12, 0, 0)
+    assert 21_400 <= result <= 21_700, f"Expected ~21600 s, got {result}s"
+
+
+def test_wake_just_after_slot_targets_next_slot():
+    """Waking 2 min after noon still targets 18:00 (the just-passed slot is not re-served)."""
+    result = _sleep_at(12, 2, 0)
+    assert 21_300 <= result <= 21_600, f"Expected ~6h minus 2min, got {result}s"
+
+
+def test_mid_gap_wake_unaffected_by_grace():
+    """A wake well inside a gap (09:00) targets the normal next slot (12:00, ~3h) — the grace
+    window does not perturb non-boundary cases."""
+    result = _sleep_at(9, 0, 0)
+    assert 10_600 <= result <= 10_900, f"Expected ~10800 s to noon, got {result}s"
+
+
 # ── format_duration_human ─────────────────────────────────────────────────────
 
 

@@ -11,12 +11,26 @@ from hokku_server.app_config import AppConfig
 
 DEBUG_FAST_REFRESH_SECONDS = 180
 
+# A wake landing within this window of a scheduled slot (just before OR just after) is treated
+# as THIS refresh being that slot — so we schedule the NEXT slot rather than a tiny sleep back
+# to the same one. Frames wake via an RTC timer that drifts (~1-2% over a multi-hour sleep =
+# minutes), so a wake a few minutes early is normal. Without this, a frame waking a bit before a
+# slot was told to sleep the few-minutes-to-the-slot (floored to 60s), then woke again and served
+# the SAME slot a second time — a wasteful double e-ink repaint + an extra rotation step. The
+# window must be comfortably larger than expected drift yet far smaller than the gap between slots
+# (default slots are 6h apart), so it can never swallow a genuinely-separate slot. 5 min.
+_SLOT_GRACE_SECONDS = 300
+
 
 def calculate_sleep_seconds(config: AppConfig) -> int:
     """Seconds until the next configured refresh time (system local TZ).
 
     In debug-fast-refresh mode the schedule is bypassed and a flat 180s is
     used instead. With no times configured, defaults to 6h.
+
+    A slot within ``_SLOT_GRACE_SECONDS`` of *now* (either side) counts as the slot this wake is
+    serving; the sleep targets the FIRST slot that is more than that grace ahead — so a frame that
+    wakes a little early doesn't refresh the same slot twice.
     """
     if config.debug_fast_refresh:
         return DEBUG_FAST_REFRESH_SECONDS
@@ -32,15 +46,25 @@ def calculate_sleep_seconds(config: AppConfig) -> int:
         wake_times.append((int(s[:2]), int(s[2:])))
     wake_times.sort()
 
-    for h, m in wake_times:
-        candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        if candidate > now:
-            return max(60, int((candidate - now).total_seconds()))
+    # Consider today's remaining slots and tomorrow's first, and take the earliest one that is
+    # more than the grace window in the future. A slot within the grace (imminent or just passed)
+    # is the slot this wake is serving, so we skip past it.
+    candidates: list[datetime] = [
+        now.replace(hour=h, minute=m, second=0, microsecond=0) for h, m in wake_times
+    ]
+    h0, m0 = wake_times[0]
+    candidates.append(
+        (now + timedelta(days=1)).replace(hour=h0, minute=m0, second=0, microsecond=0)
+    )
 
-    # All today's slots are past — use tomorrow's first slot.
-    h, m = wake_times[0]
+    for candidate in candidates:
+        secs = (candidate - now).total_seconds()
+        if secs > _SLOT_GRACE_SECONDS:
+            return int(secs)
+
+    # Fallback (shouldn't be reached — tomorrow's first slot is always >grace ahead): next day.
     tomorrow = now + timedelta(days=1)
-    candidate = tomorrow.replace(hour=h, minute=m, second=0, microsecond=0)
+    candidate = tomorrow.replace(hour=h0, minute=m0, second=0, microsecond=0)
     return max(60, int((candidate - now).total_seconds()))
 
 
