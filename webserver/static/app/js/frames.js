@@ -81,14 +81,28 @@ function updateCard(el, name, sc) {
   const nowE = entryByName(sc.last_served);
   const upName = nextForScreen(sc), upE = entryByName(upName);
 
-  // The card mirrors the raw panel, which is always the FRAME's orientation (portrait
-  // content reads sideways in a landscape frame). So the box is the frame orientation and
-  // the frame-oriented render fills it exactly — object-fit:cover has nothing to crop.
+  // Card box = the FRAME's orientation. Whether the card must rotate the image 90° differs
+  // by panel type, because the two render SHAPES differ (verified):
+  //   • COLOUR: ditheredUrl(orient=) returns an image SHAPED to that orientation
+  //     (portrait→1200×1600, landscape→1600×1200), so it fills the box directly — NEVER rotate.
+  //   • MONO (raw=1): the E1003 wire buffer is ALWAYS landscape-shaped (1872×1404) regardless
+  //     of content — the physical panel is landscape. So for a PORTRAIT frame box the raw image
+  //     is always landscape and object-fit:cover would CROP it. Rotate 90° in the card so it
+  //     fills the portrait box with no crop (a portrait photo reads upright; a landscape photo
+  //     reads sideways — exactly as the turned frame shows it). Landscape mono frame: buffer
+  //     shape == box shape → no rotate.
+  // Display-only, frame-preview thumbnails only.
   const thumb = el.querySelector(".fthumb");
-  thumb.className = "fthumb shape-" + (sc.orientation === "portrait" ? "portrait" : "landscape");
+  const boxPortrait = sc.orientation === "portrait";
+  thumb.className = "fthumb shape-" + (boxPortrait ? "portrait" : "landscape");
 
-  setImg(el.querySelector(".c-now"), nowE ? frameCardUrl(sc, nowE) : "");
-  setImg(el.querySelector(".c-next"), upE ? frameCardUrl(sc, upE) : "");
+  const rotateInCard = isMonoFrame(sc) && boxPortrait;   // mono raw buffer is always landscape
+  const applyImg = (img, entry) => {
+    setImg(img, entry ? frameCardUrl(sc, entry) : "");
+    img.classList.toggle("sideways", rotateInCard && !!entry);
+  };
+  applyImg(el.querySelector(".c-now"), nowE);
+  applyImg(el.querySelector(".c-next"), upE);
   const pinned = !!sc.next_override;
   thumb.classList.toggle("pinned", pinned);
   el.querySelector(".upnext").textContent = pinned ? "Pinned" : "Up next";

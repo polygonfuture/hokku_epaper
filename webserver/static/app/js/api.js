@@ -49,9 +49,13 @@ export const clearScreenShowNext = (screen) =>
   req(`/screens/${encodeURIComponent(screen)}/show_next`, { method: "DELETE" });
 
 // ── image URLs (cache-busted) ──
-// /thumbnail and /dithered send no cache validators and are name-keyed, so the key
-// must change exactly when the render changes: size_bytes + last_conversion_seconds.
+// /thumbnail and /dithered send no cache validators and are name-keyed, so the key must
+// change exactly when the render changes. render_version (a hash of the colour slugs + mono
+// edit state) changes on EVERY edit; size_bytes/last_conversion_seconds did NOT (a crop edit
+// leaves both unchanged → the browser reused a stale colour/mono preview). Fall back to the
+// old key only if the server hasn't sent render_version yet.
 export function bust(entry) {
+  if (entry.render_version) return `v=${entry.render_version}`;
   return `v=${entry.size_bytes ?? 0}-${entry.last_conversion_seconds ?? 0}`;
 }
 export const thumbnailUrl = (entry) => `${API}/thumbnail/${encodeURIComponent(entry.name)}?${bust(entry)}`;

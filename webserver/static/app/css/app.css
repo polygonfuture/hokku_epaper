@@ -82,10 +82,27 @@
   .qstrip { display: flex; align-items: center; flex: none; align-self: stretch; padding-right: 10px; border-right: 1px solid var(--hair); }
   /* single frame thumbnail — its SHAPE reflects the frame's orientation; hovering it
      swaps to the "next" image. Orientation is changed in Settings, not by clicking here. */
-  .fthumb { position: relative; height: 62px; border-radius: 2px; overflow: hidden; flex: none; border: 1px solid var(--accent); box-shadow: 0 3px 12px rgba(0,0,0,.4); background: var(--bg); }
+  .fthumb { position: relative; height: 62px; border-radius: 2px; overflow: hidden; flex: none; border: 1px solid var(--accent); box-shadow: 0 3px 12px rgba(0,0,0,.4); background: var(--bg); container-type: size; }
   .fthumb.shape-landscape { aspect-ratio: 4 / 3; }
   .fthumb.shape-portrait { aspect-ratio: 3 / 4; }
   .fthumb canvas, .fthumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: auto; transition: opacity .2s ease; }
+  /* Frame-preview thumbnail ONLY: a photo whose orientation differs from the frame (e.g. a
+     landscape photo on a portrait frame, auto-rotate OFF) is sent UPRIGHT to the frame — you
+     turn the frame to view it. Show it that way in the card: rotate the image 90° so its long
+     edge is vertical and it FILLS the box with no crop, instead of object-fit:cover chopping
+     the sides. The pre-rotation box is the frame box with its w/h swapped (position:absolute
+     + centred), so after the 90° turn it maps exactly onto the frame-shaped box. */
+  .fthumb img.sideways {
+    /* pre-rotation the image occupies a box with the frame box's axes SWAPPED
+       (width = box height, height = box width), object-fit:cover fills it, then the 90°
+       turn maps it exactly onto the frame-shaped box — long edge vertical, no crop. */
+    inset: auto;
+    top: 50%; left: 50%;
+    width: 100cqh; height: 100cqw;
+    object-fit: cover;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
+  }
   .fthumb img.broken { visibility: hidden; }
   .fthumb .c-next { opacity: 0; }
   .fthumb:hover .c-now { opacity: 0; }

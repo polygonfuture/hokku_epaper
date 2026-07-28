@@ -82,14 +82,16 @@ def _decision_to_screen_image_config(
     return ScreenImageConfig(
         image_config=decision.image_config,
         orientation=orientation,
-        # a manual crop already frames the image, so auto crop-to-fill is bypassed
+        # a manual crop already frames the image (forces cover in frame_decision), so the
+        # auto crop-to-fill threshold is irrelevant when one is present.
         crop_to_fill_threshold=0.0 if crop_rect else decision.crop_to_fill_threshold,
         clahe_keepout_bboxes=decision.clahe_keepout_bboxes,
         rotation_quarters=rotation_quarters,
         crop_rect=crop_rect,
-        # precedence: manual crop > auto_rotate > crop_to_fill. A manual crop already
-        # frames to the panel, so auto_rotate is suppressed when one is present.
-        auto_rotate=False if crop_rect else getattr(decision, "auto_rotate", False),
+        # D4/B1 (UNIFY_PLAN.md): auto_rotate is NOT suppressed by a manual crop — when ON it
+        # still reframes the crop's pixels to the mount orientation (the crop's shape does not
+        # override the toggle). frame_decision applies it uniformly whether or not a crop exists.
+        auto_rotate=getattr(decision, "auto_rotate", False),
     )
 
 
@@ -384,6 +386,19 @@ class AbstractImageManager(ABC):
             except OSError:
                 pass
             self._save_db()
+        # The mono frame renders live from an in-process cache keyed on the source path +
+        # edit params. A colour crop edit that mono INHERITS (edit_crop_mono is None) must
+        # evict that cache too, or the mono frame serves the pre-edit render until something
+        # else clears it. Done outside the DB lock (independent cache lock).
+        self._invalidate_mono_cache(name)
+
+    def _invalidate_mono_cache(self, name: str) -> None:
+        """Evict cached E1003 mono renders for one photo (best-effort)."""
+        try:
+            from hokku_server import mono_e1003
+            mono_e1003.invalidate(self._upload_dir / name)
+        except Exception:
+            logger.debug("mono cache invalidation skipped for %r", name, exc_info=True)
 
     def set_edit_mono(self, name: str, edit_mono: dict | None) -> None:
         """Store the per-image E1003 mono tone override (or None to clear it).
@@ -402,6 +417,7 @@ class AbstractImageManager(ABC):
                 return  # no-op — don't rewrite the DB
             self._records[name] = replace(rec, edit_mono=edit_mono)
             self._save_db()
+        self._invalidate_mono_cache(name)
 
     def set_edit_crop_mono(self, name: str, edit_crop_mono: dict | None) -> None:
         """Store the per-image E1003 crop OVERRIDE (or None = follow the colour crop).
@@ -420,6 +436,7 @@ class AbstractImageManager(ABC):
                 return  # no-op — don't rewrite the DB
             self._records[name] = replace(rec, edit_crop_mono=edit_crop_mono)
             self._save_db()
+        self._invalidate_mono_cache(name)
 
     # ── Reads (lock-free) ───────────────────────────────────────
 

@@ -248,8 +248,9 @@ function detailHTML(entry) {
   // Spectra 6 · Mono 16 (only when an E1003 is registered) · Original.
   // (Both panels are e-ink, so the view id is "spectra", not "eink".)
   const monoTab = hasMonoPanel() ? '<button data-view="mono">Mono 16</button>' : "";
+  // no hard-coded active tab — openDetail/setDetailView set it from the photo's current frame.
   const toggle = ok
-    ? '<div class="dtoggle"><button data-view="spectra" class="on">Spectra 6</button>' + monoTab + '<button data-view="orig">Original</button></div>'
+    ? '<div class="dtoggle"><button data-view="spectra">Spectra 6</button>' + monoTab + '<button data-view="orig">Original</button></div>'
     : "";
   const facePill = faces.length ? '<button class="face-pill" data-faces title="Show detected face boxes" hidden>Faces</button>' : "";
   const faceLayer = faces.length
@@ -295,11 +296,15 @@ function detailHTML(entry) {
 }
 
 const detailEl = $("#detail");
-// the image URL for a detail view: "orig" | "mono" (E1003) | "spectra" (Spectra 6 / default).
+// the image URL for a detail view: "orig" | "mono" (E1003) | "spectra" (Spectra 6).
+// Each tab shows exactly its labelled render REGARDLESS of which frame the photo is on:
+// "spectra" is ALWAYS the colour Spectra dither, "mono" is ALWAYS the E1003 render. (Using
+// framePreviewUrl here made the Spectra 6 tab show the MONO render for a photo on a mono
+// frame — the tab is labelled Spectra 6, so it must be colour.)
 function detailViewUrl(entry, view) {
   if (view === "orig") return originalUrl(entry);
   if (view === "mono") return monoPreviewUrl(entry);
-  return framePreviewUrl(entry);
+  return ditheredUrl(entry);   // spectra: always the colour render
 }
 function setDetailView(view) {
   // back-compat: a boolean still means "original or not".
@@ -310,6 +315,9 @@ function setDetailView(view) {
   img.classList.remove("broken");
   img.src = detailViewUrl(entry, view);
   detailEl._view = view;
+  // keep the toggle buttons' active state in sync with the shown view (so a frame-based
+  // default on open, not just clicks, highlights the right tab).
+  detailEl.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
   // face boxes are normalized to the ORIGINAL image → only meaningful on that view.
   // Auto-show them on Original (so they're discoverable — the pill toggles them off);
   // hide on the panel renders, where the cropped render would misplace them.
@@ -328,7 +336,11 @@ function openDetail(name) {
   detailEl._name = name;
   const img = detailEl.querySelector("#detail-img");
   img.addEventListener("error", () => img.classList.add("broken"));
-  setDetailView(entry.status !== "ok");   // pending → original (no e-ink render yet)
+  // Default the preview to the render type of the frame this photo is CURRENTLY on: a photo on
+  // an E1003 mono frame opens on the Mono 16 tab, otherwise Spectra 6 (colour). Pending photos
+  // have no e-ink render yet → Original. (A photo is only ever on one frame at a time.)
+  const defaultView = entry.status !== "ok" ? "orig" : (onMonoFrame(entry.name) ? "mono" : "spectra");
+  setDetailView(defaultView);
   detailEl.hidden = false;
 }
 function closeDetail() { detailEl.hidden = true; detailEl._name = null; }

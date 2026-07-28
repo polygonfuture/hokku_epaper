@@ -364,6 +364,18 @@ _disp_cache: "dict[tuple, np.ndarray]" = {}
 _disp_lock = _threading.Lock()
 
 
+def invalidate(path) -> int:
+    """Drop staged preview-tone cache entries for one source file. The cache key is
+    ``(id_key, sigmoid, local_contrast)`` where ``id_key[0]`` is ``str(path)`` (set by
+    render_mono_preview_image). Returns entries dropped."""
+    key_path = str(path)
+    with _disp_lock:
+        stale = [k for k in _disp_cache if k and k[0] and k[0][0] == key_path]
+        for k in stale:
+            _disp_cache.pop(k, None)
+    return len(stale)
+
+
 def _round_dict(d, keys):
     if not d:
         return None

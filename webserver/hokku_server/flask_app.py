@@ -8,6 +8,7 @@ each request so they automatically pick up a hot-reloaded config.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -154,6 +155,24 @@ _REPO_URL = "https://github.com/defl/hokku_epaper"
 
 def _busy_retry_seconds(config: AppConfig) -> int:
     return min(300, calculate_sleep_seconds(config))
+
+
+def _render_version(rec) -> str:
+    """A short stamp that changes whenever ANY render input for this photo changes, so the
+    app's image cache-buster refetches the fresh render. Covers the colour render (the two
+    ScreenImageConfig slugs) AND the mono render (which renders live, no slug) via its edit
+    state. size_bytes/last_conversion_seconds alone miss crop edits → stale colour/mono
+    previews (the "reset+rotate shows a stale portrait" bug)."""
+    parts = [
+        rec.landscape_image_config_slug or "",
+        rec.portrait_image_config_slug or "",
+        # mono renders live from edit state; include what _effective_mono_kwargs reads so a
+        # mono-only or inherited-crop change also busts the mono URL.
+        json.dumps(rec.edit_crop, sort_keys=True) if rec.edit_crop else "",
+        json.dumps(rec.edit_crop_mono, sort_keys=True) if rec.edit_crop_mono else "",
+        json.dumps(rec.edit_mono, sort_keys=True) if rec.edit_mono else "",
+    ]
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:10]
 
 
 # Diagnostic A/B toggle state (mono_e1003_ab_toggle): flips each E1003 refresh.
@@ -809,6 +828,11 @@ def create_app(
                 if (r.convert_status == ConvertStatus.OK or (r.edit_crop and r.edit_crop.get("target")))
                 else None,
                 "edited": r.edit_crop is not None,
+                # A render-version stamp that changes whenever ANY render input changes
+                # (colour slugs + mono edit state). The app's cache-buster keys on this so an
+                # edit always fetches the fresh render — size_bytes/last_conversion_seconds
+                # alone do NOT change reliably on a crop edit (stale colour/mono previews).
+                "render_version": _render_version(r),
                 "last_conversion_seconds": r.last_conversion_seconds,
                 "is_bw": obs.is_bw if obs else None,
                 "face_bboxes": [[b.x, b.y, b.w, b.h] for b in obs.face_bboxes]
@@ -1021,6 +1045,10 @@ def create_app(
                 crop_rect = None
 
         max_side_px = max(64, min(1600, int(body.get("max_side_px") or 800)))
+        # auto_rotate: client may override per request (editor previews the un-rotated
+        # framing); default to the global toggle. Matches the mono preview + the serve path.
+        _ar = body.get("auto_rotate")
+        auto_rotate = bool(_ar) if _ar is not None else bool(getattr(state.config, "auto_rotate_fit", False))
 
         logger.debug("Preview: %r", name)
         with open_image_for_render(path) as img:
@@ -1044,6 +1072,7 @@ def create_app(
                 clahe_keepout_bboxes_norm=keepout,
                 rotation_quarters=rotation_quarters,
                 crop_rect=crop_rect,
+                auto_rotate=auto_rotate,
             )
         logger.debug("Preview done: %r", name)
 
@@ -1058,8 +1087,13 @@ def create_app(
             rw, rh = (orig_h, orig_w) if rotation_quarters % 2 == 1 else (orig_w, orig_h)
             cw = max(1, round((crop_rect[2] if crop_rect else 1.0) * rw))
             ch = max(1, round((crop_rect[3] if crop_rect else 1.0) * rh))
+            # the crop pixels are already baked into (cw, ch): a crop forces cover, so map
+            # the boxes as covered (has_crop=True), matching frame_decision in the render.
+            # auto_rotate mirrors the render exactly (same var the preview PNG used).
             canvas_bboxes = transform_bboxes_to_canvas_norm(
-                face_in_crop, cw, ch, render_orientation, FULL_W, PANEL_H, 0.0
+                face_in_crop, cw, ch, render_orientation, FULL_W, PANEL_H, 0.0,
+                has_crop=True,
+                auto_rotate=auto_rotate,
             )
         else:
             canvas_bboxes = transform_bboxes_to_canvas_norm(
@@ -1070,6 +1104,8 @@ def create_app(
                 FULL_W,
                 PANEL_H,
                 state.config.crop_to_fill_threshold,
+                has_crop=False,
+                auto_rotate=auto_rotate,
             )
 
         resp = _png_response(png)
@@ -1126,7 +1162,8 @@ def create_app(
             auto_rotate = bool(ar) if ar is not None else bool(getattr(state.config, "auto_rotate_fit", False))
             frame_portrait = bool(body.get("frame_portrait"))   # the E1003 frame's orientation
             crop_kw = dict(rotation_quarters=rotation_quarters, crop_rect=crop_rect,
-                           auto_rotate=auto_rotate, frame_portrait=frame_portrait)
+                           auto_rotate=auto_rotate, frame_portrait=frame_portrait,
+                           crop_to_fill_threshold=float(getattr(state.config, "crop_to_fill_threshold", 0.0)))
             profile = mono.get("profile", "faithful")
             max_side_px = max(64, min(1600, int(body.get("max_side_px") or 900)))
             # dtcore profiles (B&W Contrast / Custom) render at PREVIEW resolution — the
@@ -1153,10 +1190,12 @@ def create_app(
                     highlights=float(mono.get("highlights", 0.0)),
                     shadows=float(mono.get("shadows", 0.0)),
                 )
-                # upright decode: un-rotate portrait content for the UI preview
+                # upright decode: un-rotate portrait content for the UI preview. Pass the
+                # RAW source dims — _mono_content_portrait derives the post-crop orientation
+                # itself (via effective_cropped_dims), matching render_mono_bin exactly.
                 with Image.open(path) as _im:
-                    _sp = _im.height > _im.width
-                _cp = mono_e1003._mono_content_portrait(_sp, rotation_quarters, crop_rect, auto_rotate, frame_portrait)
+                    _sw, _sh = _im.width, _im.height
+                _cp = mono_e1003._mono_content_portrait(_sw, _sh, rotation_quarters, crop_rect, auto_rotate, frame_portrait)
                 img = mono_e1003.mono_bin_to_upright_image(binary, _cp)
                 if max(img.size) > max_side_px:
                     scale = max_side_px / max(img.size)
@@ -1225,16 +1264,24 @@ def _crop_kwargs_from_edit(edit_crop) -> dict:
 def _mono_content_portrait(config, rec, frame_portrait=False) -> bool:
     """Whether the mono render for this image composed PORTRAIT content (rotated sideways
     into the landscape wire buffer) — so a UI preview must un-rotate it to upright. Mirrors
-    the render's decision using the SAME inputs _effective_mono_kwargs uses: a manual mono
-    crop fills landscape directly (never portrait-content); else ON follows the frame, OFF
-    follows the photo's own orientation."""
-    if rec and rec.edit_crop_mono and (rec.edit_crop_mono.get("rect") or rec.edit_crop_mono.get("rotation_quarters")):
-        return False
+    the render's decision using the SAME inputs _effective_mono_kwargs feeds render_mono_bin:
+    the mono crop (if any) is applied first (a portrait crop stays portrait), then ON follows
+    the frame and OFF follows the resulting shape."""
     auto_rotate = bool(getattr(config, "auto_rotate_fit", False))
     w = (rec.image_width or 0) if rec else 0
     h = (rec.image_height or 0) if rec else 0
-    src_portrait = h > w
-    return mono_e1003._mono_content_portrait(src_portrait, 0, None, auto_rotate, bool(frame_portrait))
+    # SAME inheritance as _effective_mono_kwargs: forked mono crop wins, else follow the
+    # colour crop — so the preview un-rotate matches what render_mono_bin composed.
+    eff_crop = (rec.edit_crop_mono if (rec and rec.edit_crop_mono) else None) \
+        or (rec.edit_crop if (rec and rec.edit_crop) else None)
+    crop_kw = _crop_kwargs_from_edit(eff_crop)
+    return mono_e1003._mono_content_portrait(
+        w, h,
+        crop_kw.get("rotation_quarters", 0),
+        crop_kw.get("crop_rect"),
+        auto_rotate,
+        bool(frame_portrait),
+    )
 
 
 def _effective_mono_kwargs(config, rec, frame_portrait=False) -> dict:
@@ -1244,11 +1291,12 @@ def _effective_mono_kwargs(config, rec, frame_portrait=False) -> dict:
     path; B&W Contrast / Custom use the dtcore engine. Shared by the frame serve
     path + the mono dithered/thumbnail preview so both show the same render.
 
-    Crop: only an explicit per-image ``edit_crop_mono`` is applied (mono never inherits
-    the colour crop). Otherwise the framing is governed by ``auto_rotate`` (global) and
-    ``frame_portrait`` (the E1003's configured orientation): OFF keeps the photo's own
-    orientation, ON reframes to the frame's orientation — both rotated into the landscape
-    wire buffer as needed. A manual mono crop always wins."""
+    Crop (amendment 5 — mono inherits the colour crop): a forked per-image ``edit_crop_mono``
+    wins; otherwise the mono panel FOLLOWS the colour ``edit_crop`` (the editor's "Following
+    Spectra crop" now actually follows). Only when neither exists is the framing governed by
+    ``auto_rotate`` (global) + ``frame_portrait`` (the E1003 mount) + ``crop_to_fill_threshold``
+    — all via the shared ``frame_decision`` so mono and colour agree. Inheritance is safe now
+    that both pipelines share that decision (the earlier regression was divergent crop policy)."""
     edit = rec.edit_mono if (rec and rec.edit_mono) else {}
     g = edit.get
     profile = g("profile", config.mono_e1003_profile)
@@ -1257,11 +1305,16 @@ def _effective_mono_kwargs(config, rec, frame_portrait=False) -> dict:
         sharpen_percent=g("sharpen_amount", config.mono_e1003_sharpen_amount),
         sharpen_threshold=g("sharpen_threshold", config.mono_e1003_sharpen_threshold),
     )
-    eff_crop = rec.edit_crop_mono if (rec and rec.edit_crop_mono) else None
+    # forked mono crop wins; else follow the colour crop; else no crop (auto framing).
+    eff_crop = (rec.edit_crop_mono if (rec and rec.edit_crop_mono) else None) \
+        or (rec.edit_crop if (rec and rec.edit_crop) else None)
     crop_kw = _crop_kwargs_from_edit(eff_crop)
     frame_kw = dict(
         auto_rotate=bool(getattr(config, "auto_rotate_fit", False)),
         frame_portrait=bool(frame_portrait),
+        # single fill knob shared with colour (frame_decision); ignored when a mono
+        # crop forces cover, applied to the auto fit/letterbox path otherwise.
+        crop_to_fill_threshold=float(getattr(config, "crop_to_fill_threshold", 0.0)),
     )
     if profile == "bw_contrast":
         return dict(**sharp, **crop_kw, **frame_kw, dtcore=BW_CONTRAST_DTCORE)

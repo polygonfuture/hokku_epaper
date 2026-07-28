@@ -202,12 +202,27 @@ function updateGallery() {
   }
   lastStructural = structural;
 
+  // Preserve scroll across the rebuild. Editing a photo flips it to Converting and can
+  // change its aspect, so the structural signature changes and we wipe+rebuild the DOM —
+  // which otherwise resets the page to the top and makes you "lose your place" on the photo
+  // you just edited. Capture the window scroll now, restore it after layout settles.
+  const scrollY = window.scrollY;
+
   // structure changed → rebuild the gallery frame (reusing cached tiles) + justify
   gallery.textContent = "";
   if (!groups) { gallery.innerHTML = EMPTY_HTML; return; }
   if (filter === "mixed") gallery.appendChild(gridOf(groups[0].entries));   // no label, upload order
   else groups.forEach((g) => gallery.appendChild(section(g.label, g.entries)));
   justifyAll();
+
+  // Restore now and again after justifyAll's height change lands (rAF), clamped to the new
+  // document height so we never scroll past the end.
+  const restore = () => {
+    const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    window.scrollTo(0, Math.min(scrollY, max));
+  };
+  restore();
+  requestAnimationFrame(restore);
 }
 
 // ── true justified layout: fill each row by scaling the shared row height while
