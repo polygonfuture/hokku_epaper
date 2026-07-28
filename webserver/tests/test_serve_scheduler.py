@@ -389,3 +389,70 @@ def test_dedup_avoids_other_screens_pending_override(app_config: AppConfig, make
     sched.set_next_for_screen("frame-1", "a.png")   # frame-1 has a.png queued
     picked = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2")
     assert picked == "b.png"   # frame-2 avoids frame-1's queued image
+
+
+# ── randomized least-shown tiebreak (spontaneity) ─────────────────────────────
+# Rotation is still least-shown-first (fair), but ties are broken at RANDOM, not
+# alphabetically. The RNG is injectable/seedable so these stay deterministic.
+
+import random
+
+
+def _setup_seeded(app_config, make_test_image, names, seed):
+    upload = Path(app_config.upload_dir)
+    for n in names:
+        make_test_image(upload / n)
+    mgr = SingleThreadedImageManager(app_config)
+    mgr.sync()
+    return mgr, ServeScheduler(mgr, rng=random.Random(seed))
+
+
+def test_fairness_preserved_with_random_ties(app_config, make_test_image):
+    """Every image shown exactly once per pass before any repeats — random ties don't
+    break the least-shown guarantee."""
+    names = [f"img_{i:02d}.png" for i in range(6)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=1)
+    seen = []
+    for _ in range(6):
+        n = sched.pick_next(Orientation.NEUTRAL)
+        assert n is not None
+        sched.mark_served(n)
+        seen.append(n)
+    # one full pass = every image exactly once (order randomized, coverage complete)
+    assert sorted(seen) == sorted(names)
+    # second pass also covers everything (fairness holds across cycles)
+    seen2 = []
+    for _ in range(6):
+        n = sched.pick_next(Orientation.NEUTRAL)
+        sched.mark_served(n)
+        seen2.append(n)
+    assert sorted(seen2) == sorted(names)
+
+
+def test_ties_are_randomized_not_alphabetical(app_config, make_test_image):
+    """With all images tied at show_index 0, the first pick is NOT forced to the
+    alphabetically-first name for every seed — i.e. randomness is in effect."""
+    names = [f"img_{i:02d}.png" for i in range(8)]
+    first_picks = set()
+    for seed in range(20):
+        _, sched = _setup_seeded(app_config, make_test_image, names, seed=seed)
+        first_picks.add(sched.pick_next(Orientation.NEUTRAL))
+    # across 20 seeds we should see more than one distinct first pick (alphabetical
+    # tie-break would give exactly one). Extremely unlikely to be 1 by chance.
+    assert len(first_picks) > 1, f"expected varied first picks, got {first_picks}"
+
+
+def test_seeded_rng_is_deterministic(app_config, make_test_image):
+    """Same seed → same sequence (so tests and reproductions are stable)."""
+    names = [f"img_{i:02d}.png" for i in range(8)]
+
+    def run(seed):
+        _, sched = _setup_seeded(app_config, make_test_image, names, seed=seed)
+        out = []
+        for _ in range(8):
+            n = sched.pick_next(Orientation.NEUTRAL)
+            sched.mark_served(n)
+            out.append(n)
+        return out
+
+    assert run(42) == run(42)   # identical seed → identical order

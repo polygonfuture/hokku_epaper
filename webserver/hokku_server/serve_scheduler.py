@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import threading
 import time
 from dataclasses import asdict, dataclass, replace
@@ -91,7 +92,9 @@ class ScreenTelemetryEntry:
 class ServeScheduler:
     """Fair-rotation scheduler + screen telemetry collector."""
 
-    def __init__(self, manager: AbstractImageManager) -> None:
+    def __init__(
+        self, manager: AbstractImageManager, rng: random.Random | None = None
+    ) -> None:
         self._manager = manager
         self._db_path = Path(manager.config.cache_dir) / _DB_FILENAME
         self._lock = threading.RLock()
@@ -103,6 +106,10 @@ class ServeScheduler:
         # Per-screen forced next image (screen name -> image name). Persisted:
         # frames sleep for hours, so an override must survive a server restart.
         self._next_for_screen: dict[str, str] = {}
+        # Rotation picks the LEAST-shown image, breaking ties at RANDOM (not alphabetically) so
+        # a fresh library — where most images are tied at show_index 0 — doesn't march through in
+        # filename order. Injectable + seedable for deterministic tests; defaults to system entropy.
+        self._rng = rng if rng is not None else random.Random()
         self._load()
         # Pre-determine the next image right now so the UI can show it
         # immediately without waiting for the first screen request.
@@ -112,6 +119,18 @@ class ServeScheduler:
                 ready_names = {r.name for r in ready}
                 self._reconcile(ready_names)
                 self._precompute_all_locked(ready)
+
+    def _least_shown_random(self, names: list[str]) -> str | None:
+        """Pick a name with the minimum show_index, breaking ties uniformly at random.
+
+        Fairness is unchanged (still least-shown-first, so every image is shown once before any
+        repeats); only the WITHIN-tier order is randomised, which adds spontaneity. Returns None
+        for an empty list. Must be called under self._lock (reads self._stats)."""
+        if not names:
+            return None
+        min_idx = min(self._stats[n].show_index for n in names)
+        tied = [n for n in names if self._stats[n].show_index == min_idx]
+        return self._rng.choice(tied)
 
     # ── Rotation ─────────────────────────────────────────────────
 
@@ -179,9 +198,7 @@ class ServeScheduler:
         else:
             eligible = [r for r in ready if r.matches_orientation_filter(orientation)]
         candidates = [r.name for r in eligible if r.name not in in_use]
-        if not candidates:
-            return None
-        return min(candidates, key=lambda n: (self._stats[n].show_index, n))
+        return self._least_shown_random(candidates)
 
     def mark_served(self, name: str, screen_name: str | None = None) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the
@@ -402,13 +419,9 @@ class ServeScheduler:
                 eligible = ready
             else:
                 eligible = [r for r in ready if r.matches_orientation_filter(orientation)]
-            if not eligible:
-                self._next_for[orientation] = None
-            else:
-                self._next_for[orientation] = min(
-                    (r.name for r in eligible),
-                    key=lambda n: (self._stats[n].show_index, n),
-                )
+            self._next_for[orientation] = self._least_shown_random(
+                [r.name for r in eligible]
+            )
 
     def _reconcile(self, ready_names: set[str]) -> None:
         all_names = {r.name for r in self._manager.list()}
