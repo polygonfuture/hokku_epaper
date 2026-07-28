@@ -302,7 +302,17 @@ function syncAspectUI() {
   setHidden("aspIcoV", ED.aspect === "V");   // V crop → hide V, show the H-target icon
 }
 function setAspect(a) { forkMonoCropIfEditing(); ED.aspect = a; syncAspectUI(); initCrop(); applyPanelState(); renderRail(); }
-function rotBy(d) { forkMonoCropIfEditing(); ED.rotation = (ED.rotation + d) % 4; initCrop(); renderRail(); applyPanelState(); }
+function rotBy(d) {
+  forkMonoCropIfEditing();
+  ED.rotation = (ED.rotation + d) % 4;
+  // Rotate the crop box WITH the image: each 90° turn ALWAYS flips the aspect (H<->V) so the
+  // crop stays locked to the rotated content (a wide crop becomes tall and vice-versa) — even
+  // if the aspect was set manually. Rotation and crop orientation are permanently coupled.
+  // rotBy is always ±1 quarter, so one flip per call; 180° (two calls) flips back, correct.
+  ED.aspect = ED.aspect === "H" ? "V" : "H";
+  syncAspectUI();
+  initCrop(); renderRail(); applyPanelState();
+}
 aspH.onclick = () => setAspect("H");
 aspV.onclick = () => setAspect("V");
 $("#aspToggle").onclick = () => setAspect(ED.aspect === "H" ? "V" : "H");
