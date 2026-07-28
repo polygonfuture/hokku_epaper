@@ -435,16 +435,20 @@ class ServeScheduler:
             if self._next_for_screen[sname] not in all_names:
                 del self._next_for_screen[sname]
 
-        # Add fresh entries. If we see any genuinely new name, reset all
-        # nonzero indices to 1 so the new image isn't perpetually behind.
+        # Add fresh entries. A new image starts at the CURRENT minimum show_index across the
+        # library (0 if empty) — so it joins the least-shown tier and gets a fair turn within
+        # the next cycle, WITHOUT touching any existing image's history. (The old code reset
+        # every nonzero index to 1 on any upload, which wiped the whole library's rotation
+        # history — so frequent uploads kept flattening fairness back to near-flat. show_index
+        # is a global counter but only ever compared within an orientation-filtered candidate
+        # set at pick time, so a global min is safe: a new image can only affect the rotation
+        # of frames whose filter it matches.)
         currently_known = set(self._stats.keys())
         truly_new = ready_names - currently_known
         if truly_new:
-            for n in list(self._stats.keys()):
-                if self._stats[n].show_index > 0:
-                    self._stats[n] = replace(self._stats[n], show_index=1)
-        for name in truly_new:
-            self._stats[name] = ServeStats(0, None, 0, 0.0)
+            start_index = min((s.show_index for s in self._stats.values()), default=0)
+            for name in truly_new:
+                self._stats[name] = ServeStats(start_index, None, 0, 0.0)
 
     def _attribute_show_time(self, now: float) -> None:
         if self._last_served is None:

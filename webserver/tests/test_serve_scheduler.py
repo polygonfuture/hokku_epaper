@@ -456,3 +456,57 @@ def test_seeded_rng_is_deterministic(app_config, make_test_image):
         return out
 
     assert run(42) == run(42)   # identical seed → identical order
+
+
+# ── new-image handling: join at min, don't wipe history ───────────────────────
+# Adding a photo must NOT reset every existing image's show_index (the old
+# flatten-to-1 wiped rotation history on every upload). A new image starts at the
+# current minimum show_index so it joins the least-shown tier fairly.
+
+
+def test_new_image_does_not_wipe_existing_history(app_config, make_test_image):
+    upload = Path(app_config.upload_dir)
+    for n in ["a.png", "b.png", "c.png"]:
+        make_test_image(upload / n)
+    mgr = SingleThreadedImageManager(app_config)
+    mgr.sync()
+    sched = ServeScheduler(mgr, rng=random.Random(0))
+
+    # Serve several rounds so images accumulate DIFFERENT show_index values.
+    for _ in range(7):
+        n = sched.pick_next(Orientation.NEUTRAL)
+        sched.mark_served(n)
+    before = {n: sched.stats_for(n).show_index for n in ["a.png", "b.png", "c.png"]}
+    assert max(before.values()) >= 2, f"need varied history to test, got {before}"
+
+    # Add a new image and reconcile.
+    make_test_image(upload / "z_new.png")
+    mgr.sync()
+    sched.pick_next(Orientation.NEUTRAL)  # triggers _reconcile
+
+    after = {n: sched.stats_for(n).show_index for n in ["a.png", "b.png", "c.png"]}
+    # Existing images keep their history (NOT flattened to 1).
+    assert after == before, f"existing history was altered: {before} -> {after}"
+    # The new image joined at the minimum existing show_index.
+    assert sched.stats_for("z_new.png").show_index == min(before.values())
+
+
+def test_new_image_shows_within_next_cycle(app_config, make_test_image):
+    """A newly added image (joined at min) appears within the next full pass, not starved."""
+    upload = Path(app_config.upload_dir)
+    for n in ["a.png", "b.png", "c.png"]:
+        make_test_image(upload / n)
+    mgr = SingleThreadedImageManager(app_config)
+    mgr.sync()
+    sched = ServeScheduler(mgr, rng=random.Random(3))
+    for _ in range(6):  # two full passes
+        sched.mark_served(sched.pick_next(Orientation.NEUTRAL))
+
+    make_test_image(upload / "z_new.png")
+    mgr.sync()
+    seen = []
+    for _ in range(4):  # next pass is 4 images now
+        n = sched.pick_next(Orientation.NEUTRAL)
+        sched.mark_served(n)
+        seen.append(n)
+    assert "z_new.png" in seen, f"new image should show within the next cycle, saw {seen}"
