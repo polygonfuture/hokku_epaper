@@ -116,10 +116,20 @@ function normCrop() {
 // ══════════════════════════ CROP ENGINE (lifted verbatim) ══════════════════════════
 function buildRotated() {
   const base = ED.srcCanvas;
-  if (ED.rotation % 2 === 0) { rotatedSrc = base; return; }
-  const c = document.createElement("canvas"); c.width = base.height; c.height = base.width;
-  const cx = c.getContext("2d"); cx.translate(c.width / 2, c.height / 2); cx.rotate(ED.rotation * Math.PI / 2);
-  cx.drawImage(base, -base.width / 2, -base.height / 2); rotatedSrc = c;
+  const q = ((ED.rotation % 4) + 4) % 4;
+  if (q === 0) { rotatedSrc = base; return; }   // 0° is the only true no-op
+  // Odd quarters (90°/270°) swap width<->height; 180° keeps the same dimensions. The old code
+  // early-returned on ALL even rotations, so 180° silently rendered as 0° (upright) — the photo
+  // was never shown upside-down. Size the canvas per parity, then rotate by the real angle.
+  const swap = q % 2 === 1;
+  const c = document.createElement("canvas");
+  c.width = swap ? base.height : base.width;
+  c.height = swap ? base.width : base.height;
+  const cx = c.getContext("2d");
+  cx.translate(c.width / 2, c.height / 2);
+  cx.rotate(q * Math.PI / 2);
+  cx.drawImage(base, -base.width / 2, -base.height / 2);
+  rotatedSrc = c;
 }
 function stageSize() { const r = edStage.getBoundingClientRect(); return { W: r.width, H: r.height }; }
 function fitContain(sw, sh, bw, bh) { const s = Math.min(bw / sw, bh / sh); return { w: sw * s, h: sh * s, s }; }
