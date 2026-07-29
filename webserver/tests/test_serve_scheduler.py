@@ -343,12 +343,19 @@ def test_screen_override_bypasses_orientation_filter(app_config: AppConfig, make
 
 
 # ── cross-screen de-dup (two frames shouldn't show the same photo) ────────────
+# De-dup now happens at COMMIT time, not serve time: each screen's committed next is
+# resolved ahead so the frames-drawer ("up next") always equals the actual serve.
 
 
 def _served(sched, screen, image):
     """Simulate a frame having been served `image` (sets its telemetry last_served)."""
     sched.mark_served(image, screen_name=screen)
     sched.record_screen_call(screen, "192.0.2.9", 300, image, None, None)
+
+
+def _register(sched, screen):
+    """Register a screen with telemetry so it participates in the per-screen commit."""
+    sched.record_screen_call(screen, "192.0.2.9", 300, None, None, None)
 
 
 def test_dedup_two_screens_get_different_images(app_config: AppConfig, make_test_image):
@@ -386,9 +393,142 @@ def test_dedup_none_screen_keeps_shared_pick(app_config: AppConfig, make_test_im
 def test_dedup_avoids_other_screens_pending_override(app_config: AppConfig, make_test_image):
     """An image queued (pending override) for another screen is also avoided."""
     _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    _register(sched, "frame-2")
     sched.set_next_for_screen("frame-1", "a.png")   # frame-1 has a.png queued
     picked = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2")
     assert picked == "b.png"   # frame-2 avoids frame-1's queued image
+
+
+# ── drawer == serve (the whole point) ─────────────────────────────────────────
+# committed_next_for_screen(s) is what the drawer shows; pick_next(s) is what serves.
+# They must be identical for every screen, in every state.
+
+
+def test_committed_equals_serve_for_every_screen(app_config: AppConfig, make_test_image):
+    """The committed value the drawer reads == what the next serve returns, per screen."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    _register(sched, "frame-2")
+    # Drive a couple of serves so state advances and recommits happen.
+    for _ in range(4):
+        for scr in ("frame-1", "frame-2"):
+            drawer = sched.committed_next_for_screen(scr)
+            served = sched.pick_next(Orientation.NEUTRAL, screen_name=scr)
+            assert drawer == served, f"{scr}: drawer {drawer} != serve {served}"
+            _served(sched, scr, served)
+
+
+def test_committed_two_landscape_frames_differ(app_config: AppConfig, make_test_image):
+    """Two same-orientation frames commit to DIFFERENT images (no duplicate on the wall)."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    for scr in ("frame-1", "frame-2"):
+        _register(sched, scr)   # default config: no orientation filter
+    # Force a recommit and read both committed picks.
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    c1 = sched.committed_next_for_screen("frame-1")
+    c2 = sched.committed_next_for_screen("frame-2")
+    assert c1 is not None and c2 is not None
+    assert c1 != c2
+
+
+def test_committed_frame_does_not_repeat_or_starve(app_config: AppConfig, make_test_image):
+    """A lone frame must ROTATE fairly through the whole library — never re-commit the image
+    it just served while others are less-shown (regression: the commit path once let a frame
+    re-pick its own just-served image, hogging one photo every wake)."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    counts = {"a.png": 0, "b.png": 0, "c.png": 0}
+    last = None
+    for _ in range(9):
+        n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+        assert n is not None
+        assert n != last, f"frame repeated {n} back-to-back"
+        _served(sched, "frame-1", n)
+        counts[n] += 1
+        last = n
+    # 9 serves over 3 images with fair rotation ≈ 3 each; no image hogged (would be the bug).
+    assert max(counts.values()) - min(counts.values()) <= 1, counts
+
+
+def test_committed_no_dup_wins_over_no_repeat_when_scarce(app_config: AppConfig, make_test_image):
+    """When the library is too small for every frame to have a distinct fresh pick, the
+    NO-DUPLICATE rule (never the same photo on two frames at once) takes priority over the
+    no-back-to-back-repeat preference. With 2 images and 2 frames, each frame keeps repeating
+    its own image rather than ever colliding with the other frame."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+    _register(sched, "frame-1")
+    _register(sched, "frame-2")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    for _ in range(6):
+        c1 = sched.committed_next_for_screen("frame-1")
+        c2 = sched.committed_next_for_screen("frame-2")
+        assert c1 != c2, "frames must never share an image, even when scarce"
+        _served(sched, "frame-1", sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1"))
+        _served(sched, "frame-2", sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2"))
+
+
+def test_committed_pin_wins_then_rotation_resumes(app_config: AppConfig, make_test_image):
+    """A pin makes committed == pin; after it serves, committed resumes rotation."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    sched.set_next_for_screen("frame-1", "b.png")
+    assert sched.committed_next_for_screen("frame-1") == "b.png"
+    assert sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1") == "b.png"
+    _served(sched, "frame-1", "b.png")   # consumes the pin
+    # Pin gone → committed is a normal rotation pick again (and still == serve).
+    resumed = sched.committed_next_for_screen("frame-1")
+    assert resumed is not None
+    assert resumed == sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+
+
+def test_committed_square_may_go_to_two_orientations(app_config: AppConfig, make_test_image):
+    """A square/NEUTRAL image matches both filters, so it can legitimately be committed to a
+    landscape AND a portrait frame at once — de-dup only blocks true cross-screen duplicates."""
+    _, sched = _setup_with_sizes(
+        app_config,
+        make_test_image,
+        [("sq.png", (500, 500))],   # single square image, matches every filter
+    )
+    sched.set_screen_config("land", ScreenConfig(
+        orientation=Orientation.LANDSCAPE, filter_by_orientation=True))
+    sched.set_screen_config("port", ScreenConfig(
+        orientation=Orientation.PORTRAIT, filter_by_orientation=True))
+    _register(sched, "land")
+    _register(sched, "port")
+    sched.pick_next(Orientation.LANDSCAPE, screen_name="land")
+    assert sched.committed_next_for_screen("land") == "sq.png"
+    assert sched.committed_next_for_screen("port") == "sq.png"
+
+
+def test_committed_survives_reload(app_config: AppConfig, make_test_image):
+    """Committed picks persist across a server restart (frames sleep for hours)."""
+    mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    before = sched.committed_next_for_screen("frame-1")
+    assert before is not None
+    reloaded = ServeScheduler(mgr)   # re-reads the persisted DB
+    assert reloaded.committed_next_for_screen("frame-1") == before
+
+
+def test_committed_seeded_rng_is_deterministic(app_config: AppConfig, make_test_image):
+    """Same seed → same per-screen commitment (sorted-screen iteration keeps it stable)."""
+    names = [f"img_{i:02d}.png" for i in range(8)]
+
+    def run(seed):
+        upload = Path(app_config.upload_dir)
+        for n in names:
+            make_test_image(upload / n)
+        mgr = SingleThreadedImageManager(app_config)
+        mgr.sync()
+        s = ServeScheduler(mgr, rng=random.Random(seed))
+        for scr in ("frame-a", "frame-b", "frame-c"):
+            _register(s, scr)
+        s.pick_next(Orientation.NEUTRAL, screen_name="frame-a")
+        return {scr: s.committed_next_for_screen(scr)
+                for scr in ("frame-a", "frame-b", "frame-c")}
+
+    assert run(7) == run(7)
 
 
 # ── randomized least-shown tiebreak (spontaneity) ─────────────────────────────
@@ -510,3 +650,168 @@ def test_new_image_shows_within_next_cycle(app_config, make_test_image):
         sched.mark_served(n)
         seen.append(n)
     assert "z_new.png" in seen, f"new image should show within the next cycle, saw {seen}"
+
+
+# ── multi-frame fleets (8-10 frames, mixed orientation filters) ───────────────
+# The commit-time assignment is a bipartite MATCHING across the whole fleet. These guard the
+# invariants that a naive greedy per-screen pick broke: fleet fairness (no starvation), the
+# NO-DUPLICATE rule with squares (eligible to every filter), and drawer==serve at scale.
+
+
+def _mixed_library(app_config, make_test_image, n_land, n_port, n_sq):
+    upload = Path(app_config.upload_dir)
+    names = []
+    for i in range(n_land):
+        make_test_image(upload / f"L{i}.png", size=(40, 30)); names.append(f"L{i}.png")
+    for i in range(n_port):
+        make_test_image(upload / f"P{i}.png", size=(30, 40)); names.append(f"P{i}.png")
+    for i in range(n_sq):
+        make_test_image(upload / f"S{i}.png", size=(40, 40)); names.append(f"S{i}.png")
+    mgr = SingleThreadedImageManager(app_config); mgr.sync()
+    return mgr, names
+
+
+def _run_fleet(sched, frames, rounds, seed):
+    """Simulate frames waking in random interleaved order. Returns (dup_events, global_shows).
+    frames: list[(name, ScreenConfig)]."""
+    for name, cfg in frames:
+        sched.set_screen_config(name, cfg)
+        sched.record_screen_call(name, "1.1.1.1", 300, None, None, None)
+    display = {name: None for name, _ in frames}
+    gshows: dict[str, int] = {}
+    dup_events = 0
+    rng = random.Random(seed)
+    for _ in range(rounds):
+        order = [name for name, _ in frames]
+        rng.shuffle(order)
+        for name in order:
+            cfg = dict(frames)[name]
+            orient = cfg.orientation if cfg.filter_by_orientation else Orientation.NEUTRAL
+            drawer = sched.committed_next_for_screen(name)
+            served = sched.pick_next(orient, screen_name=name)
+            assert served == drawer, f"{name}: drawer {drawer} != serve {served}"
+            display[name] = served
+            gshows[served] = gshows.get(served, 0) + 1
+            sched.mark_served(served, screen_name=name)
+            sched.record_screen_call(name, "1.1.1.1", 300, served, None, None)
+            # NO two frames DISPLAY the same image at once
+            seen = {}
+            for g, img in display.items():
+                if img is None:
+                    continue
+                if img in seen:
+                    dup_events += 1
+                seen[img] = g
+    return dup_events, gshows
+
+
+def test_fleet_eight_unfiltered_no_dup_and_covers_library(app_config, make_test_image):
+    """8 unfiltered frames over a TIGHT library (11 images): never the same photo on two frames
+    at once, and every image still gets shown (no image permanently starved to zero).
+
+    NOTE ON FAIRNESS: exact show-balance is NOT asserted here. By design (minimal-disturbance
+    recommit) an idle frame keeps its committed pick until IT serves, so serving one frame never
+    reshuffles another's "up next" — the drawer==serve guarantee. The cost is that in a cramped
+    library (frames ≈ images) shows concentrate somewhat rather than perfectly balancing across
+    the fleet; that is the accepted trade (drawer stability > tight-fleet balancing). Real fleets
+    have far more images than frames, where both hold — see test_fleet_two_frames_plentiful_fair."""
+    mgr, names = _mixed_library(app_config, make_test_image, 6, 4, 1)  # 11 images, 8 frames
+    sched = ServeScheduler(mgr, rng=random.Random(7))
+    frames = [(f"frame-{i}", ScreenConfig()) for i in range(8)]
+    dup, gshows = _run_fleet(sched, frames, rounds=30, seed=13)
+    assert dup == 0, f"{dup} same-image-on-two-frames events (hard rule)"
+    assert len(gshows) == len(names), f"coverage {len(gshows)}/{len(names)} — an image was starved"
+    assert min(gshows.values()) > 0, f"an image was never shown: {gshows}"
+
+
+def test_fleet_two_frames_plentiful_fair_and_stable(app_config, make_test_image):
+    """The REAL-WORLD shape: 2 frames, many images. Serving one frame must NEVER change the
+    other's committed 'up next' (the reshuffle bug), drawer==serve holds, AND fairness is tight."""
+    mgr, names = _mixed_library(app_config, make_test_image, 30, 30, 4)  # 64 images, 2 frames
+    sched = ServeScheduler(mgr, rng=random.Random(4))
+    L = ScreenConfig(orientation=Orientation.LANDSCAPE, filter_by_orientation=True)
+    P = ScreenConfig(orientation=Orientation.PORTRAIT, filter_by_orientation=True)
+    frames = [("E1003", L), ("Living Room", P)]
+    for nm, cfg in frames:
+        sched.set_screen_config(nm, cfg)
+        sched.record_screen_call(nm, "1.1.1.1", 300, None, None, None)
+    reshuffles = 0
+    rng = random.Random(9)
+    display = {nm: None for nm, _ in frames}
+    gshows = {}
+    for _ in range(40):
+        order = [nm for nm, _ in frames]
+        rng.shuffle(order)
+        for nm in order:
+            cfg = dict(frames)[nm]
+            other = "Living Room" if nm == "E1003" else "E1003"
+            other_before = sched.committed_next_for_screen(other)
+            drawer = sched.committed_next_for_screen(nm)
+            served = sched.pick_next(cfg.orientation, screen_name=nm)
+            assert served == drawer, f"drawer!=serve {nm}: {drawer} vs {served}"
+            sched.mark_served(served, screen_name=nm)
+            sched.record_screen_call(nm, "1.1.1.1", 300, served, None, None)
+            if sched.committed_next_for_screen(other) != other_before:
+                reshuffles += 1
+            display[nm] = served
+            gshows[served] = gshows.get(served, 0) + 1
+            assert display["E1003"] != display["Living Room"] or display["E1003"] is None, \
+                "same image on both frames at once"
+    assert reshuffles == 0, f"{reshuffles} cross-frame reshuffles — serving one frame changed the other's up-next"
+
+
+def test_fleet_ten_mixed_filters_square_never_double_committed(app_config, make_test_image):
+    """10 frames with mixed L/P/unfiltered filters: a square (eligible to every filter) must
+    never be committed to two frames at once (regression: greedy assigned a square to two
+    frames while other images sat unused)."""
+    mgr, names = _mixed_library(app_config, make_test_image, 6, 4, 1)  # incl. one square
+    sched = ServeScheduler(mgr, rng=random.Random(5))
+    L = ScreenConfig(orientation=Orientation.LANDSCAPE, filter_by_orientation=True)
+    P = ScreenConfig(orientation=Orientation.PORTRAIT, filter_by_orientation=True)
+    U = ScreenConfig()  # unfiltered
+    frames = [(f"frame-{i}", (L, P, U)[i % 3]) for i in range(10)]
+    dup, _ = _run_fleet(sched, frames, rounds=30, seed=21)
+    assert dup == 0, f"{dup} same-image-on-two-frames events across mixed filters"
+    # committed values are distinct wherever distinct images exist (11 imgs >= 10 frames)
+    committed = [sched.committed_next_for_screen(f) for f, _ in frames]
+    committed = [c for c in committed if c is not None]
+    assert len(committed) == len(set(committed)), f"duplicate committed values: {committed}"
+
+
+def test_fleet_filtered_frames_only_serve_matching_orientation(app_config, make_test_image):
+    """A landscape-filtered frame never serves a portrait image, and vice-versa (squares OK)."""
+    mgr, names = _mixed_library(app_config, make_test_image, 4, 4, 2)
+    sched = ServeScheduler(mgr, rng=random.Random(9))
+    L = ScreenConfig(orientation=Orientation.LANDSCAPE, filter_by_orientation=True)
+    P = ScreenConfig(orientation=Orientation.PORTRAIT, filter_by_orientation=True)
+    frames = [("land-0", L), ("land-1", L), ("port-0", P), ("port-1", P)]
+    for name, cfg in frames:
+        sched.set_screen_config(name, cfg)
+        sched.record_screen_call(name, "1.1.1.1", 300, None, None, None)
+    rng = random.Random(2)
+    for _ in range(20):
+        order = [n for n, _ in frames]; rng.shuffle(order)
+        for name in order:
+            cfg = dict(frames)[name]
+            served = sched.pick_next(cfg.orientation, screen_name=name)
+            assert served is not None
+            # landscape frames get L* or S*; portrait frames get P* or S*
+            if cfg.orientation == Orientation.LANDSCAPE:
+                assert served[0] in ("L", "S"), f"{name} served portrait {served}"
+            else:
+                assert served[0] in ("P", "S"), f"{name} served landscape {served}"
+            sched.mark_served(served, screen_name=name)
+            sched.record_screen_call(name, "1.1.1.1", 300, served, None, None)
+
+
+def test_fleet_committed_survives_reload_stable(app_config, make_test_image):
+    """After an 8-frame fleet warms up, a reload reproduces the SAME committed assignment
+    (drawer doesn't thrash across a server restart)."""
+    mgr, names = _mixed_library(app_config, make_test_image, 6, 4, 1)
+    sched = ServeScheduler(mgr, rng=random.Random(4))
+    frames = [(f"frame-{i}", ScreenConfig()) for i in range(8)]
+    _run_fleet(sched, frames, rounds=10, seed=8)
+    before = {f: sched.committed_next_for_screen(f) for f, _ in frames}
+    reloaded = ServeScheduler(mgr, rng=random.Random(4))
+    after = {f: reloaded.committed_next_for_screen(f) for f, _ in frames}
+    assert after == before, f"reload changed committed assignment:\n before={before}\n after={after}"

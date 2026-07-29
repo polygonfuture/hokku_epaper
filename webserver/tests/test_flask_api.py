@@ -783,6 +783,39 @@ def test_screen_show_next_forced_serve_once(synced_client):
     assert screens["frame-b"]["next_override"] is None
 
 
+def test_status_next_matches_actual_serve(synced_client):
+    """The drawer's per-screen "next" (status.screens[s].next) must equal the image the
+    frame actually serves on its next check-in — the whole point of the commit refactor."""
+    client, state, first = synced_client
+    for extra in ("second.png", "third.png"):
+        _add_ready_image(state, extra)
+    # Register two frames so cross-screen de-dup is in play.
+    _register_screen(client, "frame-a")
+    _register_screen(client, "frame-b")
+
+    # For several rounds, what /status says is "next" for a frame must be what it then serves.
+    for _ in range(4):
+        for scr in ("frame-a", "frame-b"):
+            drawer_next = client.get("/hokku/api/status").get_json()["screens"][scr]["next"]
+            assert drawer_next is not None
+            _register_screen(client, scr)   # frame checks in → serves + advances
+            served = client.get("/hokku/api/status").get_json()["screens"][scr]["last_served"]
+            assert served == drawer_next, f"{scr}: drawer said {drawer_next}, served {served}"
+
+
+def test_status_next_two_frames_differ(synced_client):
+    """Two frames' committed "next" images differ (no duplicate photo across the wall)."""
+    client, state, first = synced_client
+    for extra in ("second.png", "third.png"):
+        _add_ready_image(state, extra)
+    _register_screen(client, "frame-a")
+    _register_screen(client, "frame-b")
+    screens = client.get("/hokku/api/status").get_json()["screens"]
+    a_next, b_next = screens["frame-a"]["next"], screens["frame-b"]["next"]
+    assert a_next is not None and b_next is not None
+    assert a_next != b_next
+
+
 def test_screen_show_next_unknown_screen_returns_404(synced_client):
     client, _, name = synced_client
     resp = client.post("/hokku/api/screens/ghost/show_next", json={"image": name})

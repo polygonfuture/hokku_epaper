@@ -106,6 +106,13 @@ class ServeScheduler:
         # Per-screen forced next image (screen name -> image name). Persisted:
         # frames sleep for hours, so an override must survive a server restart.
         self._next_for_screen: dict[str, str] = {}
+        # Per-screen COMMITTED next image (screen name -> image name): the resolved
+        # rotation pick with cross-screen de-dup + random tiebreak ALREADY applied at
+        # commit time. This is the single serve authority — pick_next(screen) returns it
+        # verbatim and the frames-drawer reads the same value, so "up next" == what serves,
+        # always. Recomputed for ALL screens on every advance / pin change / reconcile.
+        # Persisted (frames sleep for hours). A pin (_next_for_screen) still wins over this.
+        self._committed_next_for_screen: dict[str, str] = {}
         # Rotation picks the LEAST-shown image, breaking ties at RANDOM (not alphabetically) so
         # a fresh library — where most images are tied at show_index 0 — doesn't march through in
         # filename order. Injectable + seedable for deterministic tests; defaults to system entropy.
@@ -119,6 +126,7 @@ class ServeScheduler:
                 ready_names = {r.name for r in ready}
                 self._reconcile(ready_names)
                 self._precompute_all_locked(ready)
+                self._recommit_all_screens_locked(ready)
 
     def _least_shown_random(self, names: list[str]) -> str | None:
         """Pick a name with the minimum show_index, breaking ties uniformly at random.
@@ -142,12 +150,12 @@ class ServeScheduler:
         entries, drops orphans, resets show_index for everyone when a new
         image appears so it gets a fair chance immediately.
 
-        ``screen_name`` (a real frame check-in) enables cross-screen de-dup: the
-        pick avoids images currently shown on — or pending for — OTHER screens, so
-        two frames don't display the same photo. If no un-used image remains (fewer
-        distinct ready images than frames), it falls back to the shared pick (a
-        repeat is better than serving nothing). ``screen_name=None`` (UI preview /
-        no frame context) keeps the original shared-pick behaviour exactly.
+        ``screen_name`` (a real frame check-in) returns that screen's COMMITTED next
+        image — the rotation pick with cross-screen de-dup + random tiebreak already
+        resolved at commit time (see _recommit_all_screens_locked). This is the exact
+        value the frames-drawer shows, so "up next" == what serves, always.
+        ``screen_name=None`` (UI preview / no frame context) keeps the original
+        orientation-keyed shared-pick behaviour exactly.
         """
         with self._lock:
             ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
@@ -156,17 +164,23 @@ class ServeScheduler:
 
             if not ready:
                 self._next_for = dict.fromkeys(Orientation, None)
+                self._committed_next_for_screen.clear()
                 self._save()
                 return None
 
-            # Per-screen de-dup: prefer an image not in use by any OTHER screen.
+            # Real frame: serve the committed per-screen pick (the drawer reads the same
+            # value). Recommit if it's stale/absent so the served image is always valid.
             if screen_name is not None:
-                deduped = self._pick_avoiding_other_screens_locked(orientation, ready, screen_name)
-                if deduped is not None:
-                    return deduped
-                # else: nothing un-used left — fall through to the shared pick (repeat).
+                committed = self._committed_next_for_screen.get(screen_name)
+                if committed not in ready_names:
+                    # Absent/stale — recommit, ensuring THIS frame is in the commit universe
+                    # even if it hasn't recorded telemetry yet (first check-in).
+                    self._recommit_all_screens_locked(ready, include_screen=screen_name)
+                    self._save()
+                    committed = self._committed_next_for_screen.get(screen_name)
+                return committed
 
-            # If the pre-computed choice for this orientation is still valid, honour it.
+            # No frame context (UI preview): honour the precomputed orientation slot.
             if self._next_for.get(orientation) in ready_names:
                 return self._next_for[orientation]
 
@@ -175,30 +189,206 @@ class ServeScheduler:
             self._save()
             return self._next_for.get(orientation)
 
-    def _pick_avoiding_other_screens_locked(
-        self, orientation: Orientation, ready: list[ImageRecord], screen_name: str
-    ) -> str | None:
-        """Least-shown ready image for ``orientation`` that is NOT currently shown on,
-        or pending for, any screen OTHER than ``screen_name``. Returns None when every
-        eligible image is in use elsewhere (caller falls back to a shared pick).
-        Must be called under self._lock."""
-        # Images another screen is displaying (its last_served) or has queued (its
-        # per-screen override). The requesting screen's own image is NOT excluded, so a
-        # frame keeps rotating normally.
-        in_use = {
-            e.last_served
-            for name, e in self._screens.items()
-            if name != screen_name and e.last_served
+    def _recommit_all_screens_locked(
+        self,
+        ready: list[ImageRecord],
+        include_screen: str | None = None,
+        just_served: tuple[str, str] | None = None,
+    ) -> None:
+        """Commit a de-duplicated next image for EVERY registered screen at once.
+
+        Committed picks across screens are kept DISTINCT (no two frames serve the same photo
+        at once) and are the least-shown eligible images (fair rotation), with random
+        tiebreak. A frame never re-commits the image it just served (``just_served``).
+
+        MINIMAL DISTURBANCE (the drawer==serve guarantee across frames): a screen KEEPS its
+        existing valid committed pick on EVERY recommit — passive (reload/poll/new-screen) AND
+        on another frame's advance. Only the frame that just advanced (``just_served``) is
+        repicked; every OTHER screen holds the exact image its drawer is showing, so serving
+        one frame never silently changes what another frame will serve. A held pick is dropped
+        only if it became invalid (image gone / no longer eligible / now displayed or committed
+        elsewhere — a real collision); such a screen is then rematched. Frames still sleep and
+        wake seconds apart, so this is what makes "up next" match the actual serve every time.
+        Pins always win. Fairness is preserved: each frame repicks least-shown when IT advances,
+        and in a comfortably-sized library idle holds are negligible (a tight library forces
+        collision-driven rematches anyway).
+
+        ``include_screen`` forces a screen into the universe even with no telemetry/config/pin
+        yet (first check-in). Must be called under self._lock."""
+        ready_names = {r.name for r in ready}
+        screen_names = (
+            set(self._screens)
+            | set(self._screen_configs)
+            | set(self._next_for_screen)
+        )
+        if include_screen is not None:
+            screen_names.add(include_screen)
+
+        def _eligible_for(sname: str) -> list[ImageRecord]:
+            cfg = self.get_screen_config(sname)
+            orient = cfg.orientation if cfg.filter_by_orientation else Orientation.NEUTRAL
+            if orient == Orientation.NEUTRAL:
+                return ready
+            return [r for r in ready if r.matches_orientation_filter(orient)]
+
+        # Images each screen is currently displaying (its last_served). ``just_served`` is what
+        # the advancing frame served THIS round (telemetry lags a step), so it counts as that
+        # frame's current display — used to keep it from immediately repeating itself.
+        displaying = {
+            sname: e.last_served
+            for sname, e in self._screens.items()
+            if e.last_served
         }
-        in_use |= {
-            img for sname, img in self._next_for_screen.items() if sname != screen_name
-        }
-        if orientation == Orientation.NEUTRAL:
-            eligible = ready
-        else:
-            eligible = [r for r in ready if r.matches_orientation_filter(orientation)]
-        candidates = [r.name for r in eligible if r.name not in in_use]
-        return self._least_shown_random(candidates)
+        if just_served is not None:
+            displaying[just_served[0]] = just_served[1]
+
+        committed: dict[str, str] = {}
+        in_use: set[str] = set()
+        # The one screen that just advanced (consumed its committed pick) MUST repick; every
+        # other screen keeps its pick so serving one frame never reshuffles another's drawer.
+        advancer = just_served[0] if just_served is not None else None
+
+        # Pass 1 — pins always win.
+        for sname in sorted(screen_names):
+            pin = self._next_for_screen.get(sname)
+            if pin in ready_names:
+                committed[sname] = pin
+                in_use.add(pin)
+
+        # Pass 2 — PRESERVE each screen's still-valid committed pick (except the advancer), on
+        # every recommit. A pick is kept only if it's still ready, still eligible, not already
+        # taken by a pin/another kept pick, and not currently displayed by ANOTHER screen (that
+        # would be a dup-on-wall). Screens whose pick is dropped are rematched fresh in Pass 3.
+        for sname in sorted(screen_names):
+            if sname in committed or sname == advancer:
+                continue
+            prev = self._committed_next_for_screen.get(sname)
+            others_display = {img for o, img in displaying.items() if o != sname}
+            if (
+                prev in ready_names
+                and prev not in in_use
+                and prev not in others_display
+                and prev in {r.name for r in _eligible_for(sname)}
+            ):
+                committed[sname] = prev
+                in_use.add(prev)
+
+        # Pass 3 — assign a DISTINCT least-shown image to every screen still needing one, as a
+        # bipartite MATCHING (screens ↔ images) rather than a greedy per-screen grab.
+        #
+        # Why matching, not greedy: with several screens and mixed orientation filters a greedy
+        # "each screen takes its own least-shown" both STARVES (low-named screens hog the fresh
+        # images, spread hit 21 across 8 frames) and DUPLICATES (a square, eligible to every
+        # filter, got committed to two frames while other images sat unused). An augmenting-path
+        # matching maximises the number of DISTINCT assignments, so two screens share an image
+        # only when there are genuinely fewer distinct eligible images than screens — the true
+        # unavoidable case. Preferring least-shown images inside the match keeps rotation fair.
+        #
+        # NO-DUPLICATE (hard): the matched image is distinct across screens AND excludes images
+        # OTHER screens currently display (``_avail_for`` removes them), so nothing already on a
+        # wall is handed to a second frame. NO-REPEAT (soft): a first matching pass forbids each
+        # screen's own last-served; screens left unmatched retry with that rule dropped, so a
+        # repeat happens only when unavoidable. Determinism/reload: candidate images are ordered
+        # by (show_index, seeded-RNG), and screens are processed most-shown-display first, so a
+        # reload reproduces the same assignment from persisted state.
+        already = set(committed.values())  # pins + preserved picks — images the match must avoid
+
+        def _avail_for(sname: str) -> list[str]:
+            others_display = {img for o, img in displaying.items() if o != sname}
+            return [
+                r.name for r in _eligible_for(sname)
+                if r.name not in already and r.name not in others_display
+            ]
+
+        def _img_sort_key(name: str) -> tuple:
+            idx = self._stats[name].show_index if name in self._stats else 0
+            return (idx, self._rng.random())  # least-shown first; seeded-RNG tiebreak
+
+        def _screen_priority(sname: str) -> tuple:
+            shown = displaying.get(sname)
+            shown_idx = self._stats[shown].show_index if shown in self._stats else -1
+            return (-shown_idx, self._rng.random())  # most-shown display moves first
+
+        need = sorted(
+            (s for s in screen_names if s not in committed), key=_screen_priority
+        )
+        match_frame: dict[str, str] = {}   # screen -> image
+        match_img: dict[str, str] = {}     # image -> screen
+
+        def _augment(sname: str, seen: set[str], forbid_own: bool) -> bool:
+            own = displaying.get(sname)
+            cands = sorted(_avail_for(sname), key=_img_sort_key)
+            for img in cands:
+                if forbid_own and img == own:
+                    continue
+                if img in seen:
+                    continue
+                seen.add(img)
+                if img not in match_img or _augment(match_img[img], seen, forbid_own):
+                    match_img[img] = sname
+                    match_frame[sname] = img
+                    return True
+            return False
+
+        # First pass forbids own-last (no back-to-back repeat); leftovers retry allowing it,
+        # then finally accept a shared image only if the screen has literally no distinct option.
+        for sname in need:
+            if not _augment(sname, set(), forbid_own=True):
+                _augment(sname, set(), forbid_own=False)
+        for sname in need:
+            if sname not in match_frame:
+                # No distinct image available (fewer eligible images than screens): fall back to
+                # the least-shown eligible image, accepting an unavoidable duplicate/repeat.
+                eligible = [r.name for r in _eligible_for(sname)]
+                pick = self._least_shown_random(eligible)
+                if pick is not None:
+                    match_frame[sname] = pick
+
+        committed.update(match_frame)
+        self._committed_next_for_screen = committed
+
+    def _recommit_screens_from_manager_locked(self) -> None:
+        """Reconcile against the manager and recommit every screen. Convenience wrapper for
+        the pin/config mutation paths (which don't already hold a ``ready`` list). Must be
+        called under self._lock."""
+        ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
+        self._reconcile({r.name for r in ready})
+        self._recommit_all_screens_locked(ready)
+
+    def committed_next_for_screen(self, screen_name: str) -> str | None:
+        """The image this screen will serve NEXT: its pin if pending-and-ready, otherwise its
+        committed rotation pick. This is exactly what the next serve returns, so the drawer
+        reads this value to guarantee "up next" == what serves. Read-only (no recompute)."""
+        with self._lock:
+            pin = self._next_for_screen.get(screen_name)
+            if pin is not None:
+                rec = self._manager.status(pin)
+                if rec is not None and rec.convert_status == ConvertStatus.OK:
+                    return pin
+            return self._committed_next_for_screen.get(screen_name)
+
+    def committed_snapshot(self) -> dict[str, str | None]:
+        """Every known screen's committed 'next' (pin-or-rotation), as ONE atomic read under the
+        lock. Used by the serve-decision log to make cross-frame reshuffle visible: compare the
+        snapshot before a serve to the one after and any OTHER screen whose value changed was
+        mutated by this screen's advance."""
+        with self._lock:
+            names = (
+                set(self._screens)
+                | set(self._screen_configs)
+                | set(self._next_for_screen)
+                | set(self._committed_next_for_screen)
+            )
+            out: dict[str, str | None] = {}
+            for sname in sorted(names):
+                pin = self._next_for_screen.get(sname)
+                if pin is not None:
+                    rec = self._manager.status(pin)
+                    if rec is not None and rec.convert_status == ConvertStatus.OK:
+                        out[sname] = pin
+                        continue
+                out[sname] = self._committed_next_for_screen.get(sname)
+            return out
 
     def mark_served(self, name: str, screen_name: str | None = None) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the
@@ -221,11 +411,22 @@ class ServeScheduler:
             self._last_served = (name, now)
             if screen_name is not None and self._next_for_screen.get(screen_name) == name:
                 del self._next_for_screen[screen_name]
-            # Consumed — recompute the next image for all orientations immediately.
+            # This screen just consumed its committed pick — clear it so the recommit's
+            # stability pass gives it a FRESH next (otherwise it would preserve the
+            # just-served image and never advance).
+            if screen_name is not None:
+                self._committed_next_for_screen.pop(screen_name, None)
+            # Consumed — recompute the next image for all orientations AND all screens
+            # immediately, so every frame's committed pick (and its drawer) stays current
+            # and collision-free the instant this frame advances.
             ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
             ready_names = {r.name for r in ready}
             self._reconcile(ready_names)
             self._precompute_all_locked(ready)
+            self._recommit_all_screens_locked(
+                ready,
+                just_served=(screen_name, name) if screen_name is not None else None,
+            )
             self._save()
 
     # ── Stats retrieval ──────────────────────────────────────────
@@ -260,6 +461,11 @@ class ServeScheduler:
             # filtered by orientation at serve time if a filter is active).
             for o in Orientation:
                 self._next_for[o] = name
+            # Real frames serve their COMMITTED per-screen pick, not _next_for, so a global
+            # "show next" must pin every known screen to take effect on the frames themselves.
+            for sname in (set(self._screens) | set(self._screen_configs)):
+                self._next_for_screen[sname] = name
+            self._recommit_screens_from_manager_locked()
             self._save()
 
     # ── Per-screen forced next ───────────────────────────────────
@@ -276,12 +482,14 @@ class ServeScheduler:
             if image_name not in ready:
                 raise ValueError(f"Image {image_name!r} is not ready to serve")
             self._next_for_screen[screen_name] = image_name
+            self._recommit_screens_from_manager_locked()
             self._save()
 
     def clear_next_for_screen(self, screen_name: str) -> None:
         """Cancel a pending per-screen override. Idempotent."""
         with self._lock:
             if self._next_for_screen.pop(screen_name, None) is not None:
+                self._recommit_screens_from_manager_locked()
                 self._save()
 
     def peek_next_for_screen(self, screen_name: str) -> str | None:
@@ -368,6 +576,11 @@ class ServeScheduler:
                 last_log_at=last_log_at,
                 panel_type=panel_type,
             )
+            # A newly-seen screen has no committed pick yet — commit one now so its drawer
+            # populates immediately (and matches what it will serve). Skipped on every later
+            # poll (recommits happen on advance / pin / config changes).
+            if screen_name not in self._committed_next_for_screen:
+                self._recommit_screens_from_manager_locked()
             self._save()
 
     def screens(self) -> dict[str, ScreenTelemetryEntry]:
@@ -385,8 +598,10 @@ class ServeScheduler:
             self._stats.pop(name, None)
             self._screen_configs.pop(name, None)
             self._next_for_screen.pop(name, None)
+            self._committed_next_for_screen.pop(name, None)
             if self._last_served and self._last_served[0] == name:
                 self._last_served = None
+            self._recommit_screens_from_manager_locked()
             self._save()
 
     # ── Per-screen config ─────────────────────────────────────────
@@ -400,6 +615,9 @@ class ServeScheduler:
         """Persist the full config for a screen."""
         with self._lock:
             self._screen_configs[name] = config
+            # Orientation filter may have changed — recommit so this screen's next pick
+            # matches its new filter (and de-dup against others still holds).
+            self._recommit_screens_from_manager_locked()
             self._save()
 
     # ── Internals ────────────────────────────────────────────────
@@ -434,6 +652,11 @@ class ServeScheduler:
         for sname in list(self._next_for_screen.keys()):
             if self._next_for_screen[sname] not in all_names:
                 del self._next_for_screen[sname]
+        # Drop committed picks whose image was DELETED (recommit re-fills them; a merely
+        # not-ready image is left for pick_next to refresh on demand).
+        for sname in list(self._committed_next_for_screen.keys()):
+            if self._committed_next_for_screen[sname] not in all_names:
+                del self._committed_next_for_screen[sname]
 
         # Add fresh entries. A new image starts at the CURRENT minimum show_index across the
         # library (0 if empty) — so it joins the least-shown tier and gets a fair turn within
@@ -510,12 +733,18 @@ class ServeScheduler:
             for sname, iname in nfs.items():
                 if isinstance(sname, str) and isinstance(iname, str):
                     self._next_for_screen[sname] = iname
+        cns = data.get("committed_next_for_screen")
+        if isinstance(cns, dict):
+            for sname, iname in cns.items():
+                if isinstance(sname, str) and isinstance(iname, str):
+                    self._committed_next_for_screen[sname] = iname
 
     def _save(self) -> None:
         payload = {
             "version": 1,
             "next_for": {o.value: self._next_for.get(o) for o in Orientation},
             "next_for_screen": dict(self._next_for_screen),
+            "committed_next_for_screen": dict(self._committed_next_for_screen),
             "last_served": (
                 {"name": self._last_served[0], "served_at": self._last_served[1]}
                 if self._last_served

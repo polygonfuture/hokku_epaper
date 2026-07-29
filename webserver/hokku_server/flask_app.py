@@ -38,7 +38,7 @@ from PIL import Image, UnidentifiedImageError
 from pillow_heif import register_heif_opener
 from werkzeug.utils import secure_filename
 
-from hokku_server import mono_e1003
+from hokku_server import mono_e1003, serve_log
 from hokku_server.app_config import AppConfig
 from hokku_server.app_state import AppState
 from hokku_server.display import FULL_W, PANEL_H, TOTAL_BYTES, VISUAL_H, VISUAL_W
@@ -230,10 +230,16 @@ def create_app(
 
         cfg = scheduler.get_screen_config(screen_name)
         pick_orientation = cfg.orientation if cfg.filter_by_orientation else Orientation.NEUTRAL
+        # Ground-truth capture for the serve-decision log: what THIS screen's drawer is showing
+        # right now (its committed pick / pin), and the whole fleet's committed map, BEFORE we
+        # pick — so a drawer≠serve mismatch or a cross-frame reshuffle is provable, not inferred.
+        committed_before = scheduler.committed_next_for_screen(screen_name)
+        fleet_before = scheduler.committed_snapshot()
         # A pending per-screen override wins over rotation. It deliberately bypasses
         # the orientation filter — both orientations are rendered for every OK image.
         forced = scheduler.peek_next_for_screen(screen_name)
-        # Pass screen_name so pick_next avoids images shown on OTHER frames (de-dup).
+        # pick_next(screen_name) returns this frame's COMMITTED pick — de-dup + tiebreak
+        # already resolved at commit time, and it's the exact value the drawer shows.
         chosen = forced if forced is not None else scheduler.pick_next(
             orientation=pick_orientation, screen_name=screen_name
         )
@@ -348,6 +354,20 @@ def create_app(
             log=screen_log,
             panel_type=panel_type,
         )
+        # Durable serve-decision record: what the drawer showed vs what actually served, plus the
+        # whole fleet's committed map before/after — the ground truth for diagnosing drawer≠serve.
+        serve_log.record({
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "screen": screen_name,
+            "ip": screen_ip,
+            "committed_before": committed_before,
+            "pin": forced,
+            "chosen": chosen,
+            "served": chosen,
+            "drawer_matched_serve": chosen == committed_before,
+            "fleet_before": fleet_before,
+            "fleet_after": scheduler.committed_snapshot(),
+        })
         logger.debug("Serving: %s to %s (sleep_seconds=%s)", chosen, screen_name, sleep_seconds)
 
         response = make_response(binary)
@@ -897,6 +917,9 @@ def create_app(
                 "orientation": scfg.orientation,
                 "filter_by_orientation": scfg.filter_by_orientation,
                 "next_override": scheduler.peek_next_for_screen(sname),
+                # The image this frame will actually serve next (pin if pending, else the
+                # committed rotation pick). The drawer reads this so "up next" == the serve.
+                "next": scheduler.committed_next_for_screen(sname),
                 "last_log": t.last_log or None,
                 "last_log_at": (
                     datetime.fromtimestamp(t.last_log_at).isoformat(timespec="seconds")

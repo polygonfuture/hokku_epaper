@@ -36,8 +36,9 @@ function frameCardUrl(sc, entry) {
   // colour: raw render at the frame's configured orientation (also sideways on mismatch).
   return ditheredUrl(entry, framePortrait ? "portrait" : "landscape");
 }
-// the frame's next image, computed exactly as the server picks it
-const nextForScreen = (sc) => sc.next_override ?? (state.status?.next_images || {})[sc.filter_by_orientation ? sc.orientation : "neutral"] ?? null;
+// the frame's next image: the server's committed per-screen pick (pin or rotation),
+// i.e. the EXACT image the next serve returns — so "up next" always matches the frame.
+const nextForScreen = (sc) => sc.next ?? sc.next_override ?? null;
 function overdueSeconds(sc) {
   if (!sc.next_update_at) return 0;
   const by = (Date.now() - new Date(sc.next_update_at).getTime()) / 1000;

@@ -35,8 +35,9 @@ const monoPreviewUrl = (e) =>
   ditheredUrlMono(e, onMonoFrame(e.name) ? monoDisplayPortrait(e) : e.effective_orientation === "portrait");
 const arOf = (e) => (e.image_width && e.image_height ? e.image_width / e.image_height : 4 / 3);
 
-// which frames are showing / have queued this image (per-screen, computed as the server does)
-const nextForScreen = (sc) => sc.next_override ?? (state.status?.next_images || {})[sc.filter_by_orientation ? sc.orientation : "neutral"] ?? null;
+// which frames are showing / have queued this image: the server's committed per-screen
+// pick (pin or rotation) — the exact image the next serve returns.
+const nextForScreen = (sc) => sc.next ?? sc.next_override ?? null;
 const showingFrames = (name) => Object.keys(screens()).filter((s) => screens()[s].last_served === name);
 const queuedFrames = (name) => Object.keys(screens()).filter((s) => nextForScreen(screens()[s]) === name);
 
