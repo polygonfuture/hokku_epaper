@@ -10,6 +10,7 @@
   "port": 8080,
   "poll_interval_seconds": 10,
   "debug_fast_refresh": false,
+  "serve_decision_log_enabled": false,
   "auto_clear_cache": false,
   "crop_to_fill_threshold": 0.10,
   "auto_rotate_fit": false,

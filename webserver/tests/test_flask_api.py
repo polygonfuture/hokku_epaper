@@ -365,6 +365,16 @@ def test_config_post_valid_field(bare_client, tmp_path):
     assert resp.get_json()["ok"] is True
 
 
+def test_config_post_toggles_serve_log_without_restart(bare_client):
+    """Flipping serve_decision_log_enabled via /config hot-reloads the logger immediately."""
+    from hokku_server import serve_log
+    client, _ = bare_client
+    assert client.post("/hokku/api/config", json={"serve_decision_log_enabled": True}).status_code == 200
+    assert serve_log.is_enabled() is True
+    assert client.post("/hokku/api/config", json={"serve_decision_log_enabled": False}).status_code == 200
+    assert serve_log.is_enabled() is False
+
+
 def test_config_post_non_json_returns_400(bare_client):
     client, _ = bare_client
     resp = client.post("/hokku/api/config", data="not json", content_type="text/plain")

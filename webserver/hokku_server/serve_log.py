@@ -41,13 +41,28 @@ _FILENAME = "serve_decisions.jsonl"
 _MAX_BYTES = 5 * 1024 * 1024
 _lock = threading.Lock()
 _path: Path | None = None
+_enabled = False
 
 
-def configure(cache_dir: str | Path) -> None:
-    """Point the serve log at ``<cache_dir>/serve_decisions.jsonl``. Call once at startup."""
-    global _path
+def configure(cache_dir: str | Path, enabled: bool = False) -> None:
+    """Point the serve log at ``<cache_dir>/serve_decisions.jsonl`` and set whether it writes.
+
+    Called at startup and again on every config reload, so the ``serve_decision_log_enabled``
+    settings toggle takes effect immediately (no restart)."""
+    global _path, _enabled
     _path = Path(cache_dir) / _FILENAME
-    logger.info("Serve-decision log: %s (rotates at %.1f MB)", _path, _MAX_BYTES / 1024 / 1024)
+    _enabled = bool(enabled)
+    if _enabled:
+        logger.info("Serve-decision log: ON — %s (rotates at %.1f MB)",
+                    _path, _MAX_BYTES / 1024 / 1024)
+    else:
+        logger.info("Serve-decision log: OFF (enable in Settings for drawer-vs-serve debugging)")
+
+
+def is_enabled() -> bool:
+    """True when serve decisions are being logged. Callers use this to skip building the log
+    entry (per-serve snapshots) entirely when logging is off — keeping 'off' zero-cost."""
+    return _enabled
 
 
 def _rotate_if_needed_locked() -> None:
@@ -65,7 +80,9 @@ def _rotate_if_needed_locked() -> None:
 
 def record(entry: dict[str, Any]) -> None:
     """Append one decision entry as a JSON line, and also emit it at INFO so it shows in the
-    normal server log. Never raises — logging must not break a serve."""
+    normal server log. No-op when disabled. Never raises — logging must not break a serve."""
+    if not _enabled or _path is None:
+        return
     line_summary = (
         "SERVE-DECISION screen=%(screen)s committed_before=%(committed_before)r "
         "pin=%(pin)r chosen=%(chosen)r served=%(served)r matched=%(drawer_matched_serve)s"
@@ -74,8 +91,6 @@ def record(entry: dict[str, Any]) -> None:
         logger.info(line_summary, entry)
     except Exception:  # pragma: no cover — formatting must never break a serve
         pass
-    if _path is None:
-        return
     try:
         with _lock:
             _rotate_if_needed_locked()

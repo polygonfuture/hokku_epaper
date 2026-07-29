@@ -92,6 +92,9 @@ class AppConfig:
     port: int = 8080
     poll_interval_seconds: int = 10
     debug_fast_refresh: bool = False
+    #: Dev/debug: write a durable per-serve decision log (serve_decisions.jsonl) recording what
+    #: the drawer showed vs what actually served. OFF by default (clean production); size-bounded.
+    serve_decision_log_enabled: bool = False
     auto_clear_cache: bool = False
     #: Zoom up to this fraction (e.g. 0.02 = 2 %) to eliminate letterbox bands.
     #: 0.0 = always letterbox (default, safe).

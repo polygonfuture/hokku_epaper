@@ -233,8 +233,10 @@ def create_app(
         # Ground-truth capture for the serve-decision log: what THIS screen's drawer is showing
         # right now (its committed pick / pin), and the whole fleet's committed map, BEFORE we
         # pick — so a drawer≠serve mismatch or a cross-frame reshuffle is provable, not inferred.
-        committed_before = scheduler.committed_next_for_screen(screen_name)
-        fleet_before = scheduler.committed_snapshot()
+        # Only computed when the log is enabled (the Settings toggle) — 'off' stays zero-cost.
+        _log_serve = serve_log.is_enabled()
+        committed_before = scheduler.committed_next_for_screen(screen_name) if _log_serve else None
+        fleet_before = scheduler.committed_snapshot() if _log_serve else None
         # A pending per-screen override wins over rotation. It deliberately bypasses
         # the orientation filter — both orientations are rendered for every OK image.
         forced = scheduler.peek_next_for_screen(screen_name)
@@ -356,18 +358,19 @@ def create_app(
         )
         # Durable serve-decision record: what the drawer showed vs what actually served, plus the
         # whole fleet's committed map before/after — the ground truth for diagnosing drawer≠serve.
-        serve_log.record({
-            "ts": datetime.now().isoformat(timespec="seconds"),
-            "screen": screen_name,
-            "ip": screen_ip,
-            "committed_before": committed_before,
-            "pin": forced,
-            "chosen": chosen,
-            "served": chosen,
-            "drawer_matched_serve": chosen == committed_before,
-            "fleet_before": fleet_before,
-            "fleet_after": scheduler.committed_snapshot(),
-        })
+        if _log_serve:
+            serve_log.record({
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "screen": screen_name,
+                "ip": screen_ip,
+                "committed_before": committed_before,
+                "pin": forced,
+                "chosen": chosen,
+                "served": chosen,
+                "drawer_matched_serve": chosen == committed_before,
+                "fleet_before": fleet_before,
+                "fleet_after": scheduler.committed_snapshot(),
+            })
         logger.debug("Serving: %s to %s (sleep_seconds=%s)", chosen, screen_name, sleep_seconds)
 
         response = make_response(binary)

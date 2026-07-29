@@ -54,6 +54,17 @@ def test_save_load_roundtrip(tmp_path: Path):
     assert loaded == cfg
 
 
+def test_serve_decision_log_enabled_defaults_false_and_roundtrips(tmp_path: Path):
+    assert AppConfig().serve_decision_log_enabled is False
+    # explicit True survives from_dict/to_dict
+    c = AppConfig.from_dict({"version": _CURRENT_VERSION, "serve_decision_log_enabled": True})
+    assert c.serve_decision_log_enabled is True
+    assert c.to_dict()["serve_decision_log_enabled"] is True
+    # absent key on a current-version config → default False (additive field, no migration)
+    c2 = AppConfig.from_dict({"version": _CURRENT_VERSION})
+    assert c2.serve_decision_log_enabled is False
+
+
 def test_load_missing_creates_default(tmp_path: Path):
     p = tmp_path / "nope.json"
     cfg = AppConfig.load(p)

@@ -85,7 +85,8 @@ def main() -> None:
     logger.info("BW detection: %s", config.classifier_bw_detect_enabled)
 
     scheduler = ServeScheduler(manager)
-    serve_log.configure(cache_dir)  # durable per-serve decision log for drawer-vs-serve diagnosis
+    # Durable per-serve decision log for drawer-vs-serve diagnosis; gated by the settings toggle.
+    serve_log.configure(cache_dir, enabled=config.serve_decision_log_enabled)
     state = AppState(config, classifier, manager, scheduler)
     watcher = Watcher(state)
     state.watcher = watcher

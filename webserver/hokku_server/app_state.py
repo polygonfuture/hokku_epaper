@@ -17,6 +17,7 @@ from hokku_server.image_classifier import ImageClassifier
 from hokku_server.image_manager_abstract import AbstractImageManager
 from hokku_server.image_manager_multi import MultiThreadedImageManager
 from hokku_server.image_manager_single import SingleThreadedImageManager
+from hokku_server import serve_log
 from hokku_server.mdns import start_mdns, stop_mdns
 from hokku_server.serve_scheduler import ServeScheduler
 from hokku_server.worker_count import resolve_worker_count
@@ -110,6 +111,10 @@ class AppState:
 
         # Shut the old manager down outside the lock (releases its workers).
         old_manager.shutdown()
+
+        # Re-apply the serve-decision-log toggle so enabling/disabling it in Settings takes
+        # effect immediately on this reload (no server restart).
+        serve_log.configure(cache_dir, enabled=new_config.serve_decision_log_enabled)
 
         # Restart mDNS if the hostname changed (or toggled on/off).
         if new_config.mdns_hostname != old_hostname:

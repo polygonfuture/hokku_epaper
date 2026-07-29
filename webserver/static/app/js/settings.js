@@ -203,6 +203,8 @@ function serverBody() {
       "How often the server checks the upload folder for new or removed images.") +
     iGroup(iRow("Debug screen", iTog("debug", draft.debug_fast_refresh)),
       "Forces every frame to refresh very frequently — drains battery. Off for normal use.") +
+    iGroup(iRow("Serve-decision log", iTog("servelog", draft.serve_decision_log_enabled)),
+      "Writes serve_decisions.jsonl (up-next vs actually-served) for debugging. Off for normal use.") +
     iGroup(iRow("Auto-clear cache", iTog("autoclear", draft.auto_clear_cache)),
       "Deletes old cached conversions when disk runs low. Originals are never removed.") +
     iGroup(iRow("mDNS / Bonjour",
@@ -227,6 +229,7 @@ function wireServer() {
   $$("[data-toggle]").forEach((sw) => sw.addEventListener("click", () => {
     const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on);
     if (sw.dataset.toggle === "debug") draft.debug_fast_refresh = on;
+    if (sw.dataset.toggle === "servelog") draft.serve_decision_log_enabled = on;
     if (sw.dataset.toggle === "autoclear") draft.auto_clear_cache = on;
     if (sw.dataset.toggle === "mdns") { $("#svMdnsHost").classList.toggle("on", on); draft.mdns_hostname = on ? ($("#svHost").value.trim() || "hokku") : ""; }
   }));
@@ -339,7 +342,7 @@ const SETTINGS = {
   detect:  { title: "Smart Photo Detection", icon: svgIcon('<circle cx="9" cy="10" r="3"/><path d="M4 20a5 5 0 0 1 10 0"/><path d="M17 9h4M19 7v4"/>'), body: detectBody, wire: wireDetect, keys: ["classifier_bw_detect_enabled", "classifier_face_detect_enabled", "classifier_face_detect_clahe_keepout", "image_config_bw", "image_config_face"] },
   image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold", "auto_rotate_fit"] },
   mono:    { title: "E1003 Mono", icon: svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/><path d="M15 5v14"/>'), body: monoBody, wire: wireMono, keys: MONO_KEYS, gate: hasMonoPanel },
-  server:  { title: "Server & Storage", icon: svgIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>'), body: serverBody, wire: wireServer, keys: ["poll_interval_seconds", "debug_fast_refresh", "auto_clear_cache", "mdns_hostname", "image_worker_thread_count"] },
+  server:  { title: "Server & Storage", icon: svgIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>'), body: serverBody, wire: wireServer, keys: ["poll_interval_seconds", "debug_fast_refresh", "serve_decision_log_enabled", "auto_clear_cache", "mdns_hostname", "image_worker_thread_count"] },
 };
 const setModal = $("#settings-modal"), setBody = $("#set-body"), setNav = $("#set-nav"), setBack = $("#set-back"), setTitle = $("#set-title");
 let activeTab = "refresh";
