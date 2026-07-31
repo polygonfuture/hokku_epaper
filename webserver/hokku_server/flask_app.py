@@ -813,6 +813,16 @@ def create_app(
             return jsonify({"error": str(e)}), 409
         return jsonify({"ok": True, "screen": name, "next_image": image})
 
+    @app.route("/hokku/api/screens/<string:name>/skip", methods=["POST"])
+    def api_screen_skip(name: str):
+        """HARD-skip this frame's current 'up next': send it to the back of THIS frame's line
+        and re-pick a fresh up-next for this frame only (per-frame — other frames unaffected).
+        Returns the new up-next image. Takes effect on the frame's next wake."""
+        if name not in state.scheduler.screens():
+            return jsonify({"error": f"screen {name!r} not known"}), 404
+        new_next = state.scheduler.skip_next(name)
+        return jsonify({"ok": True, "screen": name, "next_image": new_next})
+
     @app.route("/hokku/api/scrub", methods=["POST"])
     def api_scrub():
         """Remove stale-slug panel/preview files immediately (preserves thumbs)."""

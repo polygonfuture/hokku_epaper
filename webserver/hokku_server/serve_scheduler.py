@@ -113,6 +113,13 @@ class ServeScheduler:
         # always. Recomputed for ALL screens on every advance / pin change / reconcile.
         # Persisted (frames sleep for hours). A pin (_next_for_screen) still wins over this.
         self._committed_next_for_screen: dict[str, str] = {}
+        # Per-frame HARD-skip "penalty box": screen -> {image -> release_serve_count}. A skipped
+        # image is excluded from THAT screen's up-next until the screen's serve count passes the
+        # release count (~a full cycle). Per-frame, NOT global — the same photo can still be up
+        # next on another frame. Persisted so a skip survives a restart while the frame sleeps.
+        self._skip_until: dict[str, dict[str, int]] = {}
+        # Per-screen count of actual serves (advances the skip cooldown clock). Persisted.
+        self._serve_count: dict[str, int] = {}
         # Rotation picks the LEAST-shown image, breaking ties at RANDOM (not alphabetically) so
         # a fresh library — where most images are tied at show_index 0 — doesn't march through in
         # filename order. Injectable + seedable for deterministic tests; defaults to system entropy.
@@ -268,6 +275,7 @@ class ServeScheduler:
                 prev in ready_names
                 and prev not in in_use
                 and prev not in others_display
+                and prev not in self._active_skips_for(sname)
                 and prev in {r.name for r in _eligible_for(sname)}
             ):
                 committed[sname] = prev
@@ -295,9 +303,11 @@ class ServeScheduler:
 
         def _avail_for(sname: str) -> list[str]:
             others_display = {img for o, img in displaying.items() if o != sname}
+            skipped = self._active_skips_for(sname)   # per-frame penalty box (this screen only)
             return [
                 r.name for r in _eligible_for(sname)
                 if r.name not in already and r.name not in others_display
+                and r.name not in skipped
             ]
 
         def _img_sort_key(name: str) -> tuple:
@@ -410,6 +420,64 @@ class ServeScheduler:
             self._recommit_all_screens_locked(ready)
             self._save()
 
+    def skip_next(self, screen_name: str) -> str | None:
+        """HARD-skip this screen's current 'up next', PER FRAME: send that photo to the back of
+        THIS frame's line (a full cycle away) and re-pick a fresh up-next for this screen only.
+
+        Per-frame, not global: the skip is tracked in a per-screen 'penalty box', NOT by the shared
+        show count, so the same photo can still be 'up next' on a different frame. The boxed photo
+        is excluded from this screen's up-next until the screen has served a full cycle's worth of
+        other photos (``cooldown`` = eligible pool − 1), then it returns naturally. Other frames'
+        committed picks are untouched (passive recommit). Returns the new committed image — or the
+        same one when the screen has no other eligible photo. A skipped pin is cleared. Not a real
+        display: rotation stats (total_show_count/minutes) are untouched, so global fairness is
+        undisturbed. For a permanent removal, Delete is the tool."""
+        with self._lock:
+            ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
+            ready_names = {r.name for r in ready}
+            self._reconcile(ready_names)
+            if not ready:
+                return None
+
+            # The current up-next is the pin (if still ready) else the committed rotation pick.
+            current = self._next_for_screen.get(screen_name)
+            if current not in ready_names:
+                current = self._committed_next_for_screen.get(screen_name)
+
+            # This screen's eligible pool (its orientation filter).
+            cfg = self.get_screen_config(screen_name)
+            orient = cfg.orientation if cfg.filter_by_orientation else Orientation.NEUTRAL
+            if orient == Orientation.NEUTRAL:
+                eligible = [r.name for r in ready]
+            else:
+                eligible = [r.name for r in ready if r.matches_orientation_filter(orient)]
+            n_elig = len(set(eligible))
+
+            # Only skip when there's genuinely something else to move to.
+            if current is not None and current in eligible and n_elig > 1:
+                # Box it for ~a full cycle of THIS screen's serves, then it returns on its own.
+                cooldown = n_elig - 1
+                box = self._skip_until.setdefault(screen_name, {})
+                box[current] = self._serve_count.get(screen_name, 0) + cooldown
+                if self._next_for_screen.get(screen_name) == current:
+                    del self._next_for_screen[screen_name]     # a skipped pin is cleared
+                self._committed_next_for_screen.pop(screen_name, None)   # force a fresh pick
+
+            # Re-pick this screen (others preserved — passive, minimal-disturbance recommit).
+            self._precompute_all_locked(ready)
+            self._recommit_all_screens_locked(ready, include_screen=screen_name)
+            self._save()
+            return self._committed_next_for_screen.get(screen_name)
+
+    def _active_skips_for(self, screen_name: str) -> set[str]:
+        """Images currently boxed (skipped) for a screen — those whose cooldown hasn't elapsed
+        (release count is still ahead of the screen's serve count). Must hold self._lock."""
+        served = self._serve_count.get(screen_name, 0)
+        return {
+            img for img, release_at in self._skip_until.get(screen_name, {}).items()
+            if release_at > served
+        }
+
     def mark_served(self, name: str, screen_name: str | None = None) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the
         previously-served image. Pre-computes the next image for all orientations
@@ -429,6 +497,17 @@ class ServeScheduler:
                 total_show_minutes=cur.total_show_minutes,
             )
             self._last_served = (name, now)
+            if screen_name is not None:
+                # Advance this screen's serve clock (releases expired per-frame skips) and prune
+                # any now-elapsed skip entries so the box doesn't grow without bound.
+                self._serve_count[screen_name] = self._serve_count.get(screen_name, 0) + 1
+                box = self._skip_until.get(screen_name)
+                if box:
+                    served = self._serve_count[screen_name]
+                    for img in [i for i, rel in box.items() if rel <= served]:
+                        del box[img]
+                    if not box:
+                        self._skip_until.pop(screen_name, None)
             if screen_name is not None and self._next_for_screen.get(screen_name) == name:
                 del self._next_for_screen[screen_name]
             # This screen just consumed its committed pick — clear it so the recommit's
@@ -619,6 +698,8 @@ class ServeScheduler:
             self._screen_configs.pop(name, None)
             self._next_for_screen.pop(name, None)
             self._committed_next_for_screen.pop(name, None)
+            self._skip_until.pop(name, None)
+            self._serve_count.pop(name, None)
             if self._last_served and self._last_served[0] == name:
                 self._last_served = None
             self._recommit_screens_from_manager_locked()
@@ -677,6 +758,13 @@ class ServeScheduler:
         for sname in list(self._committed_next_for_screen.keys()):
             if self._committed_next_for_screen[sname] not in all_names:
                 del self._committed_next_for_screen[sname]
+        # Drop per-frame skip entries whose image was DELETED (no point boxing a gone photo).
+        for sname in list(self._skip_until.keys()):
+            box = self._skip_until[sname]
+            for img in [i for i in box if i not in all_names]:
+                del box[img]
+            if not box:
+                del self._skip_until[sname]
 
         # Add fresh entries. A new image starts at the CURRENT minimum show_index across the
         # library (0 if empty) — so it joins the least-shown tier and gets a fair turn within
@@ -758,6 +846,19 @@ class ServeScheduler:
             for sname, iname in cns.items():
                 if isinstance(sname, str) and isinstance(iname, str):
                     self._committed_next_for_screen[sname] = iname
+        su = data.get("skip_until")
+        if isinstance(su, dict):
+            for sname, box in su.items():
+                if isinstance(sname, str) and isinstance(box, dict):
+                    clean = {i: int(r) for i, r in box.items()
+                             if isinstance(i, str) and isinstance(r, (int, float))}
+                    if clean:
+                        self._skip_until[sname] = clean
+        svc = data.get("serve_count")
+        if isinstance(svc, dict):
+            for sname, n in svc.items():
+                if isinstance(sname, str) and isinstance(n, (int, float)):
+                    self._serve_count[sname] = int(n)
 
     def _save(self) -> None:
         payload = {
@@ -765,6 +866,8 @@ class ServeScheduler:
             "next_for": {o.value: self._next_for.get(o) for o in Orientation},
             "next_for_screen": dict(self._next_for_screen),
             "committed_next_for_screen": dict(self._committed_next_for_screen),
+            "skip_until": {s: dict(box) for s, box in self._skip_until.items()},
+            "serve_count": dict(self._serve_count),
             "last_served": (
                 {"name": self._last_served[0], "served_at": self._last_served[1]}
                 if self._last_served

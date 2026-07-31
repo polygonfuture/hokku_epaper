@@ -5,7 +5,7 @@
 // thumbnails become <img src=/thumbnail>, and every control hits the real backend.
 
 import { state, subscribe, mutate } from "./state.js";
-import { deleteScreen, patchScreen, clearScreenShowNext, thumbnailUrl, ditheredUrl, ditheredUrlMono } from "./api.js";
+import { deleteScreen, patchScreen, clearScreenShowNext, skipScreenNext, thumbnailUrl, ditheredUrl, ditheredUrlMono } from "./api.js";
 import { $, $$, esc, toast, fmtAgo, fmtUntil, fmtUptime, frameColor, armConfirm, disarm } from "./ui.js";
 
 const fcards = $("#fcards");
@@ -152,6 +152,7 @@ function openFrameMenu(btn, name) {
   menuFrame = name;
   frameMenu.innerHTML =
     '<button class="ctx-item" data-fact="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/></svg><span>Rename</span></button>' +
+    '<button class="ctx-item" data-fact="skip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5v14l9-7z"/><path d="M18 5v14"/></svg><span>Skip up next</span></button>' +
     '<button class="ctx-item" data-fact="diag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>View diagnostics</span></button>' +
     '<button class="ctx-item del" data-fact="remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg><span class="lbl">Remove frame</span></button>';
   frameMenu.hidden = false; frameScrim.hidden = false;
@@ -165,6 +166,12 @@ frameScrim.addEventListener("click", closeFrameMenu);
 frameMenu.addEventListener("click", (e) => {
   const b = e.target.closest("[data-fact]"); if (!b) return;
   if (b.dataset.fact === "rename") { const n = menuFrame; closeFrameMenu(); openRename(n); }
+  else if (b.dataset.fact === "skip") {
+    const n = menuFrame; closeFrameMenu();
+    skipScreenNext(n)
+      .then((resp) => { mutate((st) => { if (st.screens[n]) st.screens[n].next = resp.next_image; }); toast(`Skipped — up next changed on ${n}`); })
+      .catch((err) => toast("Skip failed: " + err.message));
+  }
   else if (b.dataset.fact === "diag") { const n = menuFrame; closeFrameMenu(); openFrameDiag(n); }
   else if (b.dataset.fact === "remove") armConfirm(b, () => { const n = menuFrame; closeFrameMenu(); removeFrame(n); }, "Confirm remove?");
 });

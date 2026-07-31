@@ -482,6 +482,67 @@ def test_library_changed_drops_deleted_pin(app_config, make_test_image):
     assert sched.committed_next_for_screen("frame-1") in ("a.png", "c.png"), "dead pin must be gone"
 
 
+def test_skip_next_is_per_frame_not_global(app_config, make_test_image):
+    """Skipping frame-1's up-next rerolls frame-1 ONLY: frame-2 is untouched, and the skipped
+    photo's GLOBAL show count is unchanged (per-frame penalty box, not a global show bump)."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png", "d.png"])
+    _register(sched, "frame-1")
+    _register(sched, "frame-2")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    c1 = sched.committed_next_for_screen("frame-1")
+    c2 = sched.committed_next_for_screen("frame-2")
+    assert c1 and c2 and c1 != c2
+    idx_before = sched.stats_for(c1).show_index
+
+    new1 = sched.skip_next("frame-1")
+    assert new1 is not None and new1 != c1, "frame-1's up-next must change"
+    assert sched.committed_next_for_screen("frame-2") == c2, "frame-2 must be untouched (per-frame)"
+    assert sched.stats_for(c1).show_index == idx_before, "skip must NOT bump the global show count"
+
+
+def test_skip_next_photo_returns_after_cooldown(app_config, make_test_image):
+    """A skipped photo is excluded from THAT frame's up-next during its cooldown (~a full cycle),
+    then becomes eligible again on its own."""
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    skipped = sched.committed_next_for_screen("frame-1")
+    sched.skip_next("frame-1")
+
+    for _ in range(2):   # cooldown = eligible(3) - 1 = 2 serves
+        n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+        assert n != skipped, "skipped photo must not be up-next during its cooldown"
+        sched.mark_served(n, screen_name="frame-1")
+
+    returned = False
+    for _ in range(4):
+        n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+        if n == skipped:
+            returned = True
+            break
+        sched.mark_served(n, screen_name="frame-1")
+    assert returned, "skipped photo should return to the frame's rotation after its cooldown"
+
+
+def test_skip_next_single_image_pool_is_noop(app_config, make_test_image):
+    """Skipping with only one eligible photo just keeps it (nothing else to move to)."""
+    _, sched = _setup(app_config, make_test_image, ["only.png"])
+    _register(sched, "frame-1")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    assert sched.skip_next("frame-1") == "only.png"
+
+
+def test_skip_survives_reload(app_config, make_test_image):
+    """A per-frame skip persists across a restart (frames sleep for hours)."""
+    mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png", "d.png"])
+    _register(sched, "frame-1")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    skipped = sched.committed_next_for_screen("frame-1")
+    sched.skip_next("frame-1")
+    reloaded = ServeScheduler(mgr)
+    assert skipped in reloaded._active_skips_for("frame-1"), "skip must survive reload"
+
+
 def test_committed_no_dup_wins_over_no_repeat_when_scarce(app_config: AppConfig, make_test_image):
     """When the library is too small for every frame to have a distinct fresh pick, the
     NO-DUPLICATE rule (never the same photo on two frames at once) takes priority over the

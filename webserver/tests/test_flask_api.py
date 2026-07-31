@@ -843,6 +843,28 @@ def test_status_next_two_frames_differ(synced_client):
     assert a_next != b_next
 
 
+def test_screen_skip_rerolls_up_next(synced_client):
+    """POST /screens/<name>/skip returns a new, different up-next and /status reflects it."""
+    client, state, first = synced_client
+    for extra in ("second.png", "third.png", "fourth.png"):
+        _add_ready_image(state, extra)
+    _register_screen(client, "frame-a")
+    before = client.get("/hokku/api/status").get_json()["screens"]["frame-a"]["next"]
+    assert before is not None
+    resp = client.post("/hokku/api/screens/frame-a/skip")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True and body["screen"] == "frame-a"
+    assert body["next_image"] is not None and body["next_image"] != before
+    after = client.get("/hokku/api/status").get_json()["screens"]["frame-a"]["next"]
+    assert after == body["next_image"], "the drawer's up-next must match the skip's new pick"
+
+
+def test_screen_skip_unknown_screen_returns_404(synced_client):
+    client, _, _ = synced_client
+    assert client.post("/hokku/api/screens/ghost/skip").status_code == 404
+
+
 def test_screen_show_next_unknown_screen_returns_404(synced_client):
     client, _, name = synced_client
     resp = client.post("/hokku/api/screens/ghost/show_next", json={"image": name})
