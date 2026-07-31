@@ -592,6 +592,10 @@ def create_app(
             return jsonify({"error": f"image {name!r} not found"}), 404
         except OSError as e:
             return jsonify({"error": str(e)}), 500
+        # Reconcile the scheduler immediately: if the deleted image was a frame's committed
+        # "up next" (or a pin), drop it and re-pick that frame now, so the drawer stops showing
+        # a dead thumbnail instead of waiting for the next serve to notice.
+        state.scheduler.library_changed()
         return jsonify({"ok": True})
 
     @app.route("/hokku/api/image/<path:name>/retry", methods=["POST"])

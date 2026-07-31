@@ -450,6 +450,38 @@ def test_committed_frame_does_not_repeat_or_starve(app_config: AppConfig, make_t
     assert max(counts.values()) - min(counts.values()) <= 1, counts
 
 
+def test_library_changed_repicks_only_the_screen_that_lost_its_image(app_config, make_test_image):
+    """Deleting a committed 'up next' image + library_changed() immediately gives that screen a
+    fresh valid pick, while a frame whose up-next wasn't deleted keeps its exact pick (passive,
+    minimal-disturbance recommit)."""
+    mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png", "d.png"])
+    _register(sched, "frame-1")
+    _register(sched, "frame-2")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")   # force a commit for the fleet
+    c1 = sched.committed_next_for_screen("frame-1")
+    c2 = sched.committed_next_for_screen("frame-2")
+    assert c1 and c2 and c1 != c2
+
+    mgr.remove(c1)                 # delete frame-1's committed up-next image
+    sched.library_changed()
+
+    new1 = sched.committed_next_for_screen("frame-1")
+    assert new1 is not None and new1 != c1, "frame-1 must get a fresh valid pick"
+    assert any(r.name == new1 for r in mgr.list()), "the new pick must be a real ready image"
+    assert sched.committed_next_for_screen("frame-2") == c2, "frame-2 unaffected (minimal disturbance)"
+
+
+def test_library_changed_drops_deleted_pin(app_config, make_test_image):
+    """Deleting a PINNED image + library_changed() clears the dead pin."""
+    mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    sched.set_next_for_screen("frame-1", "b.png")
+    assert sched.committed_next_for_screen("frame-1") == "b.png"
+    mgr.remove("b.png")
+    sched.library_changed()
+    assert sched.committed_next_for_screen("frame-1") in ("a.png", "c.png"), "dead pin must be gone"
+
+
 def test_committed_no_dup_wins_over_no_repeat_when_scarce(app_config: AppConfig, make_test_image):
     """When the library is too small for every frame to have a distinct fresh pick, the
     NO-DUPLICATE rule (never the same photo on two frames at once) takes priority over the

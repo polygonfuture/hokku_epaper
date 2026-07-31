@@ -190,6 +190,23 @@ def test_delete_missing_image_returns_404(bare_client):
     assert resp.status_code == 404
 
 
+def test_delete_committed_image_immediately_updates_next(synced_client):
+    """Deleting a frame's committed 'up next' image updates /status.next to a valid image
+    right away (not the deleted name) — no waiting for the next serve. Regression: the drawer
+    used to show the dead thumbnail (black) until the next serve reconciled."""
+    client, state, first = synced_client
+    for extra in ("second.png", "third.png"):
+        _add_ready_image(state, extra)
+    _register_screen(client, "frame-a")
+    nxt = client.get("/hokku/api/status").get_json()["screens"]["frame-a"]["next"]
+    assert nxt is not None
+    assert client.delete(f"/hokku/api/image/{nxt}").status_code == 200
+    st = client.get("/hokku/api/status").get_json()
+    new = st["screens"]["frame-a"]["next"]
+    assert new is not None and new != nxt, "next must move off the deleted image immediately"
+    assert new in st["pool_files"], "the new next must be a real ready image"
+
+
 # ── /hokku/api/image/<name>/retry POST ────────────────────────────────────────
 
 

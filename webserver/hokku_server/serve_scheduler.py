@@ -390,6 +390,26 @@ class ServeScheduler:
                 out[sname] = self._committed_next_for_screen.get(sname)
             return out
 
+    def library_changed(self) -> None:
+        """Reconcile + recommit after the image library changed OUT OF BAND (e.g. an image was
+        deleted via the API, rather than consumed by a serve). Drops any committed pick, pin, or
+        rotation-stat whose image is now gone, and re-picks ONLY the screens that lost theirs —
+        this is a passive recommit, so a frame whose "up next" is unaffected keeps its exact
+        pick. Without this, a deleted up-next image lingers in the drawer (a dead thumbnail →
+        black) until the next serve happens to reconcile. Safe to call on any delete."""
+        with self._lock:
+            ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
+            ready_names = {r.name for r in ready}
+            self._reconcile(ready_names)
+            if not ready:
+                self._next_for = dict.fromkeys(Orientation, None)
+                self._committed_next_for_screen.clear()
+                self._save()
+                return
+            self._precompute_all_locked(ready)
+            self._recommit_all_screens_locked(ready)
+            self._save()
+
     def mark_served(self, name: str, screen_name: str | None = None) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the
         previously-served image. Pre-computes the next image for all orientations
