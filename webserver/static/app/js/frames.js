@@ -414,14 +414,26 @@ fpvLib.addEventListener("click", () => {
   // after microtasks) or it gets instantly snapped back and nothing appears to happen.
   requestAnimationFrame(() => {
     const tile = document.querySelector(`#gallery .cell-tile[data-name="${sel}"]`);
-    if (tile) {
-      tile.style.setProperty("--hc", color);
-      tile.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!tile) { toast(`“${name}” is in your library`); return; }   // filtered out of the current view
+    tile.style.setProperty("--hc", color);
+    // Land the tile fully BELOW the sticky stack (header bar + the still-open frames
+    // drawer) — block:"center" could center it BEHIND the floating drawer, so the flash
+    // played under the panel and nothing seemed to happen. If the tile sits so near the
+    // top of the gallery that no scroll position can clear the drawer, close the drawer
+    // (it animates 300ms and shifts layout, so re-run the measure after it settles).
+    const land = () => {
+      const panel = document.getElementById("frames-panel");
+      const open = panel && panel.classList.contains("open");
+      const bar = document.querySelector("header.bar");
+      const clearTop = (open ? panel.getBoundingClientRect().bottom
+                             : (bar ? bar.getBoundingClientRect().bottom : 0)) + 14;
+      const target = window.scrollY + tile.getBoundingClientRect().top - clearTop;
+      if (target < 0 && open) { panel.classList.remove("open"); setTimeout(land, 350); return; }
+      window.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
       tile.classList.add("fpv-flash");
       setTimeout(() => tile.classList.remove("fpv-flash"), 2400);
-    } else {
-      toast(`“${name}” is in your library`);   // filtered out of the current view
-    }
+    };
+    land();
   });
 });
 fpv.addEventListener("click", (e) => { if (e.target === fpv || e.target.closest("[data-fpv-close]")) closeFramePreview(); });
