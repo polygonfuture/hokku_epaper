@@ -619,12 +619,17 @@
   /* expandable drawers (server + frame share this) */
   /* header dropdowns FLOAT with the sticky header (top matches header.bar height) so an
      open Frames/Server drawer stays visible while the gallery scrolls behind it */
-  .drawer { position: sticky; top: 78px; z-index: 39; max-height: 0; overflow: hidden; transition: max-height .3s ease; border-bottom: 1px solid transparent; }
-  .drawer.open {
-    max-height: 200px; border-bottom-color: var(--hair);
-    background: color-mix(in srgb, var(--bg) 82%, transparent);
+  /* bg + blur live on the BASE drawer (the element max-height clips), so on close they
+     collapse WITH the height instead of blinking off instantly and leaving the tiles
+     floating with no panel behind them. background-clip:padding-box keeps the closed
+     (max-height:0) state from painting a hairline sliver under the 1px border. */
+  .drawer {
+    position: sticky; top: 78px; z-index: 39; max-height: 0; overflow: hidden;
+    transition: max-height .3s ease; border-bottom: 1px solid transparent;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); background-clip: padding-box;
     -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
   }
+  .drawer.open { max-height: 200px; border-bottom-color: var(--hair); }
   .drawer .inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 30px; padding: 14px var(--pad); }
   .fd { display: inline-flex; align-items: baseline; gap: 8px; font-size: .82rem; color: var(--dim); }
   .fd b { color: var(--text); font-weight: 550; }
