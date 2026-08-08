@@ -151,6 +151,7 @@ let menuFrame = null;
 function openFrameMenu(btn, name) {
   menuFrame = name;
   frameMenu.innerHTML =
+    '<button class="ctx-item" data-fact="preview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg><span>Preview Frame</span></button>' +
     '<button class="ctx-item" data-fact="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/></svg><span>Rename</span></button>' +
     '<button class="ctx-item" data-fact="skip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5v14l9-7z"/><path d="M18 5v14"/></svg><span>Skip up next</span></button>' +
     '<button class="ctx-item" data-fact="diag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>View diagnostics</span></button>' +
@@ -165,7 +166,8 @@ function closeFrameMenu() { frameMenu.hidden = true; frameScrim.hidden = true; m
 frameScrim.addEventListener("click", closeFrameMenu);
 frameMenu.addEventListener("click", (e) => {
   const b = e.target.closest("[data-fact]"); if (!b) return;
-  if (b.dataset.fact === "rename") { const n = menuFrame; closeFrameMenu(); openRename(n); }
+  if (b.dataset.fact === "preview") { const n = menuFrame; closeFrameMenu(); openFramePreview(n, "now"); }
+  else if (b.dataset.fact === "rename") { const n = menuFrame; closeFrameMenu(); openRename(n); }
   else if (b.dataset.fact === "skip") {
     const n = menuFrame; closeFrameMenu();
     skipScreenNext(n)
@@ -185,7 +187,11 @@ fcards.addEventListener("click", (e) => {
     const name = cancel.closest(".fcard").dataset.frame;
     clearScreenShowNext(name).then(() => { mutate((st) => { if (st.screens[name]) st.screens[name].next_override = null; }); toast(`Unpinned ${name}`); })
       .catch((err) => toast("Cancel failed: " + err.message));
+    return;
   }
+  // tap the thumbnail → open the read-only frame preview (opens on "now"; toggle switches to up next)
+  const thumb = e.target.closest(".fthumb");
+  if (thumb) openFramePreview(thumb.closest(".fcard").dataset.frame, "now");
 });
 
 // ── diagnostics modal ──
@@ -299,8 +305,125 @@ $("#rn-reset").addEventListener("click", () => commitRename(""));   // "" resets
 rnInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(rnInput.value); } });
 renameModal.addEventListener("click", (e) => { if (e.target === renameModal || e.target.closest("[data-rn-close]")) closeRename(); });
 
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFrameMenu(); closeFrameDiag(); closeRename(); } });
+// ── frame preview modal (read-only "as shown on this frame": now ↔ up next) ──
+// A focused lightbox that mirrors what the panel is displaying — the same reframed,
+// dither/mono render the wall shows, big enough to judge the crop and faces. The tile
+// only opens it; the Now/Up-next swap is a toggle INSIDE the modal (identical on
+// desktop and mobile, unlike the tile's hover-peek). Skip appears only on up-next.
+const fpv = $("#frame-preview");
+const fpvCard = fpv.querySelector(".fpv-card");
+const fpvDevice = $("#fpv-device");
+const fpvImg = $("#fpv-img");
+const fpvEmpty = $("#fpv-empty");
+const fpvName = $("#fpv-nametext");
+const fpvDot = $("#fpv-dot");
+const fpvMeta = $("#fpv-meta");
+const fpvSkip = $("#fpv-skip");
+const fpvLib = $("#fpv-lib");
+let pvFrame = null, pvKind = "now";   // which frame, and which slot (now|next) is shown
+
+// the image entry a given slot resolves to (upnext = the committed serve pick; now = last served)
+const fpvEntry = (sc, kind) => entryByName(kind === "next" ? nextForScreen(sc) : sc.last_served);
+// the UPRIGHT, legible render of what THIS frame shows for `entry`, plus the box orientation.
+// (the drawer card mirrors the glass sideways; the preview un-rotates it so you can read the crop.)
+function fpvRender(sc, entry) {
+  if (!entry) return { url: "", portrait: sc.orientation === "portrait" };
+  if (isMonoFrame(sc)) { const p = frameContentPortrait(sc, entry); return { url: ditheredUrlMono(entry, p, false), portrait: p }; }
+  const p = sc.orientation === "portrait";
+  return { url: ditheredUrl(entry, p ? "portrait" : "landscape"), portrait: p };
+}
+function renderFramePreview() {
+  const sc = screens()[pvFrame];
+  if (!sc) { closeFramePreview(); return; }   // frame removed while open → dismiss
+  const color = frameColor(pvFrame);
+  fpvCard.style.setProperty("--fc", color);
+  fpvDot.style.background = color;
+  fpvName.textContent = sc.display_name || pvFrame;
+
+  fpv.querySelectorAll(".fpv-seg").forEach((b) => {
+    const on = b.dataset.kind === pvKind;
+    b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on));
+  });
+
+  const entry = fpvEntry(sc, pvKind);
+  const { url, portrait } = fpvRender(sc, entry);
+  fpvDevice.className = "fpv-device " + (portrait ? "portrait" : "landscape");
+  fpvCard.classList.toggle("port", portrait);
+  fpvCard.classList.toggle("land", !portrait);
+
+  if (url) {
+    fpvEmpty.hidden = true;
+    if (fpvImg.dataset.src !== url) { fpvImg.dataset.src = url; fpvImg.classList.remove("broken"); fpvImg.src = url; }
+  } else {
+    fpvImg.dataset.src = ""; fpvImg.removeAttribute("src"); fpvImg.classList.add("broken");
+    fpvEmpty.hidden = false;
+    fpvEmpty.textContent = pvKind === "next" ? "No image queued yet" : "Nothing shown yet";
+  }
+
+  const ori = portrait ? "Portrait" : "Landscape";
+  const panel = isMonoFrame(sc) ? "E1003 · mono" : "Spectra 6";
+  fpvMeta.innerHTML =
+    (entry ? `<span class="fpv-chip">${esc(entry.name)}</span><span class="fpv-sep">·</span>` : "") +
+    `<span class="fpv-chip panel">${esc(panel)}</span><span class="fpv-sep">·</span>` +
+    `<span class="fpv-chip">${ori}</span>`;
+
+  fpvSkip.hidden = !(pvKind === "next" && entry);   // reroll only makes sense on a queued up-next
+  fpvLib.hidden = !entry;                           // nothing to jump to if the slot is empty
+}
+function openFramePreview(name, kind) {
+  if (!screens()[name]) return;
+  pvFrame = name; pvKind = (kind === "next" ? "next" : "now");
+  fpvImg.dataset.src = "";   // force a fresh assignment for this open
+  renderFramePreview();
+  fpv.hidden = false;
+  const focusEl = !fpvSkip.hidden ? fpvSkip : (!fpvLib.hidden ? fpvLib : fpv.querySelector("[data-fpv-close]"));
+  setTimeout(() => focusEl && focusEl.focus(), 30);
+}
+function closeFramePreview() { if (!fpv.hidden) { fpv.hidden = true; pvFrame = null; } }
+
+fpvImg.addEventListener("error", () => {
+  if (!fpvImg.dataset.src) return;   // ignore the src-cleared (empty-slot) case
+  fpvImg.classList.add("broken");
+  fpvEmpty.hidden = false; fpvEmpty.textContent = "Preview unavailable";
+});
+fpv.querySelector(".fpv-toggle").addEventListener("click", (e) => {
+  const b = e.target.closest(".fpv-seg"); if (!b) return;
+  pvKind = b.dataset.kind === "next" ? "next" : "now";
+  renderFramePreview();
+});
+fpvSkip.addEventListener("click", () => {
+  const n = pvFrame; if (!n) return;
+  const label = screens()[n]?.display_name || n;
+  skipScreenNext(n)
+    .then((resp) => { mutate((st) => { if (st.screens[n]) st.screens[n].next = resp.next_image; }); toast(`Skipped — up next changed on ${label}`); })
+    .catch((err) => toast("Skip failed: " + err.message));
+});
+// "See photo in library": close the modal + frames drawer, then scroll to and flash the tile
+fpvLib.addEventListener("click", () => {
+  const sc = screens()[pvFrame]; if (!sc) return;
+  const entry = fpvEntry(sc, pvKind); if (!entry) return;
+  const color = frameColor(pvFrame), name = entry.name;
+  closeFramePreview();   // dismiss the modal but leave the frames drawer floating open
+  const sel = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"');
+  // Closing the modal releases its scroll-lock on the next microtask, which restores the
+  // pre-modal scroll position — so defer the scroll+flash one frame past that (rAF runs
+  // after microtasks) or it gets instantly snapped back and nothing appears to happen.
+  requestAnimationFrame(() => {
+    const tile = document.querySelector(`#gallery .cell-tile[data-name="${sel}"]`);
+    if (tile) {
+      tile.style.setProperty("--hc", color);
+      tile.scrollIntoView({ behavior: "smooth", block: "center" });
+      tile.classList.add("fpv-flash");
+      setTimeout(() => tile.classList.remove("fpv-flash"), 2400);
+    } else {
+      toast(`“${name}” is in your library`);   // filtered out of the current view
+    }
+  });
+});
+fpv.addEventListener("click", (e) => { if (e.target === fpv || e.target.closest("[data-fpv-close]")) closeFramePreview(); });
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFrameMenu(); closeFrameDiag(); closeRename(); closeFramePreview(); } });
 window.addEventListener("scroll", () => { if (!frameMenu.hidden) closeFrameMenu(); }, true);
 
-subscribe((what) => { if (what === "status") renderFrames(); });
+subscribe((what) => { if (what === "status") { renderFrames(); if (!fpv.hidden) renderFramePreview(); } });
 if (state.status) renderFrames();

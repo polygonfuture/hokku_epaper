@@ -187,6 +187,42 @@
   </div>
 </div>
 
+<!-- frame preview: read-only lightbox of what a frame shows now / up next (tap a card thumbnail, or ⋯ → Preview Frame) -->
+<div class="sheet-overlay" id="frame-preview" hidden>
+  <div class="fpv-card" role="dialog" aria-modal="true" aria-labelledby="fpv-name">
+    <div class="fpv-head">
+      <div class="fpv-id">
+        <p class="fpv-eyebrow">As shown on</p>
+        <p class="fpv-name" id="fpv-name"><span class="d" id="fpv-dot"></span><span id="fpv-nametext"></span></p>
+      </div>
+      <button class="detail-close" data-fpv-close aria-label="Close preview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="fpv-toggle" role="tablist" aria-label="Which photo">
+      <button class="fpv-seg" data-kind="now" role="tab"><span class="sd"></span>Now</button>
+      <button class="fpv-seg" data-kind="next" role="tab"><span class="sd"></span>Up next</button>
+    </div>
+    <div class="fpv-stage">
+      <div class="fpv-device landscape" id="fpv-device">
+        <div class="fpv-screen"><img class="fpv-img" id="fpv-img" alt=""><div class="fpv-empty" id="fpv-empty" hidden></div></div>
+        <span class="fpv-accent"></span>
+      </div>
+    </div>
+    <div class="fpv-meta" id="fpv-meta"></div>
+    <div class="fpv-foot">
+      <button class="fpv-act skip" id="fpv-skip" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5v14l9-7z"/><path d="M18 5v14"/></svg>
+        Skip up next
+      </button>
+      <button class="fpv-act" id="fpv-lib">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
+        See photo in library
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- server info as a clean modal on MOBILE (the desktop drawer reads jumbled at phone width) -->
 <div class="sheet-overlay" id="server-modal" hidden>
   <div class="fdiag-card" role="dialog" aria-modal="true" aria-label="Server info">
