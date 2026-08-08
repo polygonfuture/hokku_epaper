@@ -1,5 +1,7 @@
 // ui.js — small dom + formatting helpers shared by every view.
 
+import { state } from "./state.js";   // read-only, for order-aware frame colours
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -64,11 +66,21 @@ export function fmtUptime(s) {
   return `${s}s`;
 }
 
-// ── frame identity colors: stable per name (order-independent hash into a palette) ──
-const FRAME_PALETTE = ["#E3A94F", "#82C08C", "#63A6E6", "#C08BD6", "#E9836F", "#5FC2BA", "#D6C08B"];
+// ── frame identity colors ──────────────────────────────────────────────────
+// Colour-blind-safe palette (tuned for red/green CVD): every CONSECUTIVE pair crosses the
+// blue↔yellow axis — the one axis red/green colour-blindness keeps — and no green or pure
+// red at all. Colours are handed out by the frame's position in the live screen list, so
+// ADJACENT frames in the drawer always get the most-separated hues (a per-name hash could
+// otherwise seat two look-alikes side by side). Order: blue, orange, purple, yellow, cyan,
+// vermillion.
+const FRAME_PALETTE = ["#4C9BE0", "#E89A3C", "#B77BD0", "#E6D24A", "#5BC8D4", "#E0673C"];
 export function frameColor(name) {
+  const names = Object.keys(state.status?.screens || {});
+  const i = names.indexOf(name);
+  if (i >= 0) return FRAME_PALETTE[i % FRAME_PALETTE.length];
+  // frame not in the current list yet (e.g. a stale badge mid-poll) → stable name hash
   let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  for (let k = 0; k < name.length; k++) h = (h * 31 + name.charCodeAt(k)) >>> 0;
   return FRAME_PALETTE[h % FRAME_PALETTE.length];
 }
 
