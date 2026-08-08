@@ -32,7 +32,22 @@ $("#settings-btn").addEventListener("click", () => openSettings());
 $("#edit-orientation").addEventListener("click", () => openSettings("frames"));
 // #upload-btn + drag-drop are owned by header.js
 
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllDrawers(); });
+// Escape closes ONE surface at a time, top-most first. Drawers are the lowest layer, so
+// they only close when nothing is stacked over them. This runs in the CAPTURE phase —
+// before each module's own (bubble) Escape handler — so on the first Escape we still see
+// the overlay open and leave the drawer alone; that handler closes the overlay, and the
+// NEXT Escape, now with nothing on top, falls through to the drawer.
+// Scope to DIRECT children of <body>, where every real overlay/menu lives. Some of these
+// classes are also reused on elements NESTED inside a modal (e.g. .detail-actions is a
+// .ctx-menu inside #detail); those must not count as "open", and a bare `.ctx-menu:not(
+// [hidden])` would match them even while their modal is closed (:not([hidden]) only checks
+// the element's own attribute). `body > ` excludes them with no layout/reflow cost.
+const OVERLAY_OPEN_SEL = "body > .sheet-overlay:not([hidden]), body > .ctx-menu:not([hidden]), body > .ctx-backdrop:not([hidden]), body > .anchor-scrim:not([hidden])";
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (document.querySelector(OVERLAY_OPEN_SEL)) return;   // a modal/menu is on top — it takes this Escape
+  closeAllDrawers();
+}, true);
 
 // ── scroll lock: freeze the page behind any open modal/sheet (iOS-reliable) ──
 // One observer watches every full-screen surface's `hidden` attribute, so it stays in
