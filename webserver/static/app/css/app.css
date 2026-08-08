@@ -72,6 +72,8 @@
   .fpanel-body { display: flex; align-items: flex-start; gap: 72px; padding: 16px var(--pad); }
   .fcards { display: flex; flex-wrap: wrap; gap: 12px; flex: 1; min-width: 0; }
   .fpanel-body .ghost { flex: none; margin-left: 0; display: inline-flex; align-items: center; gap: 7px; }
+  /* right-side column of frame shortcuts (Orientation, Refresh schedule) — equal width */
+  .fpanel-actions { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
   .fpanel-body .ghost svg { width: 14px; height: 14px; }
   .fcard {
     display: flex; gap: 7px; padding: 13px 18px 13px 13px; border: 1px solid var(--hair); border-radius: 14px;

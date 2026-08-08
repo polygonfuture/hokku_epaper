@@ -30,6 +30,7 @@ $("#brand").addEventListener("click", () => {
 $("#fp").addEventListener("click", () => openDrawer("frames"));
 $("#settings-btn").addEventListener("click", () => openSettings());
 $("#edit-orientation").addEventListener("click", () => openSettings("frames"));
+$("#edit-schedule").addEventListener("click", () => openSettings("refresh"));
 // #upload-btn + drag-drop are owned by header.js
 
 // Escape closes ONE surface at a time, top-most first. Drawers are the lowest layer, so
