@@ -368,9 +368,13 @@ function renderFramePreview() {
     `<span class="fpv-chip">${ori}</span>`;
 
   fpvSkip.hidden = !(pvKind === "next" && entry);   // reroll only makes sense on a queued up-next
-  fpvLib.hidden = !entry;                           // nothing to jump to if the slot is empty
+  // no library jump when the slot is empty, or when View Details is layered underneath —
+  // you came FROM the photo, and the gallery it would scroll+flash is covered by #detail
+  fpvLib.hidden = !entry || !$("#detail").hidden;
 }
-function openFramePreview(name, kind) {
+// Exported: gallery badge taps and View Details rows (photo.js) open it too — one rule,
+// "tap any photo×frame pairing", from every surface a pairing appears on.
+export function openFramePreview(name, kind) {
   if (!screens()[name]) return;
   pvFrame = name; pvKind = (kind === "next" ? "next" : "now");
   fpvImg.dataset.src = "";   // force a fresh assignment for this open
@@ -422,7 +426,19 @@ fpvLib.addEventListener("click", () => {
 });
 fpv.addEventListener("click", (e) => { if (e.target === fpv || e.target.closest("[data-fpv-close]")) closeFramePreview(); });
 
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFrameMenu(); closeFrameDiag(); closeRename(); closeFramePreview(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!fpv.hidden) {
+    // Top-most layer takes the WHOLE press. The preview can be stacked over View Details,
+    // and photo.js's Escape handler runs after this one (photo.js imports frames.js, so
+    // this listener registered first) — without the stop, one press would see the preview
+    // already closed and collapse the detail lightbox underneath it too.
+    e.stopImmediatePropagation();
+    closeFramePreview();
+    return;
+  }
+  closeFrameMenu(); closeFrameDiag(); closeRename();
+});
 window.addEventListener("scroll", () => { if (!frameMenu.hidden) closeFrameMenu(); }, true);
 
 subscribe((what) => { if (what === "status") { renderFrames(); if (!fpv.hidden) renderFramePreview(); } });

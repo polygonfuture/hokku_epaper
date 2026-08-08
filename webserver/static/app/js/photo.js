@@ -9,6 +9,7 @@ import { state, subscribe, mutate } from "./state.js";
 import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, ditheredUrlMono, originalUrl } from "./api.js";
 import { $, $$, esc, toast, fmtBytes, fmtAgo, fmtUntil, frameColor } from "./ui.js";
 import { openEditor } from "./editor.js";
+import { openFramePreview } from "./frames.js";
 
 const gallery = $("#gallery");
 
@@ -215,7 +216,7 @@ function ondisplayHTML(name) {
     const t = queued
       ? (fmtUntil(sc.next_update_at) === "overdue" ? "overdue" : "in " + fmtUntil(sc.next_update_at))
       : fmtAgo(sc.last_seen);
-    return `<div class="orow${queued ? " queued" : ""}" style="--fc:${frameColor(f)}"><span class="d"></span><span class="fn">${esc(sc.display_name || f)}</span><span class="t">${esc(t)}</span></div>`;
+    return `<div class="orow${queued ? " queued" : ""}" data-frame="${esc(f)}" data-kind="${queued ? "next" : "now"}" title="Preview this frame" style="--fc:${frameColor(f)}"><span class="d"></span><span class="fn">${esc(sc.display_name || f)}</span><span class="t">${esc(t)}</span></div>`;
   }).join("");
   const show = showingFrames(name), next = queuedFrames(name);
   return (show.length ? `<div class="ondisplay"><div class="oh">On display</div>${rows(show, false)}</div>` : "")
@@ -348,6 +349,10 @@ function closeDetail() { detailEl.hidden = true; detailEl._name = null; }
 
 detailEl.addEventListener("click", (e) => {
   if (e.target === detailEl || e.target.closest("[data-close]")) { closeDetail(); return; }
+  // On display / Up next row → frame-preview modal, stacked OVER this lightbox (detail
+  // stays open behind it; dismissing the preview lands you back here).
+  const orow = e.target.closest(".orow[data-frame]");
+  if (orow) { openFramePreview(orow.dataset.frame, orow.dataset.kind); return; }
   const vb = e.target.closest("[data-view]");
   if (vb) {
     detailEl.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b === vb));
@@ -388,6 +393,10 @@ gallery.addEventListener("click", (e) => {
     return;
   }
   if (suppressClick) { suppressClick = false; return; }        // was a long-press
+  // frame badge → frame-preview modal, BOTH pointer types. Safe on touch because a plain
+  // tile tap is a no-op on mobile (below): a missed badge tap opens nothing wrong.
+  const badge = e.target.closest(".fbadge");
+  if (badge && badge.dataset.frame) { openFramePreview(badge.dataset.frame, "now"); return; }
   // touch devices: a plain tap does nothing — press-hold opens the action sheet, and
   // its "View details" opens this modal. Tap-to-open-detail is desktop (hover) only.
   if (window.matchMedia && window.matchMedia("(hover: none)").matches) return;
@@ -411,8 +420,14 @@ const cancelLP = () => clearTimeout(lpTimer);
 gallery.addEventListener("touchmove", cancelLP, { passive: true });
 gallery.addEventListener("touchend", cancelLP, { passive: true });
 
-// Escape closes photo surfaces (drawers are handled in main.js)
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDetail(); closeSheet(); closeMenu(); } });
+// Escape closes photo surfaces (drawers are handled in main.js). One layer per press:
+// while the frame-preview modal is stacked on top, this Escape is ITS dismissal
+// (frames.js closes it) — the detail lightbox underneath takes the NEXT press.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!$("#frame-preview").hidden) return;
+  closeDetail(); closeSheet(); closeMenu();
+});
 
 // If the open photo is deleted out from under us (another client / poll), close detail.
 subscribe((what) => {

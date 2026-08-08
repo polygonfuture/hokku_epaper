@@ -105,7 +105,7 @@ function paintTile(el, entry) {
   const slot = el.querySelector(".badges-slot");
   if (badges.length) {
     slot.innerHTML = '<div class="badges">' + badges.map((b) =>
-      `<span class="fbadge" style="--fc:${b.color}"><span class="d"></span>${esc(b.label)}</span>`).join("") + "</div>";
+      `<span class="fbadge" data-frame="${esc(b.name)}" title="Preview this frame" style="--fc:${b.color}"><span class="d"></span>${esc(b.label)}</span>`).join("") + "</div>";
   } else if (conv) {
     slot.innerHTML = '<span class="mark c">Converting</span>';
   } else {
