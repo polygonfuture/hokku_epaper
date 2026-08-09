@@ -68,11 +68,11 @@ export const thumbnailUrl = (entry) => `${API}/thumbnail/${encodeURIComponent(en
 export const ditheredUrl = (entry, orient = null) =>
   `${API}/dithered/${encodeURIComponent(entry.name)}?${orient ? `orient=${orient}&` : ""}${bust(entry)}`;
 // the E1003 (mono) render of the image — what a mono frame actually shows. `portrait`
-// tells the server the frame's orientation so the render is composed for it. Default the
-// preview is decoded UPRIGHT (legible); `raw` decodes exactly as the glass holds it
-// (portrait content reads sideways) so the Frames drawer card mirrors the physical panel.
-export const ditheredUrlMono = (entry, portrait = false, raw = false) =>
-  `${API}/dithered/${encodeURIComponent(entry.name)}?mono=1${portrait ? "&portrait=1" : ""}${raw ? "&raw=1" : ""}&${bust(entry)}`;
+// tells the server the frame's orientation so the render is composed for it. The PNG comes
+// back upright and shaped to that orientation, exactly like ditheredUrl's — the E1003's
+// landscape wire buffer is an internal detail the client never sees.
+export const ditheredUrlMono = (entry, portrait = false) =>
+  `${API}/dithered/${encodeURIComponent(entry.name)}?mono=1${portrait ? "&portrait=1" : ""}&${bust(entry)}`;
 export const originalUrl = (entry) => `${API}/original/${encodeURIComponent(entry.name)}`;
 
 // ── upload (XHR for real progress events) ──

@@ -14,16 +14,16 @@ const OVERDUE_GRACE_S = 120;   // wake jitter + clock drift allowance before "ov
 const screens = () => state.status?.screens || {};
 const entryByName = (name) => (state.status?.upload_files || []).find((e) => e.name === name) || null;
 
-// The Frames drawer card MIRRORS the physical panel (not the generic upright /thumbnail):
-// it shows the raw frame-oriented render. Every photo is composed upright for the frame's
-// own orientation, so the card box and the render are both the FRAME's orientation.
+// The Frames drawer card shows what the frame shows: the render for that frame's
+// orientation. Every photo is composed upright for its frame, so both panel types return
+// an image already SHAPED to the frame (colour 1200x1600 / 1600x1200, mono 1404x1872 /
+// 1872x1404) and the card just drops it in a frame-shaped box — same rule for both, no
+// per-panel rotation. Identical to what the preview modal and the gallery tile request.
 const isMonoFrame = (sc) => sc?.panel_type === "mono16_e1003";
 function frameCardUrl(sc, entry) {
   if (!entry) return "";
   const framePortrait = sc.orientation === "portrait";
-  // mono raw=true → decode the wire buffer exactly as the glass holds it (portrait content
-  // is stored rotated in the landscape buffer, so a portrait frame's card reads as the panel).
-  if (isMonoFrame(sc)) return ditheredUrlMono(entry, framePortrait, true);
+  if (isMonoFrame(sc)) return ditheredUrlMono(entry, framePortrait);
   return ditheredUrl(entry, framePortrait ? "portrait" : "landscape");
 }
 // the frame's next image: the server's committed per-screen pick (pin or rotation),
@@ -72,26 +72,13 @@ function updateCard(el, name, sc) {
   const nowE = entryByName(sc.last_served);
   const upName = nextForScreen(sc), upE = entryByName(upName);
 
-  // Card box = the FRAME's orientation. Whether the card must rotate the image 90° differs
-  // by panel type, because the two render SHAPES differ (verified):
-  //   • COLOUR: ditheredUrl(orient=) returns an image SHAPED to that orientation
-  //     (portrait→1200×1600, landscape→1600×1200), so it fills the box directly — NEVER rotate.
-  //   • MONO (raw=1): the E1003 wire buffer is ALWAYS landscape-shaped (1872×1404) regardless
-  //     of content — the physical panel is landscape. So for a PORTRAIT frame box the raw image
-  //     is always landscape and object-fit:cover would CROP it. Rotate 90° in the card so it
-  //     fills the portrait box with no crop (a portrait photo reads upright; a landscape photo
-  //     reads sideways — exactly as the turned frame shows it). Landscape mono frame: buffer
-  //     shape == box shape → no rotate.
-  // Display-only, frame-preview thumbnails only.
+  // Card box = the FRAME's orientation, and both panel types return an image already shaped
+  // to it — so the image fills the box directly, for colour and mono alike.
   const thumb = el.querySelector(".fthumb");
   const boxPortrait = sc.orientation === "portrait";
   thumb.className = "fthumb shape-" + (boxPortrait ? "portrait" : "landscape");
 
-  const rotateInCard = isMonoFrame(sc) && boxPortrait;   // mono raw buffer is always landscape
-  const applyImg = (img, entry) => {
-    setImg(img, entry ? frameCardUrl(sc, entry) : "");
-    img.classList.toggle("sideways", rotateInCard && !!entry);
-  };
+  const applyImg = (img, entry) => setImg(img, entry ? frameCardUrl(sc, entry) : "");
   applyImg(el.querySelector(".c-now"), nowE);
   applyImg(el.querySelector(".c-next"), upE);
   const pinned = !!sc.next_override;
@@ -314,13 +301,12 @@ let pvFrame = null, pvKind = "now";   // which frame, and which slot (now|next) 
 
 // the image entry a given slot resolves to (upnext = the committed serve pick; now = last served)
 const fpvEntry = (sc, kind) => entryByName(kind === "next" ? nextForScreen(sc) : sc.last_served);
-// the UPRIGHT, legible render of what THIS frame shows for `entry`, plus the box orientation.
-// (the drawer card mirrors the glass sideways; the preview un-rotates it so you can read the crop.)
+// what THIS frame shows for `entry`, plus the box orientation — the same request the
+// drawer card and the gallery tile make, so all three agree by construction.
 function fpvRender(sc, entry) {
   const p = sc.orientation === "portrait";   // content always follows the frame
   if (!entry) return { url: "", portrait: p };
-  if (isMonoFrame(sc)) return { url: ditheredUrlMono(entry, p, false), portrait: p };
-  return { url: ditheredUrl(entry, p ? "portrait" : "landscape"), portrait: p };
+  return { url: frameCardUrl(sc, entry), portrait: p };
 }
 function renderFramePreview() {
   const sc = screens()[pvFrame];

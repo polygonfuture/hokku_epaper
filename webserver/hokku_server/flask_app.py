@@ -457,15 +457,14 @@ def create_app(
             except Exception:
                 logger.exception("mono dithered render failed for %r", name)
                 abort(500)
-            # ?raw=1 → decode exactly as the glass holds it (portrait content reads
-            # SIDEWAYS) so the Frames drawer card mirrors the physical panel. Default →
-            # UPRIGHT (un-rotate portrait content) for legible gallery/editor previews.
+            # Always decoded UPRIGHT and shaped to the frame's orientation, so a mono
+            # preview is interchangeable with the colour one (?orient=) — the E1003's
+            # landscape wire buffer, and the 90° rotation portrait content is stored with,
+            # stay an internal detail. Every client surface wants this: card, tile, modal,
+            # editor.
             buf = io.BytesIO()
-            if request.args.get("raw"):
-                mono_e1003.mono_bin_to_image(binary).save(buf, format="PNG")
-            else:
-                cp = _mono_content_portrait(state.config, rec, frame_portrait=fp)
-                mono_e1003.mono_bin_to_upright_image(binary, cp).save(buf, format="PNG")
+            cp = _mono_content_portrait(state.config, rec, frame_portrait=fp)
+            mono_e1003.mono_bin_to_upright_image(binary, cp).save(buf, format="PNG")
             return _png_response(buf.getvalue())
         # ?orient=landscape|portrait → the colour render at a SPECIFIC frame orientation
         # (the Frames drawer passes the frame's orientation so its card mirrors the panel);
