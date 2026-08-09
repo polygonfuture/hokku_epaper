@@ -147,7 +147,7 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 <a href="../images/ui_v2_mobile_sheet.png"><img src="../images/ui_v2_mobile_sheet.png" height="720" alt="On a phone, press and hold a photo for the same actions."></a> &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_detail.png"><img src="../images/ui_v2_mobile_detail.png" height="720" alt="The detail view on a phone."></a>
 
-*The detail view on a phone. (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp;  *On a phone, press and hold a photo for the same actions. (right)*
+*On a phone, press and hold a photo for the context menu. (left)* &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp;  *The "view details" menu on a phone.  (right)*
 
 
 &nbsp; 
@@ -198,7 +198,7 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 
 
-- **Upload Button:** Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft.Cancel discards it, Submit adds it. 
+- **Upload Button:** Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft. Cancel discards it, Submit adds it. Adding or drag-and-drop multiple photos will bypass the editor and use the server's built-in automatic settings (controllable from the settings page) 
 
 - For a photo already in your library, use its **Edit photo…** action — right-click it (or the **⋯** in its corner) on a computer, press and hold it on a phone, or find it in the detail view's actions.
 
