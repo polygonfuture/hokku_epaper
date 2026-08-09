@@ -37,6 +37,15 @@ from hokku_server.orientation import Orientation
 if TYPE_CHECKING:
     pass
 
+#: Aspect slop (as a zoom-to-fill ratio) that always fills, whatever the slider says.
+#: A source cut to the panel aspect is never EXACTLY that aspect — a normalised rect
+#: rounds to whole pixels — so it asks for a hair of zoom. Letterboxing it pads that
+#: hair with white, and the padding mask turns it into a crisp 1px white line on one
+#: edge. Below this ratio the difference is rounding, not composition: fill and trim it.
+#: Well under any real aspect gap (a 3:2 photo on 4:3 needs 0.125 = 12.5%).
+_ASPECT_SNAP_RATIO = 0.002
+
+
 
 @dataclass(frozen=True)
 class FramingDecision:
@@ -102,7 +111,10 @@ def frame_decision(
     scale_fit = min(visible_w / src_w, visible_h / src_h)
     scale_cover = max(visible_w / src_w, visible_h / src_h)
     zoom_ratio = scale_cover / scale_fit - 1.0
-    use_cover = crop_to_fill_threshold > 0.0 and zoom_ratio <= crop_to_fill_threshold
+    # _ASPECT_SNAP_RATIO floors the threshold so a source that is the panel aspect to
+    # within rounding always fills — otherwise it letterboxes a sub-pixel gap into a
+    # white hairline. Above that, the user's threshold is the only control.
+    use_cover = zoom_ratio <= max(crop_to_fill_threshold, _ASPECT_SNAP_RATIO)
     return FramingDecision(content_portrait=content_portrait, use_cover=use_cover)
 
 
