@@ -13,7 +13,7 @@
   "serve_decision_log_enabled": false,
   "auto_clear_cache": false,
   "crop_to_fill_threshold": 0.10,
-  "auto_rotate_fit": false,
+  "classifier_face_aware_crop_enabled": true,
   "image_worker_thread_count": 0,
   "image_config_default": {
     "dither": {

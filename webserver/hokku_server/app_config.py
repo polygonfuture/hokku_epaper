@@ -97,16 +97,15 @@ class AppConfig:
     serve_decision_log_enabled: bool = False
     auto_clear_cache: bool = False
     #: Zoom up to this fraction (e.g. 0.02 = 2 %) to eliminate letterbox bands.
-    #: 0.0 = always letterbox (default, safe).
+    #: 0.0 = always letterbox. Every photo is composed upright for its frame's
+    #: orientation, and this single threshold is the only letterbox-vs-fill control —
+    #: it governs manually cropped photos exactly as it governs untouched ones.
     crop_to_fill_threshold: float = 0.10
-    #: Auto-rotate & fit photos to each frame's native orientation (global, both panels).
-    #: OFF (default): a photo keeps its own orientation — colour letterboxes an
-    #: off-orientation photo upright; the mono E1003 stores a portrait photo rotated
-    #: sideways in its landscape wire buffer (view by physically turning the frame).
-    #: ON: crop + rotate every photo to fill the frame's orientation upright (a portrait
-    #: on a landscape frame becomes an upright landscape crop, losing top/bottom).
-    #: Priority per photo: manual editor crop > auto_rotate_fit > crop_to_fill_threshold.
-    auto_rotate_fit: bool = False
+    #: Aim the cover-crop window at detected faces instead of the image centre, so a
+    #: photo that must fill loses the background rather than someone's head. Only
+    #: affects renders that cover (fill); letterboxed renders are unchanged.
+    #: Name kept identical to upstream so the v4 port is a no-op for this feature.
+    classifier_face_aware_crop_enabled: bool = True
     #: Number of worker processes for parallel image rendering.
     #: 0 = auto (cpu_count − 1, capped by available RAM at ~50 MB/worker).
     #: 1 = serial (legacy default).
@@ -221,7 +220,7 @@ class AppConfig:
             "classifier_face_detect_enabled": self.classifier_face_detect_enabled,
             "classifier_face_detect_clahe_keepout": self.classifier_face_detect_clahe_keepout,
             "crop_to_fill_threshold": self.crop_to_fill_threshold,
-            "auto_rotate_fit": self.auto_rotate_fit,   # affects framing -> must invalidate cached renders
+            "classifier_face_aware_crop_enabled": self.classifier_face_aware_crop_enabled,
         }
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(raw.encode()).hexdigest()[:14]

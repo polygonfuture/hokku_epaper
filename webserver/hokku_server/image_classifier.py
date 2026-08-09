@@ -52,8 +52,10 @@ class ImageClassifierDecision:
     image_config: ImageConfig
     crop_to_fill_threshold: float
     clahe_keepout_bboxes: tuple[BoundingBox, ...] | None
-    #: Global auto-rotate & fit policy copied per-image (like crop_to_fill_threshold).
-    auto_rotate: bool = False
+    #: Faces to aim the cover-crop window at (face-aware cropping). Separate from
+    #: ``clahe_keepout_bboxes`` on purpose: the two features are gated independently,
+    #: so turning CLAHE keepout off must not disable face-aware cropping.
+    crop_anchor_bboxes: tuple[BoundingBox, ...] | None = None
 
 
 class ImageClassifier:
@@ -98,7 +100,9 @@ class ImageClassifier:
             image_config=chosen,
             crop_to_fill_threshold=cfg.crop_to_fill_threshold,
             clahe_keepout_bboxes=keepout,
-            auto_rotate=bool(getattr(cfg, "auto_rotate_fit", False)),
+            crop_anchor_bboxes=(
+                face_bboxes if cfg.classifier_face_aware_crop_enabled else None
+            ),
         )
 
     def observations_for(self, sha1: str) -> Observations:

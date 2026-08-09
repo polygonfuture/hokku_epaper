@@ -15,25 +15,15 @@ const screens = () => state.status?.screens || {};
 const entryByName = (name) => (state.status?.upload_files || []).find((e) => e.name === name) || null;
 
 // The Frames drawer card MIRRORS the physical panel (not the generic upright /thumbnail):
-// it shows the raw frame-oriented render, so a portrait photo on a landscape frame with
-// auto-rotate OFF reads SIDEWAYS in the card exactly as the glass holds it (you turn the
-// frame to view it). The card box is therefore always the FRAME's orientation, and the
-// render is requested at that same orientation for both panel types.
+// it shows the raw frame-oriented render. Every photo is composed upright for the frame's
+// own orientation, so the card box and the render are both the FRAME's orientation.
 const isMonoFrame = (sc) => sc?.panel_type === "mono16_e1003";
-function frameContentPortrait(sc, entry) {
-  // content orientation the frame composes (OFF keeps the photo's; ON follows the frame).
-  const autoRotate = !!state.config?.config?.auto_rotate_fit;
-  if (autoRotate) return sc.orientation === "portrait";
-  return entry?.effective_orientation === "portrait";
-}
 function frameCardUrl(sc, entry) {
   if (!entry) return "";
   const framePortrait = sc.orientation === "portrait";
-  if (isMonoFrame(sc)) {
-    // raw=true → sideways wire decode (mirrors the glass), composed for the frame orientation.
-    return ditheredUrlMono(entry, frameContentPortrait(sc, entry), true);
-  }
-  // colour: raw render at the frame's configured orientation (also sideways on mismatch).
+  // mono raw=true → decode the wire buffer exactly as the glass holds it (portrait content
+  // is stored rotated in the landscape buffer, so a portrait frame's card reads as the panel).
+  if (isMonoFrame(sc)) return ditheredUrlMono(entry, framePortrait, true);
   return ditheredUrl(entry, framePortrait ? "portrait" : "landscape");
 }
 // the frame's next image: the server's committed per-screen pick (pin or rotation),
@@ -327,9 +317,9 @@ const fpvEntry = (sc, kind) => entryByName(kind === "next" ? nextForScreen(sc) :
 // the UPRIGHT, legible render of what THIS frame shows for `entry`, plus the box orientation.
 // (the drawer card mirrors the glass sideways; the preview un-rotates it so you can read the crop.)
 function fpvRender(sc, entry) {
-  if (!entry) return { url: "", portrait: sc.orientation === "portrait" };
-  if (isMonoFrame(sc)) { const p = frameContentPortrait(sc, entry); return { url: ditheredUrlMono(entry, p, false), portrait: p }; }
-  const p = sc.orientation === "portrait";
+  const p = sc.orientation === "portrait";   // content always follows the frame
+  if (!entry) return { url: "", portrait: p };
+  if (isMonoFrame(sc)) return { url: ditheredUrlMono(entry, p, false), portrait: p };
   return { url: ditheredUrl(entry, p ? "portrait" : "landscape"), portrait: p };
 }
 function renderFramePreview() {

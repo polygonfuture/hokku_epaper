@@ -22,10 +22,11 @@ const frameLabel = (n) => screens()[n]?.display_name || n;
 // a photo on an E1003 (mono) frame previews as the E1003 render, not the colour dither
 const monoFrameOf = (name) => Object.values(screens()).find((s) => s.last_served === name && s.panel_type === "mono16_e1003") || null;
 const onMonoFrame = (name) => !!monoFrameOf(name);
-// portrait when the mono display shows content portrait (ON follows frame, OFF the photo)
+// portrait when the mono display shows content portrait — always the frame's orientation
+// (every photo is composed upright for its frame)
 const monoDisplayPortrait = (e) => {
   const fr = monoFrameOf(e.name); if (!fr) return false;
-  return state.config?.config?.auto_rotate_fit ? fr.orientation === "portrait" : e.effective_orientation === "portrait";
+  return fr.orientation === "portrait";
 };
 const framePreviewUrl = (e) => (onMonoFrame(e.name) ? ditheredUrlMono(e, monoDisplayPortrait(e)) : ditheredUrl(e));
 // is any E1003 (mono16) frame registered? gates the detail view's "Mono 16 Gray Panel" tab.

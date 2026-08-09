@@ -82,16 +82,16 @@ def _decision_to_screen_image_config(
     return ScreenImageConfig(
         image_config=decision.image_config,
         orientation=orientation,
-        # a manual crop already frames the image (forces cover in frame_decision), so the
-        # auto crop-to-fill threshold is irrelevant when one is present.
-        crop_to_fill_threshold=0.0 if crop_rect else decision.crop_to_fill_threshold,
+        # ONE fill rule for every photo: the crop supplies different pixels, the slider still
+        # decides letterbox-vs-fill for them. (A crop is cut to the panel aspect, so on a
+        # matching frame it needs ~0% zoom and fills at any slider value; on a mismatched
+        # frame the slider letterboxes it upright instead of cutting a second crop out of the
+        # user's framing.)
+        crop_to_fill_threshold=decision.crop_to_fill_threshold,
         clahe_keepout_bboxes=decision.clahe_keepout_bboxes,
         rotation_quarters=rotation_quarters,
         crop_rect=crop_rect,
-        # D4/B1 (UNIFY_PLAN.md): auto_rotate is NOT suppressed by a manual crop — when ON it
-        # still reframes the crop's pixels to the mount orientation (the crop's shape does not
-        # override the toggle). frame_decision applies it uniformly whether or not a crop exists.
-        auto_rotate=getattr(decision, "auto_rotate", False),
+        crop_anchor_bboxes=getattr(decision, "crop_anchor_bboxes", None),
     )
 
 
@@ -1102,7 +1102,9 @@ class AbstractImageManager(ABC):
             else None,
             cfg.rotation_quarters,
             cfg.crop_rect,
-            cfg.auto_rotate,   # keep position aligned with render_one's params
+            tuple(asdict(b) for b in cfg.crop_anchor_bboxes)
+            if cfg.crop_anchor_bboxes
+            else None,   # keep position aligned with render_one's params
         )
         logger.debug("Submitted %r for dithering (%s)", name, cfg.orientation)
         self._dispatch_render(

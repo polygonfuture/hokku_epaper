@@ -46,6 +46,37 @@ if TYPE_CHECKING:
 _ASPECT_SNAP_RATIO = 0.002
 
 
+def _face_centered_crop_offset(
+    bboxes_norm: tuple[BoundingBox, ...],
+    scaled_w: float,
+    scaled_h: float,
+    visible_w: float,
+    visible_h: float,
+) -> tuple[float, float]:
+    """Crop offset (top-left corner, in scaled-image pixel space) that centers
+    the union of all detected faces in the visible window, clamped to the
+    valid cover-crop range ``[0, scaled_dim - visible_dim]``.
+
+    Centering on the face union's centroid rather than the canvas naturally
+    biases which side gets cut: a face near the top of the source photo pulls
+    the crop window up too, so it's the *bottom* of the frame that's cropped
+    away, not the head.
+
+    Ported verbatim from upstream (defl/hokku_epaper, 4.0.x) so the eventual v4
+    port is a no-op for this feature — keep the name, signature and formula in
+    lock-step with ``python/hokku/webserver/image_abc.py`` upstream.
+    """
+    min_x = min(b.x for b in bboxes_norm)
+    min_y = min(b.y for b in bboxes_norm)
+    max_x = max(b.x + b.w for b in bboxes_norm)
+    max_y = max(b.y + b.h for b in bboxes_norm)
+    face_cx = (min_x + max_x) / 2.0 * scaled_w
+    face_cy = (min_y + max_y) / 2.0 * scaled_h
+
+    x_off = max(0.0, min(face_cx - visible_w / 2.0, max(0.0, scaled_w - visible_w)))
+    y_off = max(0.0, min(face_cy - visible_h / 2.0, max(0.0, scaled_h - visible_h)))
+    return x_off, y_off
+
 
 @dataclass(frozen=True)
 class FramingDecision:
@@ -71,39 +102,34 @@ def frame_decision(
     canvas_h: int,
     *,
     frame_portrait: bool,
-    auto_rotate: bool,
-    has_crop: bool,
     crop_to_fill_threshold: float,
 ) -> FramingDecision:
     """Decide content orientation + fill-vs-letterbox for an ALREADY cropped/rotated image.
 
     Callers apply any manual crop/rotation to the image FIRST, then pass the transformed
-    ``src_w/src_h`` here — so a manual crop is not a special case, it simply changes the
-    shape being measured (a portrait crop is a portrait source). ``has_crop`` is True only
-    when a real (non-full-frame) crop rect survived normalisation; it forces cover per D3.
+    ``src_w/src_h`` here — so a manual crop is NOT a special case anywhere in this function.
+    An edit simply supplies different pixels of a different shape, and the two rules below
+    then treat it exactly like an unedited photo.
 
     ``canvas_w/canvas_h`` are the PHYSICAL panel dims in either order (e.g. colour
-    1200x1600, mono 1872x1404). The content canvas takes the content orientation; the
-    zoom-to-fill ratio is measured against that canvas so a single ``crop_to_fill_threshold``
-    governs every fill decision on both pipelines (D2).
+    1200x1600, mono 1872x1404). The zoom-to-fill ratio is measured against that canvas so a
+    single ``crop_to_fill_threshold`` governs every fill decision on both pipelines.
 
-    Rules (UNIFY_PLAN.md D1-D4):
-      D1 content orientation: ON follows the FRAME, OFF follows the (cropped) SOURCE.
-      D4 with a crop + auto_rotate ON, auto_rotate STILL wins the orientation (B1): the
-         crop's pixels are reframed to the mount — there is no crop→auto_rotate suppression.
-      D2/D3 use_cover: a real crop OR auto_rotate force cover unconditionally; otherwise
-         cover only when the single adjustable ``crop_to_fill_threshold`` allows, measured
-         by one normalised zoom-to-fill ratio (no fixed MAX_COVER_CROP_FRAC).
+    The whole policy, for both pipelines:
+      1. Content orientation ALWAYS follows the FRAME — every photo is composed upright for
+         the panel's configured orientation, whatever its own shape. (Composing on a canvas
+         whose orientation differs from the frame is what laid an off-orientation photo
+         SIDEWAYS; that behaviour, and the auto-rotate toggle that switched it, are gone.)
+      2. ``crop_to_fill_threshold`` alone decides letterbox vs cover-fill. An editor crop is
+         cut to the panel aspect, so on a matching frame it needs ~0% zoom and fills at any
+         slider value; on a mismatched frame the slider letterboxes it upright rather than
+         cutting a second crop out of the user's framing. (``_EDGE_SNAP_PX`` in the render
+         handles the last pixel, so an exact-aspect crop never shows a hairline.)
     """
-    src_portrait = src_h > src_w
-    content_portrait = frame_portrait if auto_rotate else src_portrait
+    content_portrait = frame_portrait
 
-    if has_crop or auto_rotate:
-        return FramingDecision(content_portrait=content_portrait, use_cover=True)
-
-    # Same-source-shape path (no crop, no auto_rotate). Size the content canvas to the
-    # content orientation, then fill only if the zoom needed to cover it is within the
-    # user's threshold — the single knob for every letterbox-vs-fill decision.
+    # Size the content canvas to the frame, then fill only if the zoom needed to cover it is
+    # within the user's threshold — the single knob for every letterbox-vs-fill decision.
     long_side, short_side = max(canvas_w, canvas_h), min(canvas_w, canvas_h)
     visible_w, visible_h = (
         (short_side, long_side) if content_portrait else (long_side, short_side)
@@ -126,9 +152,6 @@ def transform_bboxes_to_canvas_norm(
     canvas_w: int,
     canvas_h: int,
     crop_to_fill_threshold: float = 0.0,
-    *,
-    has_crop: bool = False,
-    auto_rotate: bool = False,
 ) -> list[tuple[float, float, float, float]]:
     """Convert face bboxes from original-image normalised coords to coords
     normalised against the rendered **preview PNG** (the PNG returned by
@@ -138,9 +161,8 @@ def transform_bboxes_to_canvas_norm(
 
     Uses the SAME ``frame_decision`` as the render so the fit/cover scaling — and the
     content orientation of the visible canvas — match ``_prepare_canvas`` exactly. Passing
-    ``orig_w/orig_h`` already reflecting any crop (the caller pre-transforms the crop), with
-    ``has_crop``/``auto_rotate`` forwarded so a covered photo's boxes are not mapped as if
-    letterboxed. Result is normalised against the *visible* dimensions.
+    ``orig_w/orig_h`` already reflecting any crop (the caller pre-transforms the crop).
+    Result is normalised against the *visible* dimensions.
     """
     if not bboxes_norm:
         return []
@@ -148,8 +170,6 @@ def transform_bboxes_to_canvas_norm(
     decision = frame_decision(
         orig_w, orig_h, canvas_w, canvas_h,
         frame_portrait=orientation == "portrait",
-        auto_rotate=auto_rotate,
-        has_crop=has_crop,
         crop_to_fill_threshold=crop_to_fill_threshold,
     )
     long_side, short_side = max(canvas_w, canvas_h), min(canvas_w, canvas_h)
@@ -402,7 +422,7 @@ class AbstractImageRenderer(ABC):
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
-        auto_rotate: bool = False,
+        crop_anchor_bboxes_norm: tuple[BoundingBox, ...] | None = None,
     ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
         """Fit-or-crop → PIL enhancements → rotate.
 
@@ -418,6 +438,10 @@ class AbstractImageRenderer(ABC):
         editor. Rotate the source clockwise then crop to the normalized rect (in
         the rotated frame) BEFORE the usual fit/cover scaling. Defaults (0 / None)
         are the unchanged auto path.
+
+        crop_anchor_bboxes_norm: face bboxes (same [0, 1]-normalised format) to
+        center the cover-crop window on instead of the image center — "face-aware
+        cropping". Only affects the ``use_cover`` branch; ignored while letterboxing.
         """
         if rotation_quarters or crop_rect:
             transformed = _apply_crop_rotation(img, rotation_quarters, crop_rect)
@@ -432,19 +456,28 @@ class AbstractImageRenderer(ABC):
                     )
                     or None
                 )
+            # The crop anchor is in ORIGINAL-image coords, so it must ride through the same
+            # crop/rotation as the pixels — otherwise a cropped photo would aim its cover
+            # window at where the face used to be. Faces cropped out entirely drop to None,
+            # which falls back to the centre offset.
+            if crop_anchor_bboxes_norm:
+                crop_anchor_bboxes_norm = (
+                    _transform_keepout_through_crop(
+                        crop_anchor_bboxes_norm, rotation_quarters, crop_rect
+                    )
+                    or None
+                )
 
         # ── Shared framing decision (frame_decision, consumed by mono too) ──
         # `img` has ALREADY been cropped/rotated above, so its size reflects the crop's
-        # target shape — a portrait crop is a portrait source (D1). The decision picks the
-        # CONTENT orientation and whether to cover-fill; the canvas sizing + rotation below
-        # are this pipeline's own coordinate work and stay local.
+        # target shape. The decision picks the CONTENT orientation and whether to
+        # cover-fill; the canvas sizing + rotation below are this pipeline's own coordinate
+        # work and stay local.
         frame_portrait = orientation == "portrait"
         src_w, src_h = img.size
         decision = frame_decision(
             src_w, src_h, canvas_w, canvas_h,
             frame_portrait=frame_portrait,
-            auto_rotate=auto_rotate,
-            has_crop=crop_rect is not None,
             crop_to_fill_threshold=crop_to_fill_threshold,
         )
         content_portrait = decision.content_portrait
@@ -452,8 +485,8 @@ class AbstractImageRenderer(ABC):
 
         # Working canvas sized to the CONTENT orientation (either arg order accepted). The
         # final -90 rotate below maps a landscape working canvas into the portrait panel
-        # buffer; a content canvas whose orientation differs from the frame is what makes an
-        # OFF orientation-MISMATCH fill instead of letterboxing.
+        # buffer. Content orientation now always equals the frame's, so this rotation is
+        # purely the panel-buffer mapping.
         long_side, short_side = max(canvas_w, canvas_h), min(canvas_w, canvas_h)
         visible_w, visible_h = (
             (short_side, long_side) if content_portrait else (long_side, short_side)
@@ -471,8 +504,14 @@ class AbstractImageRenderer(ABC):
             img_scaled = img.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
             if release_input:
                 img.close()
-            x_off = (scaled_w - visible_w) // 2
-            y_off = (scaled_h - visible_h) // 2
+            if crop_anchor_bboxes_norm:
+                x_off_f, y_off_f = _face_centered_crop_offset(
+                    crop_anchor_bboxes_norm, scaled_w, scaled_h, visible_w, visible_h
+                )
+                x_off, y_off = int(x_off_f), int(y_off_f)
+            else:
+                x_off = (scaled_w - visible_w) // 2
+                y_off = (scaled_h - visible_h) // 2
             composed = img_scaled.crop((x_off, y_off, x_off + visible_w, y_off + visible_h))
             img_scaled.close()
             padding_mask = np.zeros((visible_h, visible_w), dtype=bool)
@@ -551,7 +590,7 @@ class AbstractImageRenderer(ABC):
         clahe_keepout_bboxes_norm: tuple[BoundingBox, ...] | None = None,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
-        auto_rotate: bool = False,
+        crop_anchor_bboxes_norm: tuple[BoundingBox, ...] | None = None,
     ) -> NDArray[np.uint8]:
         """Render to palette indices.
 
@@ -571,7 +610,7 @@ class AbstractImageRenderer(ABC):
         *,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
-        auto_rotate: bool = False,
+        crop_anchor_bboxes_norm: tuple[BoundingBox, ...] | None = None,
     ) -> bytes:
         """Full-resolution panel → wire bytes."""
         idx = self.render_indices(
@@ -585,7 +624,7 @@ class AbstractImageRenderer(ABC):
             clahe_keepout_bboxes_norm=clahe_keepout_bboxes_norm,
             rotation_quarters=rotation_quarters,
             crop_rect=crop_rect,
-            auto_rotate=auto_rotate,
+            crop_anchor_bboxes_norm=crop_anchor_bboxes_norm,
         )
         return indices_to_panel_bytes(idx)
 
@@ -600,10 +639,9 @@ class AbstractImageRenderer(ABC):
         *,
         rotation_quarters: int = 0,
         crop_rect: tuple[float, float, float, float] | None = None,
-        auto_rotate: bool = False,
+        crop_anchor_bboxes_norm: tuple[BoundingBox, ...] | None = None,
     ) -> bytes:
-        """Smaller panel → PNG preview bytes. ``auto_rotate`` mirrors the serve render so
-        the preview matches the glass when the global fit-to-frame toggle is on."""
+        """Smaller panel → PNG preview bytes; mirrors the serve render exactly."""
         cw, ch = self._preview_canvas_dims(orientation, max_side_px)
         idx = self.render_indices(
             img,
@@ -615,7 +653,7 @@ class AbstractImageRenderer(ABC):
             clahe_keepout_bboxes_norm=clahe_keepout_bboxes_norm,
             rotation_quarters=rotation_quarters,
             crop_rect=crop_rect,
-            auto_rotate=auto_rotate,
+            crop_anchor_bboxes_norm=crop_anchor_bboxes_norm,
         )
         preview_rgb = indices_to_preview_rgb(idx)
         return self._encode_panel_rgb_to_png(preview_rgb, orientation)

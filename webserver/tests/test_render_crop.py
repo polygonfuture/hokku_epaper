@@ -74,20 +74,47 @@ def test_crop_flows_through_prepare_canvas():
     )
 
 
-def test_manual_crop_covers_no_white_padding():
-    """A manual crop (crop_rect) must COVER the panel — never letterbox. Fitting an
-    off-aspect or rounded crop left a white line at an edge: int() floors the fit 1px
-    short and the shortfall is padding forced to white ink."""
+def test_panel_aspect_crop_has_no_white_padding():
+    """A crop cut to the panel aspect must fill it exactly — no white hairline.
+
+    A normalised rect rounds to whole pixels, so the crop is never EXACTLY the panel
+    aspect and asks for a hair of zoom; letterboxing that hair pads it, and the padding
+    mask turns it into a 1px white line. ``_ASPECT_SNAP_RATIO`` fills it instead. This
+    holds at threshold 0 — the slider does not have to be raised to avoid the line.
+    """
     renderer = ImageRenderer(NumbaStreamingDither())
     _arr, mask = renderer._prepare_canvas(
-        _half_red_blue(1000, 750),
+        _half_red_blue(1001, 750),          # 4:3 to within rounding
         _neutral_cfg(),
         Orientation.LANDSCAPE,
         400,
         300,
-        crop_rect=(0.0, 0.0, 1.0, 0.5),  # a wide crop the fit path would letterbox
+        0.0,                                # slider at zero
+        crop_rect=(0.0, 0.0, 1.0, 1.0),
     )
-    assert not bool(mask.any()), "manual crop left white padding — should cover, not letterbox"
+    assert not bool(mask.any()), "a panel-aspect crop must fill, with no white padding"
+
+
+def test_off_aspect_crop_follows_the_threshold_like_any_photo():
+    """A manual crop is NOT force-filled any more: an off-aspect crop letterboxes at a
+    sane slider (preserving the user's framing whole) and fills only when the slider
+    allows that much zoom."""
+    renderer = ImageRenderer(NumbaStreamingDither())
+
+    def _mask(threshold):
+        _arr, mask = renderer._prepare_canvas(
+            _half_red_blue(1000, 750),
+            _neutral_cfg(),
+            Orientation.LANDSCAPE,
+            400,
+            300,
+            threshold,
+            crop_rect=(0.0, 0.0, 1.0, 0.5),   # 2.67:1 strip — a real aspect gap
+        )
+        return mask
+
+    assert bool(_mask(0.10).any()), "off-aspect crop should letterbox at a sane slider"
+    assert not bool(_mask(1.0).any()), "…and fill when the slider allows the zoom"
 
 
 def _four_quadrants(w: int = 800, h: int = 600) -> Image.Image:

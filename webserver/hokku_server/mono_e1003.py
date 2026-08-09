@@ -349,8 +349,18 @@ def _crop_key(crop_rect):
     return tuple(round(v, 4) for v in crop_rect)
 
 
+def _anchor_key(bboxes_norm):
+    """Hashable rep of the face-aware crop anchor for the render cache — the same photo
+    aimed at a face vs at the centre is a different render."""
+    if not bboxes_norm:
+        return None
+    return tuple(
+        (round(b.x, 4), round(b.y, 4), round(b.w, 4), round(b.h, 4)) for b in bboxes_norm
+    )
+
+
 def _mono_content_portrait(src_w, src_h, rotation_quarters, crop_rect,
-                           auto_rotate=False, frame_portrait=False):
+                           frame_portrait=False):
     """Whether the render composed PORTRAIT content (rotated 90° into the landscape wire
     buffer). Mirrors _fit_gray_to_panel's decision EXACTLY so previews un-rotate correctly.
 
@@ -365,15 +375,37 @@ def _mono_content_portrait(src_w, src_h, rotation_quarters, crop_rect,
     return frame_decision(
         ew, eh, MONO_W, MONO_H,
         frame_portrait=bool(frame_portrait),
-        auto_rotate=bool(auto_rotate),
-        has_crop=crop_rect is not None,
         crop_to_fill_threshold=0.0,
     ).content_portrait
 
 
+def _mono_fit_centering(gray, cw, ch, crop_anchor_bboxes_norm):
+    """``ImageOps.fit`` centering (fx, fy) that reproduces the colour path's face-aware
+    cover offset. Returns the blind centre when there are no faces or no slack to move.
+
+    ``fit`` crops the overflow at ``(centering * overflow)``, so converting the shared
+    ``_face_centered_crop_offset`` result to a fraction of the overflow keeps the two
+    pipelines aiming at the same place.
+    """
+    if not crop_anchor_bboxes_norm:
+        return (0.5, 0.5)
+    from .image_abc import _face_centered_crop_offset
+
+    scale = max(cw / gray.width, ch / gray.height)
+    scaled_w, scaled_h = gray.width * scale, gray.height * scale
+    x_off, y_off = _face_centered_crop_offset(
+        crop_anchor_bboxes_norm, scaled_w, scaled_h, cw, ch
+    )
+    over_w, over_h = scaled_w - cw, scaled_h - ch
+    fx = x_off / over_w if over_w > 0 else 0.5
+    fy = y_off / over_h if over_h > 0 else 0.5
+    return (min(max(fx, 0.0), 1.0), min(max(fy, 0.0), 1.0))
+
+
 def _fit_gray_to_panel(gray, tw, th, rotation_quarters, crop_rect,
-                       auto_rotate=False, frame_portrait=False,
-                       crop_to_fill_threshold=0.0):
+                       frame_portrait=False,
+                       crop_to_fill_threshold=0.0,
+                       crop_anchor_bboxes_norm=None):
     """Bring a grayscale source to the (tw, th) LANDSCAPE wire buffer (tw>=th).
 
     The E1003 panel is physically landscape and the firmware does no rotation, so a
@@ -382,29 +414,42 @@ def _fit_gray_to_panel(gray, tw, th, rotation_quarters, crop_rect,
     mirrors the colour path's "portrait working-canvas → final rotate".
 
     Framing is the SHARED ``frame_decision`` (identical policy to the colour pipeline):
-    any manual crop/rotation is applied FIRST, so the cropped shape drives the decision
-    (a portrait crop is portrait content — no longer force-flattened to landscape). Then
-    ON follows the frame, OFF follows the (cropped) photo; a real crop or auto_rotate
-    forces cover; otherwise the single ``crop_to_fill_threshold`` decides cover-vs-letterbox.
+    any manual crop/rotation is applied FIRST, then content is composed upright for the
+    FRAME's orientation; a real crop forces cover, otherwise the single
+    ``crop_to_fill_threshold`` decides cover-vs-letterbox.
     Only ``ImageOps.fit``/``contain`` + the ``PORTRAIT_ROTATE`` are mono-local coordinate
     work; the decision is shared."""
     from .image_abc import _apply_crop_rotation, frame_decision
 
     if crop_rect is not None or rotation_quarters:
         gray = _apply_crop_rotation(gray, rotation_quarters, crop_rect)
+        # the anchor is in ORIGINAL coords — ride it through the same crop as the pixels
+        if crop_anchor_bboxes_norm:
+            from .image_abc import _transform_keepout_through_crop
+
+            crop_anchor_bboxes_norm = (
+                _transform_keepout_through_crop(
+                    crop_anchor_bboxes_norm, rotation_quarters, crop_rect
+                )
+                or None
+            )
 
     decision = frame_decision(
         gray.width, gray.height, tw, th,
         frame_portrait=bool(frame_portrait),
-        auto_rotate=bool(auto_rotate),
-        has_crop=crop_rect is not None,
         crop_to_fill_threshold=crop_to_fill_threshold,
     )
     # content canvas: landscape = (tw, th); portrait = (th, tw) (rotated into the buffer)
     cw, ch = (th, tw) if decision.content_portrait else (tw, th)
 
     if decision.use_cover:
-        content = ImageOps.fit(gray, (cw, ch), Image.Resampling.LANCZOS)
+        # ImageOps.fit's `centering` is the mono equivalent of the colour path's crop
+        # offset: (0.5, 0.5) is the blind centre; face-aware aims it at the face union so
+        # a fill loses background rather than someone's head.
+        content = ImageOps.fit(
+            gray, (cw, ch), Image.Resampling.LANCZOS,
+            centering=_mono_fit_centering(gray, cw, ch, crop_anchor_bboxes_norm),
+        )
     else:
         content = ImageOps.contain(gray, (cw, ch), Image.Resampling.LANCZOS)
 
@@ -435,9 +480,9 @@ def render_mono_bin(
     dtcore: dict | None = None,
     rotation_quarters: int = 0,
     crop_rect: tuple[float, float, float, float] | None = None,
-    auto_rotate: bool = False,
     frame_portrait: bool = False,
     crop_to_fill_threshold: float = 0.0,
+    crop_anchor_bboxes_norm=None,
 ) -> bytes:
     """Render an original image file to E1003 wire bytes (cached).
 
@@ -472,7 +517,6 @@ def render_mono_bin(
     shadows = float(min(max(shadows, -0.5), 0.5))
     rotation_quarters = int(rotation_quarters) % 4
     crop_rect = _norm_crop_rect(crop_rect)
-    auto_rotate = bool(auto_rotate)
     frame_portrait = bool(frame_portrait)
     crop_to_fill_threshold = float(min(max(crop_to_fill_threshold, 0.0), 1.0))
 
@@ -484,8 +528,9 @@ def render_mono_bin(
         round(black_point, 3), round(white_point, 3), round(clarity, 2),
         round(contrast, 3), round(midtone, 3), round(highlights, 3), round(shadows, 3),
         _dtcore_key(dtcore),
-        rotation_quarters, _crop_key(crop_rect), auto_rotate, frame_portrait,
+        rotation_quarters, _crop_key(crop_rect), frame_portrait,
         round(crop_to_fill_threshold, 3),
+        _anchor_key(crop_anchor_bboxes_norm),
     )
     with _cache_lock:
         cached = _cache.get(key)
@@ -501,7 +546,8 @@ def render_mono_bin(
     # Editor crop (if any) frames the image to the panel; else auto fit/letterbox
     # governed by the single crop_to_fill_threshold (shared with colour via frame_decision).
     gray = _fit_gray_to_panel(gray, MONO_W, MONO_H, rotation_quarters, crop_rect,
-                              auto_rotate, frame_portrait, crop_to_fill_threshold)
+                              frame_portrait, crop_to_fill_threshold,
+                              crop_anchor_bboxes_norm)
 
     # ── dtcore tone path (B&W Contrast / Custom): darktable sigmoid + local-laplacian
     #    + Lightroom-matched Basic + CLAHE, run on the CONTENT (before the mat so the
@@ -679,9 +725,9 @@ def render_mono_preview_image(
     max_side: int = 900,
     rotation_quarters: int = 0,
     crop_rect: tuple[float, float, float, float] | None = None,
-    auto_rotate: bool = False,
     frame_portrait: bool = False,
     crop_to_fill_threshold: float = 0.0,
+    crop_anchor_bboxes_norm=None,
     upright: bool = False,
 ) -> Image.Image:
     """Fast PREVIEW-only render of the dtcore (B&W Contrast / Custom) tone path.
@@ -701,7 +747,6 @@ def render_mono_preview_image(
 
     rotation_quarters = int(rotation_quarters) % 4
     crop_rect = _norm_crop_rect(crop_rect)
-    auto_rotate = bool(auto_rotate)
     frame_portrait = bool(frame_portrait)
     crop_to_fill_threshold = float(min(max(crop_to_fill_threshold, 0.0), 1.0))
 
@@ -711,19 +756,20 @@ def render_mono_preview_image(
 
     # Preview canvas: the panel geometry scaled down so max(side) == max_side. The
     # tone pipeline + letterbox mat all run at this reduced size. Editor crop (if any)
-    # frames the image to the panel; else the auto_rotate + frame-orientation policy +
-    # the single crop_to_fill_threshold do (shared with colour via frame_decision).
+    # frames the image to the panel; else the frame orientation + the single
+    # crop_to_fill_threshold do (shared with colour via frame_decision).
     scale = min(1.0, max_side / float(MONO_W))
     pw, ph = max(1, round(MONO_W * scale)), max(1, round(MONO_H * scale))
     content = _fit_gray_to_panel(gray, pw, ph, rotation_quarters, crop_rect,
-                                 auto_rotate, frame_portrait, crop_to_fill_threshold)
+                                 frame_portrait, crop_to_fill_threshold,
+                                 crop_anchor_bboxes_norm)
 
     # Staged tone: the fit content is identified by (path, mtime, size, crop) so a
     # Tone-page drag (basic_*/CLAHE only) reuses the cached sigmoid+local-laplacian result
     # and re-runs just the cheap Basic/CLAHE tail. Crop is part of the identity so a
     # different crop can't reuse a stale intermediate.
     st = path.stat()
-    id_key = (str(path), st.st_mtime_ns, pw, ph, content.size, rotation_quarters, _crop_key(crop_rect), auto_rotate, frame_portrait, round(crop_to_fill_threshold, 3))
+    id_key = (str(path), st.st_mtime_ns, pw, ph, content.size, rotation_quarters, _crop_key(crop_rect), frame_portrait, round(crop_to_fill_threshold, 3), _anchor_key(crop_anchor_bboxes_norm))
     toned = mono_tone.render_tone_staged(
         np.asarray(content),
         id_key=id_key,
@@ -747,6 +793,6 @@ def render_mono_preview_image(
     # For a legible UI preview, un-rotate portrait content (composed sideways into the
     # landscape buffer) back to upright — so the editor shows the photo the right way up.
     if upright:
-        if _mono_content_portrait(gray.width, gray.height, rotation_quarters, crop_rect, auto_rotate, frame_portrait):
+        if _mono_content_portrait(gray.width, gray.height, rotation_quarters, crop_rect, frame_portrait):
             preview = preview.transpose(Image.Transpose.ROTATE_270)
     return preview

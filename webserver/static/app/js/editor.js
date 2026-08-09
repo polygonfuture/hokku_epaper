@@ -509,11 +509,6 @@ function monoOverride() {
   diff.profile = "custom";
   return diff;
 }
-// The mono appearance's framing for the preview/render. Only a FORKED ("Frame separately")
-// mono crop is sent; while following, we send NO crop so the mono render uses its own auto
-// fit/rotate path — matching the server (which no longer inherits the colour crop). This is
-// the client half of the regression revert; the future per-frame auto_rotate_fit policy will
-// govern the un-cropped framing.
 // the E1003 mono frame's configured orientation (portrait?), so the editor preview
 // composes + shows content the way that frame will (upright, matching the panel).
 function monoFramePortrait() {

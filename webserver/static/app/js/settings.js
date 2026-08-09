@@ -176,9 +176,9 @@ function imageBody() {
     iGroup(iRow("Default dither preset", presetControl("imPreset", "image_config_default", "Default")), `<span id="imPresetDesc">${esc(desc)}</span>`, "reserve2") +
     iGroup('<div class="iset-row"><span class="iset-lab">Zoom to fill</span><span class="range-val" id="imFillVal">' + fillPct + '%</span></div>' +
       `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="100" step="1" value="${fillPct}"></div>`,
-      "Max zoom-in allowed to remove letterbox bars. 0% = always letterbox; higher crops more.") +
-    iGroup(iRow("Auto-rotate &amp; fit to frame", iTog("auto_rotate_fit", !!draft.auto_rotate_fit)),
-      "On: crop &amp; rotate every photo to fill its frame's orientation (a portrait on a landscape frame becomes an upright landscape crop). Off: photos keep their own orientation — off-orientation photos letterbox upright (colour) or need the frame physically turned (E1003 mono).") +
+      "Every photo is shown upright for its frame's orientation. This is the most a photo may be zoomed in to remove letterbox bars: 0% = always letterbox; higher crops more. The same limit applies to photos you cropped in the editor — a crop cut to the frame's shape always fills it exactly.") +
+    iGroup(iRow("Keep faces in frame", iTog("classifier_face_aware_crop_enabled", !!draft.classifier_face_aware_crop_enabled)),
+      "When a photo has to be zoomed in to fill the frame, cut the background rather than the people — the crop is centred on the faces Hokku detected instead of the middle of the photo.") +
     resetBtnHTML()
   );
 }
@@ -188,8 +188,9 @@ function wireImage() {
   const fill = $("#imFill"), fv = $("#imFillVal");
   fill.addEventListener("input", () => { fv.textContent = fill.value + "%"; draft.crop_to_fill_threshold = +fill.value / 100; });
   // the toggle's data-toggle IS the draft key directly (no TKEY indirection here)
-  $$('[data-toggle="auto_rotate_fit"]').forEach((sw) => sw.addEventListener("click", () => {
-    const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on); draft.auto_rotate_fit = on;
+  $$('[data-toggle="classifier_face_aware_crop_enabled"]').forEach((sw) => sw.addEventListener("click", () => {
+    const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on);
+    draft.classifier_face_aware_crop_enabled = on;
   }));
 }
 
@@ -340,7 +341,7 @@ const SETTINGS = {
   refresh: { title: "Refresh Schedule", icon: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), body: refreshBody, wire: wireRefresh, keys: ["refresh_mode", "refresh_interval_minutes", "refresh_image_at_time", "refresh_active_start", "refresh_active_end"] },
   frames:  { title: "Frame Orientation", icon: svgIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>'), body: framesBody, wire: wireFrames, keys: [] },
   detect:  { title: "Smart Photo Detection", icon: svgIcon('<circle cx="9" cy="10" r="3"/><path d="M4 20a5 5 0 0 1 10 0"/><path d="M17 9h4M19 7v4"/>'), body: detectBody, wire: wireDetect, keys: ["classifier_bw_detect_enabled", "classifier_face_detect_enabled", "classifier_face_detect_clahe_keepout", "image_config_bw", "image_config_face"] },
-  image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold", "auto_rotate_fit"] },
+  image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold", "classifier_face_aware_crop_enabled"] },
   mono:    { title: "E1003 Mono", icon: svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/><path d="M15 5v14"/>'), body: monoBody, wire: wireMono, keys: MONO_KEYS, gate: hasMonoPanel },
   server:  { title: "Server & Storage", icon: svgIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>'), body: serverBody, wire: wireServer, keys: ["poll_interval_seconds", "debug_fast_refresh", "serve_decision_log_enabled", "auto_clear_cache", "mdns_hostname", "image_worker_thread_count"] },
 };

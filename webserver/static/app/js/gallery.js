@@ -45,22 +45,34 @@ function monoFrameOf(name) {
   return s ? screens[s] : null;
 }
 function onMonoFrame(name) { return !!monoFrameOf(name); }
-// the orientation content is displayed in on a mono frame: OFF keeps the photo's own
-// orientation, ON follows the frame's configured orientation. Matches the render's
-// content_portrait so the tile shape + preview un-rotation agree.
-function monoDisplayPortrait(e) {
-  const fr = monoFrameOf(e.name); if (!fr) return false;
-  const autoRotate = !!state.config?.config?.auto_rotate_fit;
-  return autoRotate ? fr.orientation === "portrait" : e.effective_orientation === "portrait";
+// The frame a photo's tile mirrors: its mono frame if it's on one (the mono render is the
+// distinctive one), else the first frame showing it. A photo is normally on one frame — the
+// scheduler avoids duplicates — so "first" only arbitrates the rare manual-pin case.
+function tileFrameOf(e) {
+  const screens = state.status?.screens || {};
+  return monoFrameOf(e.name) || screens[framesShowing(e.name)[0]] || null;
 }
-const framePreviewUrl = (e) => (onMonoFrame(e.name) ? ditheredUrlMono(e, monoDisplayPortrait(e)) : ditheredUrl(e));
+// The orientation this photo is DISPLAYED in: the showing frame's own, because every photo
+// is composed upright for its frame. Off-frame, the photo's own effective orientation.
+// (This is what the tile must request — asking without an orientation returned the photo's
+// framing while the glass showed the frame's, so the tile contradicted the wall.)
+function displayPortrait(e) {
+  const fr = tileFrameOf(e);
+  if (fr) return fr.orientation === "portrait";
+  return e.effective_orientation === "portrait";
+}
+const framePreviewUrl = (e) => {
+  const portrait = displayPortrait(e);
+  return onMonoFrame(e.name)
+    ? ditheredUrlMono(e, portrait)
+    : ditheredUrl(e, portrait ? "portrait" : "landscape");
+};
 function panelAr(e) {
   const p = state.config?.panel;
   const w = (p && p.visual_w) || 1600, h = (p && p.visual_h) || 1200;
-  // a mono-frame tile takes the shape of its UPRIGHT display (portrait when content is
-  // shown portrait); other on-frame tiles use the photo's effective orientation.
-  const portrait = onMonoFrame(e.name) ? monoDisplayPortrait(e) : e.effective_orientation === "portrait";
-  return portrait ? h / w : w / h;
+  // the tile takes the shape of what's actually displayed (the frame's orientation when
+  // on a frame), so tile shape, render, and glass all agree.
+  return displayPortrait(e) ? h / w : w / h;
 }
 function arOf(e) {
   // on-frame (dithered thumb) OR any edited photo (its thumbnail is cropped to the panel) →

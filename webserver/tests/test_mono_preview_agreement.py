@@ -2,8 +2,8 @@
 
 _mono_content_portrait (used by the UI preview to decide whether to un-rotate) must
 return the SAME content orientation that _fit_gray_to_panel composes into the wire
-buffer — for every crop / rotation / auto_rotate / mount combination. A mismatch is
-the sideways-preview bug on edited photos (amendment 4).
+buffer — for every crop / rotation / mount combination. A mismatch is the
+sideways-preview bug on edited photos (amendment 4).
 """
 
 from __future__ import annotations
@@ -27,22 +27,20 @@ def _gray(w, h):
 _SRCS = [(1400, 900), (900, 1400), (1100, 1100)]
 _CROPS = [None, (0.30, 0.05, 0.40, 0.90), (0.05, 0.30, 0.90, 0.40)]  # none / tall / wide
 _ROTS = [0, 1]
-_AUTOROT = [False, True]
 _FRAMES = [True, False]
 
 
 @pytest.mark.parametrize("src", _SRCS)
 @pytest.mark.parametrize("crop", _CROPS)
 @pytest.mark.parametrize("rot", _ROTS)
-@pytest.mark.parametrize("auto_rotate", _AUTOROT)
 @pytest.mark.parametrize("frame_portrait", _FRAMES)
-def test_preview_orientation_matches_render(src, crop, rot, auto_rotate, frame_portrait):
+def test_preview_orientation_matches_render(src, crop, rot, frame_portrait):
     sw, sh = src
     gray = _gray(sw, sh)
 
     # What the preview code predicts (drives whether it un-rotates):
     predicted_portrait = mono_e1003._mono_content_portrait(
-        sw, sh, rot, crop, auto_rotate, frame_portrait
+        sw, sh, rot, crop, frame_portrait
     )
 
     # What the render actually composed: derive the SAME content orientation the render
@@ -53,21 +51,21 @@ def test_preview_orientation_matches_render(src, crop, rot, auto_rotate, frame_p
     ew, eh = effective_cropped_dims(sw, sh, rot, crop)
     render_decision = frame_decision(
         ew, eh, MONO_W, MONO_H,
-        frame_portrait=frame_portrait, auto_rotate=auto_rotate,
-        has_crop=crop is not None, crop_to_fill_threshold=0.0,
+        frame_portrait=frame_portrait,
+        crop_to_fill_threshold=0.0,
     ).content_portrait
 
     assert predicted_portrait == render_decision, (
         f"preview predicts portrait={predicted_portrait} but render composed "
         f"portrait={render_decision} for src={src} crop={crop} rot={rot} "
-        f"ar={auto_rotate} frame_portrait={frame_portrait}"
+        f"frame_portrait={frame_portrait}"
     )
 
     # And the render's fitted content is always orientable into the landscape wire buffer:
     # portrait content is transposed to (MONO_W, MONO_H); a letterboxed (contain) result may
     # be smaller and is matted to the full buffer downstream — so assert it FITS, not equals.
     fitted = mono_e1003._fit_gray_to_panel(
-        gray, MONO_W, MONO_H, rot, crop, auto_rotate, frame_portrait
+        gray, MONO_W, MONO_H, rot, crop, frame_portrait
     )
     assert fitted.width <= MONO_W and fitted.height <= MONO_H
 

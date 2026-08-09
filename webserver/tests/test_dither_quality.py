@@ -62,11 +62,11 @@ from tests._helpers import is_oversize_fixture
 
 
 def render_panel_bytes(
-    img, cfg, orientation, crop_to_fill_threshold=0.0, *, unconstrained=False, auto_rotate=False
+    img, cfg, orientation, crop_to_fill_threshold=0.0, *, unconstrained=False
 ):
     dither = NumbaUnconstrainedDither() if unconstrained else NumbaStreamingDither()
     return ImageRenderer(dither).render_panel_bytes(
-        img, cfg, orientation, crop_to_fill_threshold, auto_rotate=auto_rotate
+        img, cfg, orientation, crop_to_fill_threshold
     )
 
 
@@ -262,16 +262,13 @@ def test_presets_produce_distinct_output():
 
 
 def test_orientation_changes_panel_output():
-    # With auto-rotate & fit ON, the frame orientation drives the framing (the photo is
-    # reframed/cover-cropped to the frame's orientation), so the two panels differ.
-    # (With auto-rotate OFF the photo keeps its OWN orientation regardless of frame — the
-    # user turns the frame — so a solid image can render identically for both frames; that
-    # orientation-independence in OFF is the intended behaviour of the auto-rotate fix.)
-    # A gradient (asymmetric across x vs y) is required — a solid image reframes to an
+    # The frame orientation always drives the framing (content is composed upright for the
+    # panel), so the same photo on a landscape vs portrait frame renders differently.
+    # A gradient (asymmetric across x vs y) is required — a solid image frames to an
     # identical solid for either orientation. render_panel_bytes consumes the input image
     # (closes the PIL buffer to save memory), so we make a fresh image per orientation.
-    raw_l = render_panel_bytes(_make_gradient(), _FAST_CFG, "landscape", auto_rotate=True)
-    raw_p = render_panel_bytes(_make_gradient(), _FAST_CFG, "portrait", auto_rotate=True)
+    raw_l = render_panel_bytes(_make_gradient(), _FAST_CFG, "landscape")
+    raw_p = render_panel_bytes(_make_gradient(), _FAST_CFG, "portrait")
     assert raw_l != raw_p
 
 

@@ -1,8 +1,14 @@
-"""Shared fixture generation for the unify regression guard.
+"""Shared fixture generation for the framing regression guard.
 
-Deterministic synthetic photos + the full framing matrix, rendered through both
-pipelines. Imported by both the one-time baseline capture (run pre-refactor to write
-the snapshot) and the regression test (compares current output to the snapshot).
+Deterministic synthetic photos + the full framing matrix (photo shape × frame
+orientation × manual edit), rendered through both pipelines. Imported by both the
+baseline capture (writes the snapshot) and the regression test (compares current
+output to it).
+
+The snapshot was re-captured on refactor/remove-auto-rotate-fit: removing the toggle
+legitimately changed every orientation-mismatch case (they no longer compose sideways),
+so the pre-unify baseline could not carry over. It now freezes the CURRENT single-policy
+behaviour against future drift.
 
 Determinism: color uses dither_noise=0.0 (Floyd-Steinberg noise would otherwise
 randomize the output bytes). Mono is deterministic already.
@@ -35,7 +41,6 @@ EDITS = {
 }
 PHOTOS = ["portrait", "landscape", "square"]
 FRAMES = [("portrait", True), ("landscape", False)]
-AUTOROT = [False, True]
 
 
 def neutral_cfg():
@@ -75,7 +80,7 @@ def _sha(b: bytes) -> str:
 
 
 def capture_all() -> dict[str, str]:
-    """Return {case_key: sha16} for every (pipeline, photo, frame, auto_rotate, edit)."""
+    """Return {case_key: sha16} for every (pipeline, photo, frame, edit)."""
     out: dict[str, str] = {}
     renderer = ImageRenderer(NumbaStreamingDither())
     with tempfile.TemporaryDirectory() as td:
@@ -85,26 +90,23 @@ def capture_all() -> dict[str, str]:
             make_photo(photo).save(png)
             for fname, fportrait in FRAMES:
                 orient = Orientation.PORTRAIT if fportrait else Orientation.LANDSCAPE
-                for ar in AUTOROT:
-                    for ename, ekw in EDITS.items():
-                        with Image.open(png) as im:
-                            arr = renderer.render_indices(
-                                im.convert("RGB"), neutral_cfg(), orient,
-                                PANEL_W, PANEL_H, THRESHOLD, auto_rotate=ar, **ekw,
-                            )
-                        out[f"color|{photo}|{fname}|ar={ar}|{ename}"] = _sha(arr.tobytes())
-                        mono_e1003._cache.clear()
-                        b = mono_e1003.render_mono_bin(
-                            png, auto_rotate=ar, frame_portrait=fportrait, **ekw,
+                for ename, ekw in EDITS.items():
+                    with Image.open(png) as im:
+                        arr = renderer.render_indices(
+                            im.convert("RGB"), neutral_cfg(), orient,
+                            PANEL_W, PANEL_H, THRESHOLD, **ekw,
                         )
-                        out[f"mono|{photo}|{fname}|ar={ar}|{ename}"] = _sha(b)
+                    out[f"color|{photo}|{fname}|{ename}"] = _sha(arr.tobytes())
+                    mono_e1003._cache.clear()
+                    b = mono_e1003.render_mono_bin(
+                        png, frame_portrait=fportrait, **ekw,
+                    )
+                    out[f"mono|{photo}|{fname}|{ename}"] = _sha(b)
     return out
 
 
-# Cases the unify refactor is EXPECTED to change (must NOT be frozen):
-#  - mono crop/rot/croprot: today they ignore frame + auto_rotate (the D1 bug)
-# Everything else is frozen: all color, and mono no-edit.
-def is_frozen(key: str) -> bool:
-    if key.startswith("mono|") and not key.endswith("|none"):
-        return False
+# Every case is frozen: after the auto-rotate removal both pipelines run one policy
+# (compose upright for the frame; crop forces cover; else the threshold), so there is
+# no expected-to-change subset left.
+def is_frozen(key: str) -> bool:  # noqa: ARG001 — kept for the guard's API
     return True

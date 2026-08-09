@@ -122,7 +122,6 @@ export async function monoPreview(name, mono, signal, opts = {}) {
   if (opts.rotation) body.rotation = opts.rotation;
   if (opts.crop) body.crop = opts.crop;
   if (opts.frame_portrait) body.frame_portrait = true;   // E1003 frame orientation
-  if (opts.auto_rotate !== undefined) body.auto_rotate = opts.auto_rotate;
   const res = await fetch(`${API}/dither/preview_mono`, {
     ...json("POST", body),
     signal,

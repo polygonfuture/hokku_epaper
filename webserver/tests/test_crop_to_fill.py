@@ -178,20 +178,25 @@ def test_threshold_at_exact_zoom_crops():
 def test_landscape_orientation_crop():
     """Crop-to-fill works for landscape orientation too.
 
-    For landscape, visible_w = canvas_h and visible_h = canvas_w (the image
-    is composed in that pre-rotation space, then rotated -90°).
-
-    canvas=(133,100) → visible_w=100, visible_h=133.
-    Image 97×133: scale_fit = min(100/97, 133/133) = 1.0,
-                  scale_cover = max(100/97, 133/133) = 1.031, zoom ≈ 3.1%.
-    threshold=0.04 > 0.031 → crop eliminates the ~3 % column bands.
+    A landscape frame composes landscape content, so visible = (133, 100).
+    Image 130×100: scale_fit = min(133/130, 100/100) = 1.0,
+                   scale_cover = max(133/130, 100/100) = 1.023, zoom ≈ 2.3%.
+    threshold=0.04 > 0.023 → crop eliminates the ~2 % column bands.
     """
-    img = _solid_rgb(97, 133)
+    img = _solid_rgb(130, 100)
     result = _render_indices(img, _noop_cfg(), "landscape", 133, 100, 0.04)
     # Result shape = (canvas_h=100, canvas_w=133)
     assert result.shape == (100, 133)
     assert not _has_white_row(result)
     assert not _has_white_column(result)
+
+
+def test_landscape_orientation_letterboxes_below_threshold():
+    """Same landscape setup, threshold below the needed zoom → bands stay."""
+    img = _solid_rgb(130, 100)
+    result = _render_indices(img, _noop_cfg(), "landscape", 133, 100, 0.01)
+    assert result.shape == (100, 133)
+    assert _has_white_column(result)
 
 
 # ── perfect-fit image ─────────────────────────────────────────────────────────
@@ -205,18 +210,17 @@ def test_perfect_fit_no_bands_at_zero_threshold():
     assert not _has_white_column(result)
 
 
-# ── auto-rotate & fit: orientation-mismatch fills instead of letterboxing ─────
+# ── orientation mismatch: composed UPRIGHT for the frame, slider decides fill ─────
 #
-# The Spectra-6 panel buffer is FULL_W×PANEL_H (portrait). When a photo's orientation
-# differs from the frame's, the OLD code letterboxed it against the frame orientation
-# (white bars). The fix sizes the working canvas to the CONTENT orientation so the photo
-# FILLS: OFF keeps the photo's own orientation (laid sideways, user turns the frame); ON
-# reframes/cover-crops to the frame's orientation upright. These tests assert "fills"
-# (no white edge bands) at the REAL panel dims, where the mismatch path actually triggers
-# (the small synthetic canvases above don't exercise it). Mirrors the mono pipeline.
+# The Spectra-6 panel buffer is FULL_W×PANEL_H (portrait). Every photo is composed upright
+# for the FRAME's orientation — nothing is laid sideways and there is no auto-rotate toggle
+# (refactor/remove-auto-rotate-fit). A 90° mismatch needs ~78% zoom to fill, so at any sane
+# threshold it letterboxes; a generous threshold cover-crops it instead. These run at the
+# REAL panel dims, where the mismatch path actually triggers (the small synthetic canvases
+# above don't exercise it). Mirrors the mono pipeline.
 
 
-def _render_ar(img, orientation, canvas_w, canvas_h, threshold, auto_rotate):
+def _render_ar(img, orientation, canvas_w, canvas_h, threshold):
     from hokku_server.dither_streaming_numba import NumbaStreamingDither
     from hokku_server.image_renderer import ImageRenderer
 
@@ -227,7 +231,6 @@ def _render_ar(img, orientation, canvas_w, canvas_h, threshold, auto_rotate):
         canvas_w,
         canvas_h,
         threshold,
-        auto_rotate=auto_rotate,
     )
 
 
@@ -235,40 +238,67 @@ def _no_edge_bands(result) -> bool:
     return not _has_white_row(result) and not _has_white_column(result)
 
 
-def test_portrait_photo_landscape_frame_off_fills():
-    """Portrait photo on a landscape frame, auto-rotate OFF → fills (no bars). The
-    portrait content is laid sideways into the landscape frame; the user turns the frame."""
+def test_portrait_photo_landscape_frame_letterboxes_upright():
+    """Portrait photo on a landscape frame at the default-ish threshold → upright with
+    bands (NOT laid sideways to fill, which is what the removed toggle's OFF state did)."""
     img = _solid_rgb(FULL_W, PANEL_H)  # portrait content (1200×1600)
-    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.0, auto_rotate=False)
+    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.10)
     assert result.shape == (PANEL_H, FULL_W)
-    assert _no_edge_bands(result), "OFF orientation-mismatch must FILL, not letterbox"
+    assert not _no_edge_bands(result), "a 90° mismatch must letterbox at a sane threshold"
 
 
-def test_landscape_photo_portrait_frame_off_fills():
-    """Landscape photo on a portrait frame, auto-rotate OFF → fills (no bars)."""
+def test_landscape_photo_portrait_frame_letterboxes_upright():
+    """Landscape photo on a portrait frame → upright with bands at a sane threshold."""
     img = _solid_rgb(PANEL_H, FULL_W)  # landscape content (1600×1200)
-    result = _render_ar(img, "portrait", FULL_W, PANEL_H, 0.0, auto_rotate=False)
+    result = _render_ar(img, "portrait", FULL_W, PANEL_H, 0.10)
     assert result.shape == (PANEL_H, FULL_W)
-    assert _no_edge_bands(result), "OFF orientation-mismatch must FILL, not letterbox"
+    assert not _no_edge_bands(result), "a 90° mismatch must letterbox at a sane threshold"
 
 
-def test_portrait_photo_landscape_frame_on_fills_upright():
-    """Portrait photo on a landscape frame, auto-rotate ON → reframed to landscape upright,
-    cover-cropped, fills (no bars)."""
+def test_mismatch_fills_when_threshold_allows():
+    """The slider is the only fill control: a generous threshold cover-crops the mismatch
+    upright instead of letterboxing it."""
     img = _solid_rgb(FULL_W, PANEL_H)
-    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.0, auto_rotate=True)
+    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 1.0)
     assert result.shape == (PANEL_H, FULL_W)
-    assert _no_edge_bands(result), "ON must reframe-and-fill, not letterbox"
+    assert _no_edge_bands(result), "generous threshold must fill the mismatch"
 
 
-def test_off_same_orientation_zero_threshold_still_letterboxes():
-    """Same-orientation OFF at threshold 0 keeps the legacy letterbox behaviour — the fix
-    must not change the same-orientation path. Portrait photo (narrower than the panel) on
-    a portrait frame with a large aspect gap letterboxes on the sides."""
+# ── no 1px white hairline when a near-aspect source letterboxes ──────────────
+#
+# Fitting a source that is within a pixel or two of the panel aspect used to leave a
+# 1px gap (int() floors the fitted size, and a rect rounded to whole pixels is never
+# exactly the panel aspect). The gap became padding, which the padding mask forces to
+# pure white ink — a crisp white line along one edge. The render now trims the
+# sub-pixel overflow instead. Bounded, so a real letterbox still keeps its bars.
+
+
+@pytest.mark.parametrize("src_w,src_h", [(2201, 1650), (3001, 2250), (2200, 1651), (3000, 2251)])
+def test_near_panel_aspect_has_no_white_hairline(src_w, src_h):
+    img = _solid_rgb(src_w, src_h)
+    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.0)   # slider 0 = letterbox path
+    assert result.shape == (PANEL_H, FULL_W)
+    assert not _has_white_row(result), "sub-pixel shortfall must be trimmed, not padded"
+    assert not _has_white_column(result), "sub-pixel shortfall must be trimmed, not padded"
+
+
+def test_real_letterbox_still_keeps_its_bars():
+    """The aspect snap is tiny — a genuine mismatch still letterboxes. (Bars run along
+    the composed axis, which the final rotate maps onto rows in the panel buffer.)"""
+    img = _solid_rgb(FULL_W, PANEL_H)          # portrait content on a landscape frame
+    result = _render_ar(img, "landscape", FULL_W, PANEL_H, 0.10)
+    assert _has_white_row(result) or _has_white_column(result), (
+        "a real mismatch must still letterbox"
+    )
+
+
+def test_same_orientation_zero_threshold_still_letterboxes():
+    """Same-orientation at threshold 0 keeps the legacy letterbox behaviour. Portrait photo
+    (narrower than the panel) on a portrait frame letterboxes on the sides."""
     img = _solid_rgb(FULL_W // 2, PANEL_H)  # portrait, much narrower than the panel
-    result = _render_ar(img, "portrait", FULL_W, PANEL_H, 0.0, auto_rotate=False)
+    result = _render_ar(img, "portrait", FULL_W, PANEL_H, 0.0)
     assert result.shape == (PANEL_H, FULL_W)
-    assert _has_white_column(result), "same-orientation OFF @ threshold 0 must letterbox"
+    assert _has_white_column(result), "same-orientation @ threshold 0 must letterbox"
 
 
 # ── ScreenImageConfig cache_slug ─────────────────────────────────────────────

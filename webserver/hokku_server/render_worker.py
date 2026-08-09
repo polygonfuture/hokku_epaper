@@ -28,7 +28,7 @@ def render_one(
     clahe_keepout_bboxes: tuple[dict, ...] | None = None,
     rotation_quarters: int = 0,
     crop_rect: tuple[float, float, float, float] | None = None,
-    auto_rotate: bool = False,
+    crop_anchor_bboxes: tuple[dict, ...] | None = None,
 ) -> tuple[bytes, bytes]:
     """Render one image inside a worker process.
 
@@ -76,14 +76,16 @@ def render_one(
     renderer = ImageRenderer(NumbaStreamingDither())
 
     # Convert bbox dicts back to BoundingBox instances
-    bboxes_norm = None
-    if clahe_keepout_bboxes:
+    def _to_bboxes(raw):
+        if not raw:
+            return None
         try:
-            bboxes_norm = tuple(
-                BoundingBox(x=b["x"], y=b["y"], w=b["w"], h=b["h"]) for b in clahe_keepout_bboxes
-            )
+            return tuple(BoundingBox(x=b["x"], y=b["y"], w=b["w"], h=b["h"]) for b in raw)
         except (KeyError, TypeError, ValueError):
-            bboxes_norm = None
+            return None
+
+    bboxes_norm = _to_bboxes(clahe_keepout_bboxes)
+    anchor_norm = _to_bboxes(crop_anchor_bboxes)
 
     with open_image_for_render(Path(image_path)) as img:
         panel_bytes = renderer.render_panel_bytes(
@@ -94,7 +96,7 @@ def render_one(
             clahe_keepout_bboxes_norm=bboxes_norm,
             rotation_quarters=rotation_quarters,
             crop_rect=crop_rect,
-            auto_rotate=auto_rotate,
+            crop_anchor_bboxes_norm=anchor_norm,
         )
     preview_bytes = preview_png_from_panel_bytes(panel_bytes, orientation)  # type: ignore[arg-type]
     return panel_bytes, preview_bytes
