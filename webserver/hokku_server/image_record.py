@@ -81,6 +81,28 @@ class ImageRecord:
                 return Orientation(target)
         return self.native_orientation
 
+    def crop_for(self, orientation: Orientation) -> dict | None:
+        """The manual crop to render this image with on a frame of ``orientation``, or
+        None to render it as if it had never been cropped.
+
+        An editor crop is authored FOR a shape — the editor records that shape in the
+        crop's ``target``. On a frame of the OTHER shape the crop does not apply: reusing
+        it there would show a tall crop in a wide frame (bars, or a second crop cut out of
+        the user's framing), while the untouched original usually suits that frame far
+        better. So the photo simply behaves as if unedited there — same pixels, same
+        slider, same face-aware framing as any uncropped photo. One crop per photo covers
+        its own shape; nothing has to be authored for the other.
+
+        A legacy crop with no ``target`` applies everywhere (its pre-target behaviour).
+        """
+        crop = self.edit_crop
+        if not crop:
+            return None
+        target = crop.get("target")
+        if not target:
+            return crop
+        return crop if Orientation(target) == orientation else None
+
     def matches_orientation_filter(self, orientation: Orientation) -> bool:
         """True if this image is eligible when a screen filters by the given orientation.
 

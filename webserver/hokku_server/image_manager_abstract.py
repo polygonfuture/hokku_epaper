@@ -71,7 +71,10 @@ def _decision_to_screen_image_config(
     edit_crop: dict | None = None,
 ) -> ScreenImageConfig:
     """Combine a per-image ImageClassifierDecision with a render orientation and an
-    optional manual crop/rotation from the per-image editor."""
+    optional manual crop/rotation from the per-image editor.
+
+    ``edit_crop`` is the crop that APPLIES to this orientation (see
+    ``ImageRecord.crop_for``) — None renders the original, exactly as an unedited photo."""
     rotation_quarters = 0
     crop_rect: tuple[float, float, float, float] | None = None
     if edit_crop:
@@ -873,7 +876,7 @@ class AbstractImageManager(ABC):
                 # decision so its slug changes in lockstep. Pass edit_crop so the
                 # predicted slug matches what dispatch renders (else re-pend loop).
                 landscape_cfg = _decision_to_screen_image_config(
-                    decision, Orientation.LANDSCAPE, existing.edit_crop
+                    decision, Orientation.LANDSCAPE, existing.crop_for(Orientation.LANDSCAPE)
                 )
                 predicted_slug = landscape_cfg.cache_slug()
                 if existing.slug(Orientation.LANDSCAPE) != predicted_slug:
@@ -1052,11 +1055,13 @@ class AbstractImageManager(ABC):
             # Render both real orientations. LANDSCAPE is the
             # lifecycle-tracking primary (it drives pending → ok and the
             # progress counter) — an internal bookkeeping choice.
+            # crop_for(): a crop applies only to frames of its own shape — the other
+            # orientation renders as if the photo were never cropped.
             landscape_cfg = _decision_to_screen_image_config(
-                decision, Orientation.LANDSCAPE, rec.edit_crop
+                decision, Orientation.LANDSCAPE, rec.crop_for(Orientation.LANDSCAPE)
             )
             portrait_cfg = _decision_to_screen_image_config(
-                decision, Orientation.PORTRAIT, rec.edit_crop
+                decision, Orientation.PORTRAIT, rec.crop_for(Orientation.PORTRAIT)
             )
             self._dispatch_cfg(name, landscape_cfg, update_status=True)
             self._dispatch_cfg(name, portrait_cfg, update_status=False)

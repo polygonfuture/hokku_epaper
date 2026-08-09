@@ -1295,6 +1295,26 @@ def _crop_kwargs_from_edit(edit_crop) -> dict:
     return out
 
 
+def _mono_crop_for(rec, frame_portrait: bool) -> dict | None:
+    """The crop the E1003 renders this image with, or None to render it as if unedited.
+
+    Inheritance is unchanged — a forked ``edit_crop_mono`` wins, else the colour
+    ``edit_crop`` — but each candidate only counts if it was authored FOR this mount's
+    shape (see ``ImageRecord.crop_for``). A crop made for the other orientation is skipped,
+    so the mono panel falls back to the next candidate and finally to auto framing.
+    """
+    if rec is None:
+        return None
+    want = Orientation.PORTRAIT if frame_portrait else Orientation.LANDSCAPE
+    for crop in (rec.edit_crop_mono, rec.edit_crop):
+        if not crop:
+            continue
+        target = crop.get("target")
+        if not target or Orientation(target) == want:
+            return crop
+    return None
+
+
 def _mono_content_portrait(config, rec, frame_portrait=False) -> bool:
     """Whether the mono render for this image composed PORTRAIT content (rotated sideways
     into the landscape wire buffer) — so a UI preview must un-rotate it to upright. Mirrors
@@ -1303,11 +1323,7 @@ def _mono_content_portrait(config, rec, frame_portrait=False) -> bool:
     orientation."""
     w = (rec.image_width or 0) if rec else 0
     h = (rec.image_height or 0) if rec else 0
-    # SAME inheritance as _effective_mono_kwargs: forked mono crop wins, else follow the
-    # colour crop — so the preview un-rotate matches what render_mono_bin composed.
-    eff_crop = (rec.edit_crop_mono if (rec and rec.edit_crop_mono) else None) \
-        or (rec.edit_crop if (rec and rec.edit_crop) else None)
-    crop_kw = _crop_kwargs_from_edit(eff_crop)
+    crop_kw = _crop_kwargs_from_edit(_mono_crop_for(rec, frame_portrait))
     return mono_e1003._mono_content_portrait(
         w, h,
         crop_kw.get("rotation_quarters", 0),
@@ -1337,10 +1353,11 @@ def _effective_mono_kwargs(config, rec, frame_portrait=False, crop_anchor_bboxes
 
     Crop (amendment 5 — mono inherits the colour crop): a forked per-image ``edit_crop_mono``
     wins; otherwise the mono panel FOLLOWS the colour ``edit_crop`` (the editor's "Following
-    Spectra crop" now actually follows). Only when neither exists is the framing governed by
-    ``frame_portrait`` (the E1003 mount) + ``crop_to_fill_threshold`` — all via the shared
-    ``frame_decision`` so mono and colour agree. Inheritance is safe now that both pipelines
-    share that decision (the earlier regression was divergent crop policy)."""
+    Spectra crop" now actually follows). Each only applies on a mount of the shape it was
+    authored for; otherwise the framing is governed by ``frame_portrait`` (the E1003 mount)
+    + ``crop_to_fill_threshold`` — all via the shared ``frame_decision`` so mono and colour
+    agree. Inheritance is safe now that both pipelines share that decision (the earlier
+    regression was divergent crop policy)."""
     edit = rec.edit_mono if (rec and rec.edit_mono) else {}
     g = edit.get
     profile = g("profile", config.mono_e1003_profile)
@@ -1349,10 +1366,9 @@ def _effective_mono_kwargs(config, rec, frame_portrait=False, crop_anchor_bboxes
         sharpen_percent=g("sharpen_amount", config.mono_e1003_sharpen_amount),
         sharpen_threshold=g("sharpen_threshold", config.mono_e1003_sharpen_threshold),
     )
-    # forked mono crop wins; else follow the colour crop; else no crop (auto framing).
-    eff_crop = (rec.edit_crop_mono if (rec and rec.edit_crop_mono) else None) \
-        or (rec.edit_crop if (rec and rec.edit_crop) else None)
-    crop_kw = _crop_kwargs_from_edit(eff_crop)
+    # forked mono crop wins; else the colour crop; either only if it was authored for
+    # THIS mount's shape; else no crop (auto framing) — see _mono_crop_for.
+    crop_kw = _crop_kwargs_from_edit(_mono_crop_for(rec, frame_portrait))
     frame_kw = dict(
         frame_portrait=bool(frame_portrait),
         # the single fill knob shared with colour (frame_decision) — it governs every
