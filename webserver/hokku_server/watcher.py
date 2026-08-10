@@ -6,6 +6,7 @@ import logging
 import threading
 
 from hokku_server.app_state import AppState
+from hokku_server.image_record import ConvertStatus
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,14 @@ class Watcher:
         self._state = state
         self._run = True
         self._wake = threading.Event()
+        #: Names of ready (converted) images at the end of the last sync. The scheduler
+        #: only commits an "up next" on startup / serve / pin / config change / delete —
+        #: nothing fires when a CONVERSION finishes. So a server that starts with the
+        #: library invalidated (any cache-busting settings change) finds no ready images,
+        #: commits nothing, and the drawer shows no "up next" until a frame next wakes,
+        #: which can be hours. Diffing this set turns "the library finished rendering"
+        #: into the missing trigger.
+        self._ready_names: set[str] | None = None
         threading.Thread(
             target=self.run_forever,
             daemon=True,
@@ -52,7 +61,31 @@ class Watcher:
             manager = self._state.manager
             try:
                 manager.sync()
+                self._recommit_if_library_changed()
             except Exception:
                 logger.exception("Watcher sync error")
             self._wake.wait(timeout=manager.config.poll_interval_seconds)
             self._wake.clear()
+
+    def _recommit_if_library_changed(self) -> None:
+        """Tell the scheduler when the set of servable images changed.
+
+        Covers conversions completing, uploads, and deletions alike. ``library_changed``
+        is a passive recommit — a frame keeps its existing valid pick, so this never
+        disturbs a drawer that is already correct; it only fills screens that have none.
+        """
+        ready = {
+            r.name
+            for r in self._state.manager.list()
+            if r.convert_status == ConvertStatus.OK
+        }
+        if ready == self._ready_names:
+            return
+        first_pass = self._ready_names is None
+        self._ready_names = ready
+        if first_pass:
+            return  # startup already commits; don't repeat it before anything changed
+        try:
+            self._state.scheduler.library_changed()
+        except Exception:
+            logger.exception("Watcher recommit error")
