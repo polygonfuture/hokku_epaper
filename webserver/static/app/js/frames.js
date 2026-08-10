@@ -7,6 +7,7 @@
 import { state, subscribe, mutate } from "./state.js";
 import { deleteScreen, patchScreen, clearScreenShowNext, skipScreenNext, thumbnailUrl, ditheredUrl, ditheredUrlMono } from "./api.js";
 import { $, $$, esc, toast, fmtAgo, fmtUntil, fmtUptime, frameColor, armConfirm, disarm } from "./ui.js";
+import { framingChipHTML } from "./framing.js";
 
 const fcards = $("#fcards");
 const OVERDUE_GRACE_S = 120;   // wake jitter + clock drift allowance before "overdue"
@@ -336,12 +337,18 @@ function renderFramePreview() {
     fpvEmpty.textContent = pvKind === "next" ? "No image queued yet" : "Nothing shown yet";
   }
 
-  const ori = portrait ? "Portrait" : "Landscape";
   const panel = isMonoFrame(sc) ? "E1003 · mono" : "Spectra 6";
+  // The last chip used to repeat the FRAME's orientation — a word the device drawing already
+  // gives you. It now reports what the eye can't: whether anything was cropped away, and for a
+  // letterboxed photo the slider value that would fill it. A glyph at the photo's true
+  // proportions leads it when the photo's own shape disagrees with the frame.
+  const fit = entry
+    ? framingChipHTML(entry, portrait, isMonoFrame(sc), state.config?.config?.crop_to_fill_threshold)
+    : "";
   fpvMeta.innerHTML =
     (entry ? `<span class="fpv-chip">${esc(entry.name)}</span><span class="fpv-sep">·</span>` : "") +
-    `<span class="fpv-chip panel">${esc(panel)}</span><span class="fpv-sep">·</span>` +
-    `<span class="fpv-chip">${ori}</span>`;
+    `<span class="fpv-chip panel">${esc(panel)}</span>` +
+    (fit ? `<span class="fpv-sep">·</span>${fit}` : "");
 
   fpvSkip.hidden = !(pvKind === "next" && entry);   // reroll only makes sense on a queued up-next
   // no library jump when the slot is empty, or when View Details is layered underneath —

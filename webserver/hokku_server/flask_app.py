@@ -872,6 +872,13 @@ def create_app(
                 if (r.convert_status == ConvertStatus.OK or (r.edit_crop and r.edit_crop.get("target")))
                 else None,
                 "edited": r.edit_crop is not None,
+                # The shape each editor crop was authored FOR (None = no such crop). A crop only
+                # applies on a mount of its own shape (ImageRecord.crop_for / _mono_crop_for), and
+                # the crop box is locked to the panel aspect, so "crop applies here" == "exact
+                # fit". The frame-preview chip needs both to say that without guessing: colour
+                # frames consult crop_target, mono frames try crop_target_mono then crop_target.
+                "crop_target": (r.edit_crop or {}).get("target"),
+                "crop_target_mono": (r.edit_crop_mono or {}).get("target"),
                 # A render-version stamp that changes whenever ANY render input changes
                 # (colour slugs + mono edit state). The app's cache-buster keys on this so an
                 # edit always fetches the fresh render — size_bytes/last_conversion_seconds

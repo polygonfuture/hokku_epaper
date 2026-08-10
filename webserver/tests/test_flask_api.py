@@ -631,6 +631,41 @@ def test_edit_flips_effective_orientation_and_preview(synced_client):
     assert (h > w) == (target == "portrait"), f"/dithered preview {w}x{h} is not {target}"
 
 
+def test_status_reports_the_crop_targets(synced_client):
+    """/status carries the shape each editor crop was authored FOR.
+
+    A crop only applies on a mount of its own shape, and the editor locks the crop box to the
+    panel aspect — so "this crop applies here" means "exact fit". The frame-preview chip says
+    that, and it can only know from these fields (the crop rects themselves are not in /status).
+    """
+    client, state, name = synced_client
+
+    def entry():
+        files = client.get("/hokku/api/status").get_json()["upload_files"]
+        return next(e for e in files if e["name"] == name)
+
+    e0 = entry()
+    assert e0["crop_target"] is None and e0["crop_target_mono"] is None  # unedited photo
+
+    cfg = asdict(state.config.image_config_default)
+    crop = {"rotation_quarters": 0, "rect": {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8}, "target": "portrait"}
+    assert client.post(f"/hokku/api/image/{name}/edit", json={"image": cfg, "edit_crop": crop}).status_code == 200
+    assert entry()["crop_target"] == "portrait"
+    assert entry()["crop_target_mono"] is None  # mono still follows the colour crop
+
+    # Fork a mono crop. The app always re-sends image + edit_crop on every save (api.js
+    # editImage), and so must this: only edit_crop_mono is presence-gated server-side, so a
+    # body that omits edit_crop clears the colour crop.
+    mono_crop = dict(crop, target="landscape")
+    assert client.post(
+        f"/hokku/api/image/{name}/edit",
+        json={"image": cfg, "edit_crop": crop, "edit_crop_mono": mono_crop},
+    ).status_code == 200
+    e2 = entry()
+    assert e2["crop_target"] == "portrait"
+    assert e2["crop_target_mono"] == "landscape"   # the fork is reported separately
+
+
 def test_edit_invalid_image_type_400(synced_client):
     client, _, name = synced_client
     resp = client.post(f"/hokku/api/image/{name}/edit", json={"image": "not-a-dict"})

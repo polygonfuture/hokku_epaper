@@ -572,7 +572,11 @@
   .fpv-empty[hidden] { display: none; }
   .fpv-accent { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 3px; background: var(--fc, var(--accent)); opacity: .9; }
   .fpv-meta { display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 18px 16px; }
-  .fpv-chip { font-family: var(--mono); font-size: .68rem; letter-spacing: .02em; padding: 4px 9px; border-radius: 7px; border: 1px solid var(--hair); color: var(--dim); background: var(--bg); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fpv-chip { display: inline-flex; align-items: center; font-family: var(--mono); font-size: .68rem; letter-spacing: .02em; padding: 4px 9px; border-radius: 7px; border: 1px solid var(--hair); color: var(--dim); background: var(--bg); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* the framing outcome — the one chip that says what the picture can't show you */
+  .fpv-chip.fit { color: var(--text); }
+  /* the photo's own shape, drawn at its true proportions; present only on a mismatch */
+  .fpv-gly { flex: none; margin-right: 7px; }
   .fpv-chip.panel { color: var(--fc, var(--accent)); border-color: color-mix(in srgb, var(--fc, var(--accent)) 45%, var(--hair)); }
   .fpv-sep { color: var(--faint); font-size: .7rem; }
   .fpv-foot { display: flex; gap: 9px; justify-content: center; flex-wrap: wrap; padding: 14px 18px 18px; border-top: 1px solid var(--hair); }
