@@ -78,7 +78,7 @@ class AppState:
 
         Always builds a fresh manager — its render dispatch (inline or
         thread pool) is reconstructed from scratch every reload. The old
-        manager is shut down outside the lock.
+        manager is retired outside the lock.
 
         Validates that upload_dir and cache_dir exist before touching anything,
         so callers can surface a 400 if the new config is unusable.
@@ -109,8 +109,11 @@ class AppState:
             self.manager = new_manager
             self.scheduler = new_scheduler
 
-        # Shut the old manager down outside the lock (releases its workers).
-        old_manager.shutdown()
+        # Retire, don't shut down: new_manager has already read the image DB, so
+        # a parting flush from the old one would revert it. retire() stops the
+        # old workers and freezes its writes without touching the file. Nothing
+        # is lost — every mutation persists itself as it happens.
+        old_manager.retire()
 
         # Re-apply the serve-decision-log toggle so enabling/disabling it in Settings takes
         # effect immediately on this reload (no server restart).
