@@ -78,5 +78,105 @@ always > 300 s in the scheduled path).
 
 ---
 
+## 2. "Letterbox fill limit" maxes at 100%, one hair below what a real 3:2 photo needs
+
+**Where:** the fill decision in `image_abc.py` — `use_cover = crop_to_fill_threshold > 0.0 and
+zoom_ratio <= crop_to_fill_threshold` — plus the settings slider that feeds it
+(`<input type="range" id="crop-to-fill-threshold" min="0" max="100">` in `templates/index.html`).
+Verified present in `upstream/main`: the slider bounds and the comparison are both unchanged.
+
+**Applies to:** any screen configured **portrait** with landscape photos in the library (and the
+mirror case: landscape screens with portrait photos). Not panel-specific — it is pure aspect
+arithmetic, so it applies to every model.
+
+### Symptom
+A photo letterboxes with enormous bars no matter how far the "Letterbox fill limit" slider is
+pushed — including all the way to its 100% maximum. It looks like the setting is broken or being
+ignored. Sliding it to 100% changes nothing for these photos, so users assume a caching bug.
+
+### Root cause
+Filling a frame costs zoom equal to the aspect ratio gap. For a landscape photo on a **3:4
+portrait** frame:
+
+```
+zoom_ratio needed = (4/3) x (photo width / photo height)
+```
+
+| Photo | Aspect | Zoom needed |
+| --- | --- | --- |
+| 4:3 | 1.3333 | 77.8% |
+| **perfect 3:2** | **1.5000** | **100.00%** |
+| Full-frame camera (7392x4896) | 1.5098 | 101.3% |
+| 35 mm film scan (5728x3790) | 1.5113 | 101.5% |
+| 16:9 | 1.7778 | 137.0% |
+
+The slider's ceiling of 100% lands **exactly** on the perfect-3:2 boundary. But no real camera is
+exactly 3:2 — sensors and scans come in at 1.500–1.512 — so essentially every "3:2" photo needs
+slightly MORE than 100% and is unreachable. The ceiling is not a policy choice, it is an arbitrary
+round number that happens to sit a fraction below the single most common photo shape.
+
+Measured on a 297-image library: **18 photos could never fill a portrait frame at any setting.
+Every one of them needed between 100.02% and 101.51%** — not one needed more than 105%. They were
+denied by roughly one percentage point.
+
+The strict `<=` also has no tolerance for whole-pixel rounding, which matters because the decode
+step clamps the long side (`_MAX_SOURCE_LONG_SIDE`) and the clamped dimensions are floored to
+integers. A source whose aspect matches the frame on paper can come out a hair off after that
+rounding and be charged zoom it should not owe — at 0% that pads a sub-pixel gap into a crisp 1 px
+white line on one edge; at the ceiling it letterboxes the photo whole.
+
+### Fix
+Two independent parts; the first is the bug, the second is a companion hardening.
+
+1. **Raise the slider ceiling** past the aspect gaps that real photos actually present. 150% clears
+   every landscape aspect through 16:9 (137%), which is the widest a photo can be and still fill a
+   portrait frame with real pixels:
+   ```html
+   <input type="range" id="crop-to-fill-threshold" min="0" max="150" step="1" value="10">
+   ```
+   Anywhere the threshold is clamped server-side, lift the clamp to the same constant rather than
+   leaving a silent `min(x, 1.0)` that truncates what the slider now sends. Worth naming the
+   ceiling as one shared constant so the UI and the clamps cannot drift apart.
+
+2. **Give the comparison a rounding tolerance** so integer dimensions cannot cost a full letterbox:
+   ```python
+   _ZOOM_SNAP_RATIO = 0.005   # 0.5%
+   use_cover = zoom_ratio <= crop_to_fill_threshold + _ZOOM_SNAP_RATIO
+   ```
+   Note this also drops the `crop_to_fill_threshold > 0.0 and` guard, which is what makes the
+   tolerance work at the 0% setting (the 1 px hairline case). If upstream prefers 0% to mean
+   "never cover, ever", keep the guard and add the tolerance only above zero — the ceiling fix
+   above is independent of this choice.
+
+If the render cache key encodes a framing-policy version, bump it: the decision changes for photos
+sitting near a boundary, and their already-cached renders are otherwise reused forever.
+
+### Rationale / safety
+- **150%, not "unlimited"**: the slider still means "the most I will crop", and a ceiling keeps it a
+  limit rather than an on/off switch. 137% is the real-world worst case, so 150% has margin without
+  becoming meaningless.
+- **0.5% tolerance**: ~10x the worst rounding error (1 px on a ~2100 px edge) and far below a
+  visible zoom step (6 px on a 1200 px panel), yet nowhere near a genuine aspect gap — the smallest
+  real gap in play is 4:3-on-3:2 at 12.5%, twenty-five times larger. It cannot silently swallow a
+  crop the user did not ask for.
+- **No change for anyone happy today**: existing configs keep their stored value, and every photo
+  already reachable under 100% behaves identically. The change only makes previously impossible
+  settings expressible.
+- Users who want bars gone unconditionally are still better served by a separate explicit control;
+  raising the ceiling fixes the arithmetic, it does not try to be that feature.
+
+### Suggested tests
+- A real 3:2 sensor size (7392x4896) on a portrait frame: letterboxes at threshold 1.00, fills at
+  1.05. This is the regression.
+- 16:9 (3840x2160) on a portrait frame: fills at the new ceiling, letterboxes at 1.30 — proves the
+  ceiling was chosen to reach the real worst case.
+- A source whose aspect matches the frame to within a pixel fills at threshold 0.0 (no hairline).
+- A genuinely mismatched source (2% gap) still letterboxes at threshold 0.0 — the tolerance is
+  rounding-sized, not policy-sized.
+- If a mono/secondary pipeline shares the decision, assert the raised threshold survives its own
+  clamp, not just the primary renderer's.
+
+---
+
 <!-- Add further upstream-affecting fixes below as they are found, same format:
      Where (concept, not our path) / Applies to / Symptom / Root cause / Fix / Rationale / Tests. -->

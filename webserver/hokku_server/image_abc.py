@@ -52,6 +52,15 @@ if TYPE_CHECKING:
 #: gap — a 3:2 photo on 4:3 needs 0.125 = 12.5%.
 _ZOOM_SNAP_RATIO = 0.005
 
+#: Ceiling for ``crop_to_fill_threshold`` — the top of the "Zoom to fill" slider.
+#: Filling a 3:4 frame with a landscape photo costs ``(4/3) x photo aspect`` of zoom, so
+#: a PERFECT 3:2 lands at exactly 100%. No real camera is exactly 3:2 (one full-frame sensor is
+#: 1.5098, film scans 1.500-1.511), so a 100% ceiling sat a hair under the most common
+#: photo shape and those photos could never fill a portrait frame at any setting. 150%
+#: clears every landscape aspect through 16:9 (137%), which is the widest a photo can be
+#: and still fill a portrait frame with real pixels.
+MAX_CROP_TO_FILL_THRESHOLD = 1.5
+
 
 def _face_centered_crop_offset(
     bboxes_norm: tuple[BoundingBox, ...],

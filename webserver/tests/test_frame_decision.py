@@ -20,7 +20,11 @@ from __future__ import annotations
 
 import pytest
 
-from hokku_server.image_abc import FramingDecision, frame_decision
+from hokku_server.image_abc import (
+    MAX_CROP_TO_FILL_THRESHOLD,
+    FramingDecision,
+    frame_decision,
+)
 
 PW, PH = 1200, 1600  # portrait-shaped panel (either arg order is accepted)
 
@@ -140,6 +144,26 @@ def test_slack_does_not_swallow_a_real_aspect_gap():
 def test_threshold_zero_still_letterboxes_a_visible_gap():
     """Slack at the bottom end fills a rounding hairline, not a 2% band."""
     assert _decide(98, 100, frame_portrait=True, thr=0.0).use_cover is False
+
+
+# ── the slider must be able to REACH what a real photo needs ────────────────────
+
+
+def test_real_three_two_camera_needs_more_than_100_percent_on_a_portrait_frame():
+    """Filling a 3:4 frame costs (4/3) x the photo's aspect, so a PERFECT 3:2 lands at
+    exactly 100%. No real camera is exactly 3:2 — one full-frame camera's frame is 7392x4896 (1.5098)
+    and needs 101.3%. With the old 100% ceiling those photos could never fill."""
+    full_frame = (7392, 4896)
+    assert _decide(*full_frame, frame_portrait=True, thr=1.00).use_cover is False
+    assert _decide(*full_frame, frame_portrait=True, thr=1.05).use_cover is True
+
+
+def test_ceiling_reaches_sixteen_by_nine_on_a_portrait_frame():
+    """MAX_CROP_TO_FILL_THRESHOLD is set so the widest common aspect is still reachable:
+    16:9 on a 3:4 frame needs ~137%."""
+    assert _decide(3840, 2160, frame_portrait=True,
+                   thr=MAX_CROP_TO_FILL_THRESHOLD).use_cover is True
+    assert _decide(3840, 2160, frame_portrait=True, thr=1.30).use_cover is False
 
 
 # ── sanity: return type ─────────────────────────────────────────────────────────

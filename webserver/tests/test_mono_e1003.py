@@ -92,6 +92,26 @@ def test_square_source_letterboxes(tmp_path):
     assert center < 60, "image content should remain (dark square)"
 
 
+def test_threshold_above_100_percent_reaches_the_mono_panel(tmp_path):
+    """The mono clamp must not cut the threshold back to 1.0.
+
+    A real 3:2 camera frame (1.5098) needs 101.3% zoom to fill a portrait mount, so a
+    clamp at 1.0 made those photos letterbox on the E1003 no matter what the slider said.
+    """
+    p = tmp_path / "wide.png"
+    Image.new("L", (1510, 1000), 0).save(p)  # aspect 1.510, solid black
+
+    def _white_lines(threshold: float) -> int:
+        data = mono_e1003.render_mono_bin(
+            p, frame_portrait=True, crop_to_fill_threshold=threshold
+        )
+        a = np.asarray(mono_e1003.mono_bin_to_image(data))
+        return int(np.all(a > 240, axis=1).sum()) + int(np.all(a > 240, axis=0).sum())
+
+    assert _white_lines(1.0) > 0, "sanity: at 100% this photo cannot fill, so it mats"
+    assert _white_lines(1.05) == 0, "clamped to 1.0 — the slider above 100% never arrived"
+
+
 def test_roundtrip_unpack(tmp_path):
     gradient = Image.linear_gradient("L").resize((1872, 1404))
     data = _render(tmp_path, gradient)

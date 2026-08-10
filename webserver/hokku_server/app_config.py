@@ -100,6 +100,9 @@ class AppConfig:
     #: 0.0 = always letterbox. Every photo is composed upright for its frame's
     #: orientation, and this single threshold is the only letterbox-vs-fill control —
     #: it governs manually cropped photos exactly as it governs untouched ones.
+    #: Ranges 0.0 to image_abc.MAX_CROP_TO_FILL_THRESHOLD (1.5): filling a portrait
+    #: frame with a landscape photo costs (4/3) x its aspect, so a 3:2 camera needs
+    #: just over 1.0 and 16:9 needs ~1.37 — a 1.0 ceiling could not express either.
     crop_to_fill_threshold: float = 0.10
     #: Aim the cover-crop window at detected faces instead of the image centre, so a
     #: photo that must fill loses the background rather than someone's head. Only

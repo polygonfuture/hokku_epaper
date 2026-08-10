@@ -518,7 +518,11 @@ def render_mono_bin(
     rotation_quarters = int(rotation_quarters) % 4
     crop_rect = _norm_crop_rect(crop_rect)
     frame_portrait = bool(frame_portrait)
-    crop_to_fill_threshold = float(min(max(crop_to_fill_threshold, 0.0), 1.0))
+    from .image_abc import MAX_CROP_TO_FILL_THRESHOLD
+
+    crop_to_fill_threshold = float(
+        min(max(crop_to_fill_threshold, 0.0), MAX_CROP_TO_FILL_THRESHOLD)
+    )
 
     st = path.stat()
     key = (
@@ -748,7 +752,11 @@ def render_mono_preview_image(
     rotation_quarters = int(rotation_quarters) % 4
     crop_rect = _norm_crop_rect(crop_rect)
     frame_portrait = bool(frame_portrait)
-    crop_to_fill_threshold = float(min(max(crop_to_fill_threshold, 0.0), 1.0))
+    from .image_abc import MAX_CROP_TO_FILL_THRESHOLD
+
+    crop_to_fill_threshold = float(
+        min(max(crop_to_fill_threshold, 0.0), MAX_CROP_TO_FILL_THRESHOLD)
+    )
 
     with Image.open(path) as img:
         img = ImageOps.exif_transpose(img)

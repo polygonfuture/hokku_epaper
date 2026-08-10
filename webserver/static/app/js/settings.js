@@ -175,8 +175,8 @@ function imageBody() {
   return (
     iGroup(iRow("Default dither preset", presetControl("imPreset", "image_config_default", "Default")), `<span id="imPresetDesc">${esc(desc)}</span>`, "reserve2") +
     iGroup('<div class="iset-row"><span class="iset-lab">Zoom to fill</span><span class="range-val" id="imFillVal">' + fillPct + '%</span></div>' +
-      `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="100" step="1" value="${fillPct}"></div>`,
-      "Every photo is shown upright for its frame's orientation. This is the most a photo may be zoomed in to remove letterbox bars: 0% = always letterbox; higher crops more. The same limit applies to photos you cropped in the editor — a crop cut to the frame's shape always fills it exactly.") +
+      `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="150" step="1" value="${fillPct}"></div>`,
+      "Every photo is shown upright for its frame's orientation. This is the most a photo may be zoomed in to remove letterbox bars: 0% = always letterbox; higher crops more. A landscape photo on a portrait frame needs a lot — just over 100% for a 3:2 camera, about 137% for 16:9. The same limit applies to photos you cropped in the editor — a crop cut to the frame's shape always fills it exactly.") +
     iGroup(iRow("Keep faces in frame", iTog("classifier_face_aware_crop_enabled", !!draft.classifier_face_aware_crop_enabled)),
       "When a photo has to be zoomed in to fill the frame, cut the background rather than the people — the crop is centred on the faces Hokku detected instead of the middle of the photo.") +
     resetBtnHTML()
