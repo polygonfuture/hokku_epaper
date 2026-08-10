@@ -37,13 +37,20 @@ from hokku_server.orientation import Orientation
 if TYPE_CHECKING:
     pass
 
-#: Aspect slop (as a zoom-to-fill ratio) that always fills, whatever the slider says.
-#: A source cut to the panel aspect is never EXACTLY that aspect — a normalised rect
-#: rounds to whole pixels — so it asks for a hair of zoom. Letterboxing it pads that
-#: hair with white, and the padding mask turns it into a crisp 1px white line on one
-#: edge. Below this ratio the difference is rounding, not composition: fill and trim it.
-#: Well under any real aspect gap (a 3:2 photo on 4:3 needs 0.125 = 12.5%).
-_ASPECT_SNAP_RATIO = 0.002
+#: Aspect slop (in zoom-to-fill ratio units) added to whatever the slider asks for.
+#: Sources and canvases are whole pixels, so an aspect that matches on paper does not
+#: match after rounding, and the shortfall is charged as zoom the slider then has to
+#: pay for. It bites at both ends:
+#:   * at the bottom — a crop cut to the panel aspect rounds to whole pixels, asks for
+#:     a hair of zoom, and letterboxing pads that hair into a crisp 1px white line;
+#:   * at the top — the decode caps the long side at MAX_SOURCE_LONG, so a 3:2 6000x4000
+#:     photo becomes 3200x2133 (2133.33 floored). Covering a 3:4 frame with a true 3:2
+#:     needs exactly 100% zoom; at 1.50023 it needs 100.031%, which the slider's 100%
+#:     maximum cannot express — so it letterboxed at EVERY setting.
+#: 0.5% is ~10x the worst rounding error (1 px on a 2133 px edge) and far below a
+#: visible zoom step (6 px on a 1200 px panel), while still nowhere near a real aspect
+#: gap — a 3:2 photo on 4:3 needs 0.125 = 12.5%.
+_ZOOM_SNAP_RATIO = 0.005
 
 
 def _face_centered_crop_offset(
@@ -137,10 +144,12 @@ def frame_decision(
     scale_fit = min(visible_w / src_w, visible_h / src_h)
     scale_cover = max(visible_w / src_w, visible_h / src_h)
     zoom_ratio = scale_cover / scale_fit - 1.0
-    # _ASPECT_SNAP_RATIO floors the threshold so a source that is the panel aspect to
-    # within rounding always fills — otherwise it letterboxes a sub-pixel gap into a
-    # white hairline. Above that, the user's threshold is the only control.
-    use_cover = zoom_ratio <= max(crop_to_fill_threshold, _ASPECT_SNAP_RATIO)
+    # _ZOOM_SNAP_RATIO absorbs whole-pixel rounding at BOTH ends of the slider, so a
+    # source that is the panel aspect to within rounding always fills — at 0% it would
+    # otherwise letterbox a sub-pixel gap into a white hairline, and at 100% a 3:2 photo
+    # decoded to 3200x2133 would ask for 100.03% and letterbox in full. Beyond that
+    # slack, the user's threshold is the only control.
+    use_cover = zoom_ratio <= crop_to_fill_threshold + _ZOOM_SNAP_RATIO
     return FramingDecision(content_portrait=content_portrait, use_cover=use_cover)
 
 

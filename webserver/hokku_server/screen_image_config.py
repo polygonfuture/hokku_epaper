@@ -13,7 +13,7 @@ from hokku_server.orientation import Orientation
 
 #: Version of the framing policy baked into every cached render. Bumping it changes
 #: every ``cache_slug()`` and therefore re-renders the library once, on the next sync.
-_FRAMING_POLICY_VERSION = 2
+_FRAMING_POLICY_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -55,10 +55,16 @@ class ScreenImageConfig:
             #   1 = original / auto-rotate era
             #   2 = auto-rotate removed: content always composed upright for the frame,
             #       a crop forces cover, otherwise crop_to_fill_threshold decides
+            #   3 = the threshold gained rounding slack (_ZOOM_SNAP_RATIO), so a photo
+            #       whose aspect matches the frame to within whole-pixel rounding fills
+            #       instead of letterboxing — notably a 3:2 source at the 100% setting
             "framing_policy": _FRAMING_POLICY_VERSION,
             "image_config": self.image_config.cache_slug(),
             "orientation": self.orientation,
-            "crop_to_fill_threshold": self.crop_to_fill_threshold,
+            # float(): the slider posts a whole number as JSON int, so the same setting
+            # can arrive as 1 or 1.0 and json.dumps writes "1" vs "1.0" — two slugs for
+            # one threshold, silently re-rendering the whole library. Normalise it.
+            "crop_to_fill_threshold": float(self.crop_to_fill_threshold),
             "clahe_keepout_bboxes": bbox_serializable,
         }
         # Only fold in manual crop/rotation when actually set, so an edited image's slug

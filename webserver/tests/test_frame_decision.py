@@ -105,6 +105,43 @@ def test_threshold_is_the_only_knob_boundary():
     assert above.use_cover is True   # 0.333 <= 0.40 → fill
 
 
+# ── whole-pixel rounding must not cost the user the whole photo ─────────────────
+
+
+def test_decoded_three_two_source_fills_a_portrait_frame_at_max_threshold():
+    """The regression: a 3:2 photo letterboxing on a portrait frame at the 100% setting.
+
+    open_image_for_render caps the long side at MAX_SOURCE_LONG (3200), so a 6000x4000
+    scan decodes to 3200x2133 — 2133.33 floored. A TRUE 3:2 needs exactly 100% zoom to
+    cover a 3:4 frame; at 1.50023 it needs 100.031%, which the slider's 100% maximum
+    cannot express, so the photo letterboxed at every setting.
+    """
+    d = _decide(3200, 2133, frame_portrait=True, thr=1.0)
+    assert d.use_cover is True
+
+
+def test_exact_three_two_still_fills_at_max_threshold():
+    """The undecoded case is exactly at the boundary — it must not be excluded either."""
+    assert _decide(6000, 4000, frame_portrait=True, thr=1.0).use_cover is True
+
+
+def test_slack_does_not_swallow_a_real_aspect_gap():
+    """The slack is rounding-sized, not policy-sized: a genuine mismatch still letterboxes.
+
+    16:9 on a 3:4 frame needs ~137% zoom — unreachable at any slider setting, so a
+    16:9 photo is never silently cropped in half.
+    """
+    assert _decide(3200, 1800, frame_portrait=True, thr=1.0).use_cover is False
+    # and a 3:2 photo on a 4:3 frame (12.5% gap) still obeys the slider either side of it
+    assert _decide(3000, 2000, frame_portrait=False, thr=0.10).use_cover is False
+    assert _decide(3000, 2000, frame_portrait=False, thr=0.15).use_cover is True
+
+
+def test_threshold_zero_still_letterboxes_a_visible_gap():
+    """Slack at the bottom end fills a rounding hairline, not a 2% band."""
+    assert _decide(98, 100, frame_portrait=True, thr=0.0).use_cover is False
+
+
 # ── sanity: return type ─────────────────────────────────────────────────────────
 
 def test_returns_framing_decision():
