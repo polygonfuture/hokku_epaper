@@ -10,6 +10,7 @@ import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, dithere
 import { $, $$, esc, toast, fmtBytes, fmtAgo, fmtUntil, frameColor } from "./ui.js";
 import { openEditor } from "./editor.js";
 import { openFramePreview } from "./frames.js";
+import { galleryOrder } from "./gallery.js";
 
 const gallery = $("#gallery");
 
@@ -365,11 +366,40 @@ function openDetail(name) {
   const defaultView = entry.status !== "ok" ? "thumb" : (onMonoFrame(entry.name) ? "mono" : "spectra");
   setDetailView(defaultView);
   detailEl.hidden = false;
+  updateDetailNav();
 }
 function closeDetail() { detailEl.hidden = true; detailEl._name = null; }
 
+// Prev/next photo in the detail lightbox — shared by the ← / → keys and the flanking chevrons.
+// step: -1 prev, +1 next. Walks galleryOrder (the exact on-screen order); clamps at the ends.
+function navDetail(step) {
+  if (detailEl.hidden || !detailEl._name) return;
+  const order = galleryOrder();
+  const i = order.indexOf(detailEl._name);
+  if (i < 0) return;
+  const j = i + step;
+  if (j < 0 || j >= order.length) return;
+  openDetail(order[j]);
+}
+// Keep the chevrons in sync with the current position: hide both when there's nothing to page
+// through (0–1 photos), dim (disable) prev at the first photo and next at the last.
+function updateDetailNav() {
+  const prev = detailEl.querySelector(".detail-nav.prev");
+  const next = detailEl.querySelector(".detail-nav.next");
+  if (!prev || !next) return;
+  const order = galleryOrder();
+  const i = order.indexOf(detailEl._name);
+  const pageable = i >= 0 && order.length > 1;
+  prev.hidden = next.hidden = !pageable;
+  prev.disabled = i <= 0;
+  next.disabled = i < 0 || i >= order.length - 1;
+}
+
 detailEl.addEventListener("click", (e) => {
   if (e.target === detailEl || e.target.closest("[data-close]")) { closeDetail(); return; }
+  // Prev/next chevrons (flank the card) → same step as the ← / → keys.
+  const nav = e.target.closest("[data-nav]");
+  if (nav) { navDetail(nav.dataset.nav === "prev" ? -1 : 1); return; }
   // On display / Up next row → frame-preview modal, stacked OVER this lightbox (detail
   // stays open behind it; dismissing the preview lands you back here).
   const orow = e.target.closest(".orow[data-frame]");
@@ -448,9 +478,23 @@ gallery.addEventListener("touchend", cancelLP, { passive: true });
 // while the frame-preview modal is stacked on top, this Escape is ITS dismissal
 // (frames.js closes it) — the detail lightbox underneath takes the NEXT press.
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if (!$("#frame-preview").hidden) return;
-  closeDetail(); closeSheet(); closeMenu();
+  if (e.key === "Escape") {
+    if (!$("#frame-preview").hidden) return;
+    closeDetail(); closeSheet(); closeMenu();
+    return;
+  }
+  // Desktop: ← / → step to the prev/next photo while the detail lightbox is the TOP surface —
+  // it walks the gallery in exactly the on-screen order (galleryOrder), so switching between
+  // images is a keypress, not a close-click-reopen. Skipped when a frame-preview or the editor
+  // is stacked over detail, when typing in a field, or with a modifier held (browser shortcuts).
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  if (detailEl.hidden || !detailEl._name) return;
+  if (!$("#frame-preview").hidden || !$("#pedit-overlay").hidden) return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  e.preventDefault();
+  navDetail(e.key === "ArrowLeft" ? -1 : 1);
 });
 
 // If the open photo is deleted out from under us (another client / poll), close detail.

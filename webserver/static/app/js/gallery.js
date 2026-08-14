@@ -28,6 +28,13 @@ const SMIN = +sizeSlider.min || 150, SMAX = +sizeSlider.max || 600;
 // keyed tile cache: name → element (survives polls so images aren't re-fetched)
 const tileCache = new Map();
 let lastStructural = "";   // gate: only rebuild DOM + re-justify when structure changes
+let visibleOrder = [];     // flat top-to-bottom order of the grid, for detail-view ←/→ nav
+
+// The names currently in the grid, in exactly the order they're rendered (respects the active
+// filter: mixed = upload order; grouped = Landscape section then Portrait; single = that half).
+// Kept in sync by updateGallery below, so the detail-view arrow keys (photo.js) step through
+// precisely what's on screen.
+export const galleryOrder = () => visibleOrder;
 
 // ── per-entry derivations from the live status payload ──
 // which connected frames are currently displaying this image
@@ -203,6 +210,9 @@ function updateGallery() {
     if (land.length) groups.push({ label: "Landscape", entries: land });
     if (port.length) groups.push({ label: "Portrait", entries: port });
   }
+
+  // Flatten the SAME `groups` that drives rendering below → the exact on-screen order, no drift.
+  visibleOrder = groups ? groups.flatMap((g) => g.entries).map((e) => e.name) : [];
 
   const structural = filter + "|" + (groups ? groups.map((g) =>
     (g.label || "") + ":" + g.entries.map((e) => e.name + "@" + arOf(e).toFixed(4)).join(",")).join(";") : "empty");
