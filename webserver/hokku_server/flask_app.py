@@ -432,6 +432,16 @@ def create_app(
             abort(404)
         return send_file(path)
 
+    @app.route("/hokku/api/display/<path:name>")
+    def api_display(name: str):
+        # Browser-safe rendition of the ORIGINAL photo (detail Original view + editor crop
+        # source). Web-decodable formats pass through raw; tiff/heic/heif/jxl/svg serve a cached
+        # re-encoded/rasterised JPEG. /original stays the raw bytes (used by "Download original").
+        path = state.manager.display_path_for(name)
+        if path is None or not path.is_file():
+            abort(404)
+        return send_file(path)   # correct content-type for both passthrough + JPEG
+
     @app.route("/hokku/api/dithered/<path:name>")
     def api_dithered(name: str):
         # ?mono=1 → the E1003 render (what a mono frame actually shows), so the UI can
@@ -857,6 +867,10 @@ def create_app(
                 "status": r.convert_status,
                 "error": r.convert_error,
                 "size_bytes": r.original_size_bytes,
+                # Source-content token — changes on re-upload / content change (reconcile keys on
+                # sha1). The app busts the /display URL on this (NOT render_version: the display
+                # rendition is the UNCROPPED source, unaffected by crop/tone edits).
+                "src_token": (r.original_sha1[:12] if r.original_sha1 else str(r.original_size_bytes or 0)),
                 "added_at": r.added_at,  # first-uploaded time; the app sorts newest-first by this
                 "image_width": r.image_width,
                 "image_height": r.image_height,

@@ -74,6 +74,11 @@ export const ditheredUrl = (entry, orient = null) =>
 export const ditheredUrlMono = (entry, portrait = false) =>
   `${API}/dithered/${encodeURIComponent(entry.name)}?mono=1${portrait ? "&portrait=1" : ""}&${bust(entry)}`;
 export const originalUrl = (entry) => `${API}/original/${encodeURIComponent(entry.name)}`;
+// Browser-safe rendition of the ORIGINAL photo: raw passthrough for web rasters, a server
+// re-encode/rasterize for tiff/heic/heif/jxl/svg (which browsers can't decode / can't open raw).
+// Busted on the SOURCE token (changes only on re-upload), NOT render_version — the display image
+// is the uncropped source and is unaffected by crop/tone edits.
+export const displayUrl = (entry) => `${API}/display/${encodeURIComponent(entry.name)}?v=${entry.src_token ?? 0}`;
 
 // ── upload (XHR for real progress events) ──
 // onProgress(fraction 0..1). Resolves with {saved:[], skipped:[{name,reason}]}.

@@ -56,6 +56,12 @@ IMAGE_EXTENSIONS = {
     ".svg",
 }
 
+# Upload formats that must NOT be handed to the browser as-is: TIFF/HEIC/HEIF/JXL have no
+# native browser decoder, and SVG can carry <script> (unsafe to open top-level). These get a
+# re-encoded/rasterized "display" JPEG (see ImageManager.display_bytes_or_path); every other
+# IMAGE_EXTENSIONS format is a browser-decodable raster and is served raw.
+DISPLAY_REENCODE_EXTENSIONS = {".tiff", ".heic", ".heif", ".jxl", ".svg"}
+
 # Hard cap on decoded pixel count. Anything above raises
 # PIL.Image.DecompressionBombError from .load()/.convert(). Sized to comfortably
 # fit 8K (33 MP) photos while keeping a decoded RGB buffer under ~120 MB —

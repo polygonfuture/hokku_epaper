@@ -248,13 +248,14 @@
   .ctx-backdrop[hidden] { display: none; }
   #ctx-sheet { display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 320px; width: 100%; animation: ctxpop .22s cubic-bezier(.2,.8,.2,1); }
   @keyframes ctxpop { from { opacity: 0; transform: scale(.94) translateY(8px); } to { opacity: 1; transform: none; } }
+  .ctx-preview { position: relative; }   /* anchor the Converting…/Couldn’t-convert .mark chip to the thumbnail */
   .ctx-preview canvas { max-width: 100%; max-height: 40vh; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.6); image-rendering: pixelated; display: block; }
   .ctx-preview img { max-width: 100%; max-height: 40vh; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.6); display: block; object-fit: contain; }
   .ctx-menu { width: 100%; background: var(--bg-elev); border: 1px solid var(--hair-2); border-radius: 14px; overflow: hidden; box-shadow: 0 18px 50px rgba(0,0,0,.5); }   /* one menu surface everywhere: #17171C */
   .ctx-label { padding: 11px 16px 5px; font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
   .ctx-note { padding: 13px 16px; font-size: .84rem; color: var(--dim); }
   .ctx-sep { height: 1px; background: var(--hair); }
-  .ctx-item { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; font-size: .9rem; text-align: left; padding: 12px 16px; cursor: pointer; transition: background .12s; }
+  .ctx-item { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; font-size: .9rem; text-align: left; text-decoration: none; padding: 12px 16px; cursor: pointer; transition: background .12s; }
   .ctx-item:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
   /* touch: the finger's resting position isn't intent — no lingering hover highlight
      on menu items (would read as "about to press Delete/Show next") */

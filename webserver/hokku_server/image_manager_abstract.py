@@ -38,7 +38,13 @@ from hokku_server.image_record import (
     ConvertStatus,
     ImageRecord,
 )
-from hokku_server.image_renderer import IMAGE_EXTENSIONS, SVG_PROBE_DIMS, open_image_for_render
+from hokku_server.image_renderer import (
+    DISPLAY_REENCODE_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    MAX_IMAGE_PIXELS,
+    SVG_PROBE_DIMS,
+    open_image_for_render,
+)
 from hokku_server.orientation import Orientation
 from hokku_server.screen_image_config import ScreenImageConfig
 
@@ -61,8 +67,16 @@ _NAME_HASH_LEN = 14
 # (a 3:2 landscape lands at ~900x600).
 _THUMB_MAX_PX = 900
 _THUMB_QUALITY = 85
+# Browser-safe "display" rendition of the ORIGINAL (uncropped) photo — for the detail Original
+# view + the editor crop source. Source-identity-keyed (name_hash only), so it is NOT
+# invalidated by crop/tone edits. Generated only for DISPLAY_REENCODE_EXTENSIONS
+# (tiff/heic/heif/jxl — browsers can't decode them — and svg — unsafe to open raw); every other
+# IMAGE_EXTENSIONS format is a browser-decodable raster and is served straight from disk.
+_DISPLAY_SUFFIX = "_display.jpg"
+_DISPLAY_MAX_PX = 2560   # full-size / detail view (the editor caps its own canvas at ~1800)
+_DISPLAY_QUALITY = 88
 
-_KNOWN_SUFFIXES = (_PANEL_SUFFIX, _PREVIEW_SUFFIX, _THUMB_SUFFIX)
+_KNOWN_SUFFIXES = (_PANEL_SUFFIX, _PREVIEW_SUFFIX, _THUMB_SUFFIX, _DISPLAY_SUFFIX)
 
 
 def _decision_to_screen_image_config(
@@ -117,6 +131,10 @@ class AbstractImageManager(ABC):
         self._images_dir = self._cache_dir / _IMAGES_SUBDIR
         self._db_path = self._cache_dir / _DB_FILENAME
         self._db_lock = threading.RLock()
+        # Serialises on-demand display-rendition generation (the lazy fallback in
+        # display_path_for) so concurrent first-opens of a non-web original can't stack
+        # full-resolution decodes and OOM a Pi. Eager gen (sync Phase 1) is the normal path.
+        self._display_gen_lock = threading.Lock()
         self._records: dict[str, ImageRecord] = {}
         self._progress = ConversionProgress(current_name=None, done=0, total=0)
         self._batch_failed: int = 0
@@ -276,6 +294,16 @@ class AbstractImageManager(ABC):
                 for r in self._records.values()
                 if r.image_width is not None and not self._thumb_path(r).exists()
             ]
+            # Its OWN work-list — NOT gated on needs_thumb, which is empty for every
+            # already-thumbnailed image (i.e. the entire existing library). Only the formats a
+            # browser can't decode (tiff/heic/heif/jxl/svg) get a display rendition.
+            needs_display = [
+                r
+                for r in self._records.values()
+                if r.image_width is not None
+                and Path(r.name).suffix.lower() in DISPLAY_REENCODE_EXTENSIONS
+                and not self._display_path(r).exists()
+            ]
 
         # Phase 1: thumbnails — fast, lets the UI show images before dithering.
         for rec in needs_thumb:
@@ -287,6 +315,18 @@ class AbstractImageManager(ABC):
                 self._materialize_thumbnail(src, thumb, rec.edit_crop)
             except Exception as e:
                 logger.warning("Thumbnail pre-generation failed for %r: %s", rec.name, e)
+
+        # Phase 1b: browser-safe display renditions for formats the browser can't decode, so the
+        # detail Original view + editor never wait on a first open. Web-safe formats aren't in
+        # needs_display, so this is a no-op for the JPEG/PNG majority.
+        for rec in needs_display:
+            display = self._display_path(rec)
+            if display.exists():
+                continue
+            try:
+                self._materialize_display(self._upload_dir / rec.name, display)
+            except Exception as e:
+                logger.warning("Display pre-generation failed for %r: %s", rec.name, e)
 
         # Phase 2: classify every pending image while the detector is loaded.
         # Images with unreadable dimensions are skipped here and failed in phase 3.
@@ -567,6 +607,35 @@ class AbstractImageManager(ABC):
             raise FileNotFoundError(f"Image {name!r} is not registered.")
         return self._upload_dir / name
 
+    def display_path_for(self, name: str) -> Path | None:
+        """Path to a BROWSER-SAFE rendition of the original photo — for the detail Original view
+        and the editor crop source. Browser-decodable formats pass through raw (send_file sets the
+        right content-type); tiff/heic/heif/jxl/svg resolve to the cached ``_display.jpg`` generated
+        eagerly in sync Phase 1 (or, if a request beats that sync, generated once here — serialised
+        so concurrent first-opens can't stack full-resolution decodes). ``None`` → 404."""
+        try:
+            src = self.original_path(name)
+        except FileNotFoundError:
+            return None
+        rec = self._records.get(name)
+        if rec is None:
+            return None
+        if src.suffix.lower() not in DISPLAY_REENCODE_EXTENSIONS:
+            return src   # browser-decodable raster — serve the raw file
+        display = self._display_path(rec)
+        if display.exists():
+            return display
+        if rec.image_width is None:
+            return None   # unreadable source — PIL would just fail again
+        with self._display_gen_lock:
+            if not display.exists():
+                try:
+                    self._materialize_display(src, display)
+                except (OSError, Exception) as e:
+                    logger.warning("Display render error for %s: %s", name, e)
+                    return None
+        return display if display.exists() else None
+
     def list(self) -> list[ImageRecord]:
         # Snapshot the values under the lock before iterating: the Watcher/render pool
         # can add()/remove() records concurrently, and with threaded request serving a
@@ -795,6 +864,9 @@ class AbstractImageManager(ABC):
     def _thumb_path(self, rec: ImageRecord) -> Path:
         return self._images_dir / f"{rec.name_hash}{_THUMB_SUFFIX}"
 
+    def _display_path(self, rec: ImageRecord) -> Path:
+        return self._images_dir / f"{rec.name_hash}{_DISPLAY_SUFFIX}"
+
     def _load_db(self) -> None:
         if not self._db_path.exists():
             return
@@ -989,8 +1061,8 @@ class AbstractImageManager(ABC):
                 self._scrub_file(f, "orphan (image deleted)")
                 continue
 
-            # Thumbs have no embedded slug — exempt from Rule 1.
-            if f.name.endswith(_THUMB_SUFFIX):
+            # Thumbs and display renditions have no embedded slug — exempt from Rule 1.
+            if f.name.endswith(_THUMB_SUFFIX) or f.name.endswith(_DISPLAY_SUFFIX):
                 continue
 
             # Rule 1 (auto_clear only): embedded slug not in either orientation's valid slug.
@@ -1330,3 +1402,39 @@ class AbstractImageManager(ABC):
                 img = _apply_crop_rotation(img, rotation_quarters, crop_rect)
             img.thumbnail((_THUMB_MAX_PX, _THUMB_MAX_PX), Image.Resampling.LANCZOS)
             img.save(thumb_path, format="JPEG", quality=_THUMB_QUALITY)
+
+    def _materialize_display(self, src_path: Path, display_path: Path) -> None:
+        """Write a browser-safe JPEG of the UNCROPPED source — the detail Original view + the
+        editor crop source. Decoded INDEPENDENTLY of the render pipeline's source cap so
+        _DISPLAY_MAX_PX holds the same across fork/upstream. Only called for the formats a browser
+        can't decode / can't safely open raw (DISPLAY_REENCODE_EXTENSIONS)."""
+        display_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = display_path.with_name(display_path.name + ".tmp")
+        if src_path.suffix.lower() == ".svg":
+            # resvg → RGB, transparency composited on white, bounded at screen resolution.
+            with open_image_for_render(src_path) as img:
+                img.thumbnail((_DISPLAY_MAX_PX, _DISPLAY_MAX_PX), Image.Resampling.LANCZOS)
+                img.save(tmp, format="JPEG", quality=_DISPLAY_QUALITY)
+        else:
+            with Image.open(src_path) as img:
+                w0, h0 = img.size
+                if w0 * h0 > MAX_IMAGE_PIXELS:
+                    raise ValueError(f"image {src_path.name} too large to decode ({w0}x{h0})")
+                # draft toward the DISPLAY target (JPEG-only; a no-op for tiff/heic/jxl) — NOT the
+                # render source cap, so 2560 stays 2560 regardless of MAX_SOURCE_LONG.
+                try:
+                    img.draft("RGB", (_DISPLAY_MAX_PX, _DISPLAY_MAX_PX))
+                except (AttributeError, OSError):
+                    pass
+                img = ImageOps.exif_transpose(img)
+                # Flatten alpha onto WHITE *before* convert (a bare convert("RGB") composites on black).
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    img = img.convert("RGBA")
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    bg.paste(img, mask=img.split()[-1])
+                    img = bg
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+                img.thumbnail((_DISPLAY_MAX_PX, _DISPLAY_MAX_PX), Image.Resampling.LANCZOS)
+                img.save(tmp, format="JPEG", quality=_DISPLAY_QUALITY)
+        tmp.replace(display_path)   # atomic — no torn reads on the lazy path

@@ -6,7 +6,7 @@
 // (deferred), and the per-frame "Send to <frame>" list calls the M1 endpoint.
 
 import { state, subscribe, mutate } from "./state.js";
-import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, ditheredUrlMono, originalUrl } from "./api.js";
+import { deleteImage, retryImage, showNext, screenShowNext, ditheredUrl, ditheredUrlMono, originalUrl, displayUrl, thumbnailUrl } from "./api.js";
 import { $, $$, esc, toast, fmtBytes, fmtAgo, fmtUntil, frameColor } from "./ui.js";
 import { openEditor } from "./editor.js";
 import { openFramePreview } from "./frames.js";
@@ -140,12 +140,16 @@ const ctxEl = $("#ctx");
 const ctxSheet = $("#ctx-sheet");
 function openSheet(entry) {
   closeMenu();
+  const chip = entry.status === "pending" ? '<span class="mark c">Converting…</span>'
+             : entry.status !== "ok"      ? '<span class="mark f">Couldn’t convert</span>' : "";
   ctxSheet.innerHTML =
-    `<div class="ctx-preview"><img alt="${esc(entry.name)}"></div>` +
+    `<div class="ctx-preview"><img alt="${esc(entry.name)}">${chip}</div>` +
     `<div class="ctx-menu">${menuItemsHTML(entry, false)}</div>`;
   const pv = ctxSheet.querySelector("img");
   pv.addEventListener("error", () => { pv.style.visibility = "hidden"; });
-  pv.src = entry.status === "ok" ? framePreviewUrl(entry) : originalUrl(entry);
+  // ok → the frame render; not-yet-converted → the ALWAYS-SAFE server thumbnail (a JPEG that
+  // decodes for every uploaded format), NEVER the raw original (a TIFF/HEIC won't paint here).
+  pv.src = entry.status === "ok" ? framePreviewUrl(entry) : thumbnailUrl(entry);
   ctxEl._name = entry.name;
   ctxEl.hidden = false;
 }
@@ -255,6 +259,18 @@ function detailHTML(entry) {
   const toggle = ok
     ? '<div class="dtoggle"><button data-view="spectra">Spectra 6</button>' + monoTab + '<button data-view="orig">Original</button></div>'
     : "";
+  // Non-ok photos have no e-ink render and no guaranteed browser-safe original yet → the media
+  // shows the always-safe thumbnail plus this status chip (there is no view toggle for them).
+  const chip = ok ? ""
+    : entry.status === "pending" ? '<span class="mark c">Converting…</span>'
+    : '<span class="mark f">Couldn’t convert</span>';
+  // Download original — the RAW bytes as uploaded (/original, not /display). Detail-only, first in
+  // the action row. A native <a download>; the click handler lets the browser handle it.
+  const downloadHTML =
+    `<a class="ctx-item" href="${originalUrl(entry)}" download="${esc(entry.name)}">` +
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+      '<span>Download original</span>' +
+    '</a>';
   const facePill = faces.length ? '<button class="face-pill" data-faces title="Show detected face boxes" hidden>Faces</button>' : "";
   const faceLayer = faces.length
     ? '<div class="face-layer" aria-hidden="true">' + faces.map((b) =>
@@ -263,7 +279,7 @@ function detailHTML(entry) {
 
   return (
     '<div class="detail-media">' +
-      toggle + facePill +
+      toggle + facePill + chip +
       '<div class="dstage">' +
         '<img id="detail-img" alt="' + esc(entry.name) + '" title="Open full size in a new tab">' +
         faceLayer +
@@ -293,7 +309,7 @@ function detailHTML(entry) {
           `<span class="k">Faces</span><span class="v">${faces.length ? faces.length + " detected" : "None"}</span>` +
         '</div></div>' +
       '</div>' +
-      '<div class="ctx-menu detail-actions">' + menuItemsHTML(entry, true) + '</div>' +
+      '<div class="ctx-menu detail-actions">' + downloadHTML + menuItemsHTML(entry, true) + '</div>' +
     '</div>'
   );
 }
@@ -305,7 +321,8 @@ const detailEl = $("#detail");
 // framePreviewUrl here made the Spectra 6 tab show the MONO render for a photo on a mono
 // frame — the tab is labelled Spectra 6, so it must be colour.)
 function detailViewUrl(entry, view) {
-  if (view === "orig") return originalUrl(entry);
+  if (view === "orig") return displayUrl(entry);   // browser-safe rendition (NOT raw /original)
+  if (view === "thumb") return thumbnailUrl(entry); // non-ok photos: the only always-decodable image
   if (view === "mono") return monoPreviewUrl(entry);
   return ditheredUrl(entry);   // spectra: always the colour render
 }
@@ -342,7 +359,10 @@ function openDetail(name) {
   // Default the preview to the render type of the frame this photo is CURRENTLY on: a photo on
   // an E1003 mono frame opens on the Mono 16 tab, otherwise Spectra 6 (colour). Pending photos
   // have no e-ink render yet → Original. (A photo is only ever on one frame at a time.)
-  const defaultView = entry.status !== "ok" ? "orig" : (onMonoFrame(entry.name) ? "mono" : "spectra");
+  // ok → the current frame's render (mono/spectra); non-ok has no e-ink render and no guaranteed
+  // browser-safe original yet → the thumbnail (the status chip in the media conveys why). Non-ok
+  // has no view toggle, so "orig"/"spectra" tabs can't be reached — no 404 broken square.
+  const defaultView = entry.status !== "ok" ? "thumb" : (onMonoFrame(entry.name) ? "mono" : "spectra");
   setDetailView(defaultView);
   detailEl.hidden = false;
 }
@@ -378,6 +398,9 @@ detailEl.addEventListener("click", (e) => {
     return;
   }
   const btn = e.target.closest(".ctx-item"); if (!btn) return;
+  // "Download original" is a native <a download> — let the browser save the file; it's not a
+  // runAction and must not close the lightbox out from under the download.
+  if (btn.hasAttribute("download")) return;
   const entry = entryByName(detailEl._name); if (!entry) { closeDetail(); return; }
   if (runAction(btn, entry) === true) closeDetail();
 });

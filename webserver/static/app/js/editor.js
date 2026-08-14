@@ -11,7 +11,7 @@
 // A photo uploaded via "Upload & edit" opens as an inert DRAFT that is DELETEd on cancel.
 
 import { state, mutate } from "./state.js";
-import { getSuggestedConfig, editorPreview, monoPreview, editImage, uploadDraft, deleteImage, originalUrl } from "./api.js";
+import { getSuggestedConfig, editorPreview, monoPreview, editImage, uploadDraft, deleteImage, displayUrl } from "./api.js";
 import { $, $$, esc, toast, isMobileVp } from "./ui.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -993,7 +993,14 @@ function loadSource(name) {
       resolve(c);
     };
     img.onerror = () => reject(new Error("could not load image"));
-    img.src = originalUrl({ name });
+    // The crop source is the browser-SAFE rendition (/display): raw passthrough for web rasters,
+    // a server re-encode for tiff/heic/heif/jxl/svg the browser can't decode (this is the bug the
+    // web-safe-originals fix closes — the editor used to feed the raw file and error out). Both
+    // /display and the server's render pipeline are EXIF-transposed, so the normalized crop maps
+    // 1:1. Bust on the live entry's src_token (a re-upload over this name gets a fresh source);
+    // a fresh draft not yet in the store falls back to ?v=0, which is correct — nothing to stale.
+    const entry = (state.status?.upload_files || []).find((e) => e.name === name) || { name };
+    img.src = displayUrl(entry);
   });
 }
 
