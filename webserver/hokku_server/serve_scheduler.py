@@ -429,16 +429,23 @@ class ServeScheduler:
             self._save()
 
     def skip_next(self, screen_name: str) -> str | None:
-        """HARD-skip this screen's current 'up next', PER FRAME: send that photo to the back of
-        THIS frame's line (a full cycle away) and re-pick a fresh up-next for this screen only.
+        """Skip this screen's current 'up next' — pass on it THIS round, then put it straight
+        back in the pool. Re-picks a fresh up-next for this screen only.
 
-        Per-frame, not global: the skip is tracked in a per-screen 'penalty box', NOT by the shared
-        show count, so the same photo can still be 'up next' on a different frame. The boxed photo
-        is excluded from this screen's up-next until the screen has served a full cycle's worth of
-        other photos (``cooldown`` = eligible pool − 1), then it returns naturally. Other frames'
-        committed picks are untouched (passive recommit). Returns the new committed image — or the
-        same one when the screen has no other eligible photo. A skipped pin is cleared. Not a real
-        display: rotation stats (total_show_count/minutes) are untouched, so global fairness is
+        The skipped photo is excluded from just the next pick, so the skip visibly does
+        something, and is eligible again as soon as this frame has served the replacement.
+        It keeps its place in the rotation: skipping is "not this one, now", not a penalty.
+
+        (It used to be boxed for a FULL CYCLE — ``cooldown`` = eligible pool − 1. That scales
+        with the library, so at 184 eligible photos and two refreshes a day one skip removed a
+        photo from that frame for ~3 months, and got worse as the library grew. Nothing about
+        tapping Skip implies that.)
+
+        Per-frame, not global: tracked in a per-screen box, NOT the shared show count, so the
+        same photo can still be up next on a different frame. Other frames' committed picks are
+        untouched (passive recommit). Returns the new committed image — or the same one when the
+        screen has no other eligible photo. A skipped pin is cleared. Not a real display:
+        rotation stats (total_show_count/minutes) are untouched, so global fairness is
         undisturbed. For a permanent removal, Delete is the tool."""
         with self._lock:
             ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
@@ -463,8 +470,9 @@ class ServeScheduler:
 
             # Only skip when there's genuinely something else to move to.
             if current is not None and current in eligible and n_elig > 1:
-                # Box it for ~a full cycle of THIS screen's serves, then it returns on its own.
-                cooldown = n_elig - 1
+                # Hold it out of the NEXT pick only — enough to guarantee the skip changes what
+                # you see — then it is back in the pool with its place in the rotation intact.
+                cooldown = 1
                 box = self._skip_until.setdefault(screen_name, {})
                 box[current] = self._serve_count.get(screen_name, 0) + cooldown
                 if self._next_for_screen.get(screen_name) == current:

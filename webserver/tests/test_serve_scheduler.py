@@ -500,28 +500,50 @@ def test_skip_next_is_per_frame_not_global(app_config, make_test_image):
     assert sched.stats_for(c1).show_index == idx_before, "skip must NOT bump the global show count"
 
 
-def test_skip_next_photo_returns_after_cooldown(app_config, make_test_image):
-    """A skipped photo is excluded from THAT frame's up-next during its cooldown (~a full cycle),
-    then becomes eligible again on its own."""
+def test_skip_next_passes_this_round_then_returns_to_the_pool(app_config, make_test_image):
+    """Skip means "not this one, now" — the photo sits out ONE pick, then it is back.
+
+    It used to be boxed for a full cycle (eligible − 1), which scales with the library: at 184
+    eligible photos and two refreshes a day, one tap removed a photo from that frame for about
+    three months. Skipping keeps the photo's place in the rotation.
+    """
     _, sched = _setup(app_config, make_test_image, ["a.png", "b.png", "c.png"])
+    _register(sched, "frame-1")
+    sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    skipped = sched.committed_next_for_screen("frame-1")
+    replacement = sched.skip_next("frame-1")
+    assert replacement != skipped, "the skip must actually change what's up next"
+
+    # it sits out exactly this one pick...
+    n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    assert n != skipped
+    sched.mark_served(n, screen_name="frame-1")
+
+    # ...and is eligible again immediately after, with no cycle to wait out
+    seen = set()
+    for _ in range(6):
+        n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+        seen.add(n)
+        sched.mark_served(n, screen_name="frame-1")
+    assert skipped in seen, "a skipped photo must return to the pool, not be parked"
+
+
+def test_skip_cooldown_does_not_scale_with_library_size(app_config, make_test_image):
+    """The cost of a skip is fixed, so it can't grow into a months-long exile as photos are
+    added — the bug that made one tap hide a photo for a quarter of a year."""
+    _, sched = _setup(app_config, make_test_image, [f"p{i:02d}.png" for i in range(12)])
     _register(sched, "frame-1")
     sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
     skipped = sched.committed_next_for_screen("frame-1")
     sched.skip_next("frame-1")
 
-    for _ in range(2):   # cooldown = eligible(3) - 1 = 2 serves
-        n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
-        assert n != skipped, "skipped photo must not be up-next during its cooldown"
-        sched.mark_served(n, screen_name="frame-1")
-
-    returned = False
-    for _ in range(4):
-        n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
-        if n == skipped:
-            returned = True
-            break
-        sched.mark_served(n, screen_name="frame-1")
-    assert returned, "skipped photo should return to the frame's rotation after its cooldown"
+    # one serve is all it takes to clear the box, whatever the pool size
+    n = sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
+    sched.mark_served(n, screen_name="frame-1")
+    assert not sched._active_skips_for("frame-1"), (
+        "the box should be empty after a single serve regardless of library size"
+    )
+    assert skipped not in sched._active_skips_for("frame-1")
 
 
 def test_skip_next_single_image_pool_is_noop(app_config, make_test_image):
