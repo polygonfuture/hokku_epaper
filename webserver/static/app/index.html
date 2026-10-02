@@ -79,6 +79,16 @@
     </div>
   </div>
 </div>
+<script>
+  // On desktop the frames panel starts OPEN; on a phone it stays closed (it would eat most of
+  // a small screen before you reach a photo). Inline and immediately after the element, not in
+  // main.js: modules are deferred, so adding .open later would play the drawer's 0.3s
+  // max-height slide on every single page load. Applied before first paint, it just is open.
+  // The toggle still owns it from here — clicking Frames closes it as normal.
+  if (!window.matchMedia("(max-width: 700px)").matches) {
+    document.getElementById("frames-panel").classList.add("open");
+  }
+</script>
 
 <main>
   <div class="head">
