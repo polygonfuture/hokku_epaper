@@ -838,13 +838,22 @@ def create_app(
 
     @app.route("/hokku/api/screens/<string:name>/skip", methods=["POST"])
     def api_screen_skip(name: str):
-        """HARD-skip this frame's current 'up next': send it to the back of THIS frame's line
-        and re-pick a fresh up-next for this frame only (per-frame — other frames unaffected).
-        Returns the new up-next image. Takes effect on the frame's next wake."""
+        """Skip this frame's current 'up next' and deal the next photo from its skip deck
+        (ServeScheduler.skip_next). Only this frame changes, and only until its next wake.
+
+        Optional body ``{"seen": [names]}``: the photos the open frame-preview modal has
+        already shown, so a skipping session never repeats a photo until the deck is used
+        up. ``walk_reset`` in the reply means it was and has been reshuffled; the client
+        starts its list over."""
         if name not in state.scheduler.screens():
             return jsonify({"error": f"screen {name!r} not known"}), 404
-        new_next = state.scheduler.skip_next(name)
-        return jsonify({"ok": True, "screen": name, "next_image": new_next})
+        body = request.get_json(silent=True) or {}
+        seen = body.get("seen") if isinstance(body, dict) else None
+        seen = [s for s in seen if isinstance(s, str)][:5000] if isinstance(seen, list) else None
+        new_next, walk_reset = state.scheduler.skip_next(name, seen)
+        return jsonify(
+            {"ok": True, "screen": name, "next_image": new_next, "walk_reset": walk_reset}
+        )
 
     @app.route("/hokku/api/scrub", methods=["POST"])
     def api_scrub():

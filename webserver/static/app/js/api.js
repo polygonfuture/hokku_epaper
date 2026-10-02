@@ -47,9 +47,11 @@ export const screenShowNext = (screen, image) =>
   req(`/screens/${encodeURIComponent(screen)}/show_next`, json("POST", { image }));
 export const clearScreenShowNext = (screen) =>
   req(`/screens/${encodeURIComponent(screen)}/show_next`, { method: "DELETE" });
-// per-frame HARD skip of the current "up next" — rerolls this frame only, returns {next_image}
-export const skipScreenNext = (screen) =>
-  req(`/screens/${encodeURIComponent(screen)}/skip`, { method: "POST" });
+// skip this frame's "up next" — deals the next photo for this frame only, returns
+// {next_image, walk_reset}. seen = photos the frame-preview modal has already shown this
+// session (the drawer's Skip sends none)
+export const skipScreenNext = (screen, seen) =>
+  req(`/screens/${encodeURIComponent(screen)}/skip`, seen ? json("POST", { seen }) : { method: "POST" });
 
 // ── image URLs (cache-busted) ──
 // /thumbnail and /dithered send no cache validators and are name-keyed, so the key must

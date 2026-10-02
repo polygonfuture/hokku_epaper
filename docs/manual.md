@@ -267,6 +267,8 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 **Seeing a photo as the frame shows it** — tap a card's thumbnail to open a preview of that frame: the photo drawn inside the frame's own shape, rendered exactly as the panel renders it — cropped or letterboxed the same way, and in black and white for a mono frame. Switch between **Now** and **Up next**, reroll a queued photo with **Skip up next**, or jump to the photo in your library. It's read-only; nothing you do here changes the framing.
 
+**Skip up next** works through the frame's photos like a shuffled deck. First come the photos the frame would pick next anyway (usually ones it has never shown), in random order. Then come the rest, roughly the longest-unseen first. While the preview is open, no photo comes up twice until every photo that suits the frame has. After that it starts over, and a note says so. A skip only changes what that frame shows next: the photo you skipped keeps its place in the rotation and can come back after the frame's next refresh, and nothing about the other frame changes.
+
 The same preview opens from anywhere a photo and a frame meet: the frame badge on a gallery thumbnail, the **On display** and **Up next** rows in a photo's details, and **Preview frame** in a card's ⋯ menu.
 
 Under the preview, a line names the photo, the panel type, and how the photo fits: **Exact fit** when it fills the frame with nothing lost, **Zoomed 71%** when it was scaled in to remove the bars (the edges are cropped), or **Needs 113%** when it's letterboxed — that number being the Zoom to fill value that would make it fill. A small outline before that label is the photo's own shape, shown only when it differs from the frame's.

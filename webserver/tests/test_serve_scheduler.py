@@ -522,7 +522,7 @@ def test_skip_next_is_per_frame_not_global(app_config, make_test_image):
     assert c1 and c2 and c1 != c2
     idx_before = sched.stats_for(c1).show_index
 
-    new1 = sched.skip_next("frame-1")
+    new1, _ = sched.skip_next("frame-1")
     assert new1 is not None and new1 != c1, "frame-1's up-next must change"
     assert sched.committed_next_for_screen("frame-2") == c2, "frame-2 must be untouched (per-frame)"
     assert sched.stats_for(c1).show_index == idx_before, "skip must NOT bump the global show count"
@@ -539,7 +539,7 @@ def test_skip_next_passes_this_round_then_returns_to_the_pool(app_config, make_t
     _register(sched, "frame-1")
     sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
     skipped = sched.committed_next_for_screen("frame-1")
-    replacement = sched.skip_next("frame-1")
+    replacement, _ = sched.skip_next("frame-1")
     assert replacement != skipped, "the skip must actually change what's up next"
 
     # it sits out exactly this one pick...
@@ -579,7 +579,7 @@ def test_skip_next_single_image_pool_is_noop(app_config, make_test_image):
     _, sched = _setup(app_config, make_test_image, ["only.png"])
     _register(sched, "frame-1")
     sched.pick_next(Orientation.NEUTRAL, screen_name="frame-1")
-    assert sched.skip_next("frame-1") == "only.png"
+    assert sched.skip_next("frame-1") == ("only.png", False)
 
 
 def test_skip_survives_reload(app_config, make_test_image):
@@ -591,6 +591,169 @@ def test_skip_survives_reload(app_config, make_test_image):
     sched.skip_next("frame-1")
     reloaded = ServeScheduler(mgr)
     assert skipped in reloaded._active_skips_for("frame-1"), "skip must survive reload"
+
+
+# ── Skip as a shuffled deck (Plans/SKIP_UP_NEXT_PLAN.md) ──────────────────────────────
+
+
+def _walk(sched, screen, skips, seen=None):
+    """Drive Skip the way the frame-preview modal does: send everything it has shown, add each
+    new up next, start over on a reshuffle. Returns [(dealt, walk_reset), ...]."""
+    seen = set() if seen is None else seen
+    out = []
+    for _ in range(skips):
+        seen.add(sched.committed_next_for_screen(screen))
+        dealt, reset = sched.skip_next(screen, seen)
+        if reset:
+            seen.clear()
+        out.append((dealt, reset))
+    return out
+
+
+def test_skip_walk_deals_every_photo_once_then_reshuffles(app_config, make_test_image):
+    """Skipping never repeats a photo until every eligible one has come up; the skip after
+    that reshuffles. (One session on 2026-09-23 re-offered photos a few skips apart.)"""
+    names = [f"p{i}.png" for i in range(6)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=3)
+    _register(sched, "frame-1")
+    first = sched.committed_next_for_screen("frame-1")
+    walk = _walk(sched, "frame-1", 6)
+
+    dealt = [d for d, _ in walk[:5]]
+    assert [r for _, r in walk[:5]] == [False] * 5
+    assert len(set(dealt)) == 5 and {first, *dealt} == set(names), (
+        "the first five skips must deal every other photo exactly once"
+    )
+    assert walk[5][1] is True, "nothing new is left, so the sixth skip reshuffles"
+    assert walk[5][0] != dealt[-1], "a reshuffle still never re-deals the photo just skipped"
+
+
+def test_skip_walk_deals_never_shown_photos_first(app_config, make_test_image):
+    """The deck starts with the photos the rotation would pick anyway."""
+    names = [f"p{i}.png" for i in range(6)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=5)
+    for n in names[:3]:
+        sched.mark_served(n)                       # p0–p2 shown once; p3–p5 never shown
+    _register(sched, "frame-1")
+
+    order = [sched.committed_next_for_screen("frame-1")]
+    order += [d for d, _ in _walk(sched, "frame-1", 5)]
+    assert set(order[:3]) == set(names[3:]), "every never-shown photo comes before a shown one"
+    assert set(order[3:]) == set(names[:3])
+
+
+def test_skip_walk_past_the_fresh_photos_goes_longest_unseen_first(app_config, make_test_image):
+    """Once the never-shown photos are used up, each skip deals one of the 10 photos that have
+    been off the wall longest, not a uniform draw. (That draw put photos shown two days earlier
+    in front of the user on 2026-10-02.) Random within the window, so not a fixed playlist."""
+    names = ["new.png"] + [f"old{i:02d}.png" for i in range(14)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=11)
+    for i, n in enumerate(names[1:]):
+        sched._stats[n] = replace(
+            sched._stats[n], show_index=1, total_show_count=1, last_served_at=1000.0 + i
+        )
+    _register(sched, "frame-1")
+    assert sched.committed_next_for_screen("frame-1") == "new.png"
+
+    def last_shown(n):
+        return sched.stats_for(n).last_served_at
+
+    remaining = sorted(names[1:], key=last_shown)
+    order, seen = [], set()
+    for _ in range(13):
+        seen.add(sched.committed_next_for_screen("frame-1"))
+        dealt, reset = sched.skip_next("frame-1", seen)
+        assert not reset
+        assert remaining.index(dealt) < 10, f"{dealt} is not among the 10 longest-unseen"
+        remaining.remove(dealt)
+        order.append(dealt)
+    assert order != sorted(order, key=last_shown), "shuffled within the window, not a playlist"
+
+
+def test_skip_walk_survives_a_refresh_mid_session(app_config, make_test_image):
+    """A frame refresh empties its skip box, but the modal's seen list still keeps every photo
+    it has shown out of the deck, which is the exception agreed in D3."""
+    names = [f"p{i}.png" for i in range(8)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=7)
+    _register(sched, "frame-1")
+    seen: set[str] = set()
+    for _ in range(3):
+        seen.add(sched.committed_next_for_screen("frame-1"))
+        sched.skip_next("frame-1", seen)
+
+    served = sched.committed_next_for_screen("frame-1")
+    _served(sched, "frame-1", served)              # the frame wakes mid-session
+    assert not sched._active_skips_for("frame-1"), "the refresh empties the skip box"
+    seen |= {served, sched.committed_next_for_screen("frame-1")}   # the modal re-renders
+
+    while True:
+        dealt, reset = sched.skip_next("frame-1", seen)
+        if reset:
+            break
+        assert dealt not in seen, f"{dealt} was already shown in this session"
+        seen.add(dealt)
+    assert seen == set(names), "the walk only reshuffles once every photo has come up"
+
+
+def test_skip_walk_leaves_rotation_stats_untouched(app_config, make_test_image):
+    """Skip decides what's offered, nothing else: no show counts, dates or minutes move."""
+    names = [f"p{i}.png" for i in range(5)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=2)
+    sched.mark_served("p0.png")
+    sched.mark_served("p1.png")
+    _register(sched, "frame-1")
+    before = sched.stats()
+    _walk(sched, "frame-1", 8)                    # runs through a reshuffle
+    assert sched.stats() == before
+
+
+def test_skip_walk_never_deals_another_frames_photos(app_config, make_test_image):
+    """The no-duplicate rule holds for Skip too, and the other frame's up next never moves."""
+    names = [f"p{i}.png" for i in range(8)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=9)
+    _register(sched, "frame-1")
+    _register(sched, "frame-2")
+    _served(sched, "frame-2", sched.pick_next(Orientation.NEUTRAL, screen_name="frame-2"))
+    wall2 = sched.screens()["frame-2"].last_served
+    next2 = sched.committed_next_for_screen("frame-2")
+
+    for dealt, _ in _walk(sched, "frame-1", 14):  # runs through a reshuffle
+        assert dealt not in (wall2, next2)
+        assert sched.committed_next_for_screen("frame-2") == next2, "frame-2 must not move"
+
+
+def test_skip_clears_an_off_orientation_pin_and_deals_only_matching_photos(
+    app_config, make_test_image
+):
+    """A pin bypasses the frame's orientation filter, and skipping one that didn't match used
+    to leave it pinned. Skip now always clears the pin, and deals only photos the frame takes."""
+    _, sched = _setup_with_sizes(app_config, make_test_image, [
+        ("l1.png", (40, 30)), ("l2.png", (40, 30)),
+        ("p1.png", (30, 40)), ("p2.png", (30, 40)), ("p3.png", (30, 40)),
+        ("s1.png", (40, 40)),
+    ])
+    _register(sched, "frame-1")
+    sched.set_screen_config(
+        "frame-1", ScreenConfig(orientation=Orientation.PORTRAIT, filter_by_orientation=True)
+    )
+    sched.set_next_for_screen("frame-1", "l1.png")
+    assert sched.committed_next_for_screen("frame-1") == "l1.png"
+
+    portrait_ok = {"p1.png", "p2.png", "p3.png", "s1.png"}
+    dealt, _ = sched.skip_next("frame-1")
+    assert sched.peek_next_for_screen("frame-1") is None, "the skipped pin must be cleared"
+    assert dealt in portrait_ok
+    for dealt, _ in _walk(sched, "frame-1", 8):
+        assert dealt in portrait_ok
+
+
+def test_skip_ignores_unknown_and_non_string_names_in_seen(app_config, make_test_image):
+    names = [f"p{i}.png" for i in range(4)]
+    _, sched = _setup_seeded(app_config, make_test_image, names, seed=4)
+    _register(sched, "frame-1")
+    current = sched.committed_next_for_screen("frame-1")
+    dealt, reset = sched.skip_next("frame-1", ["ghost.png", 42, None, current])
+    assert dealt in names and dealt != current and reset is False
 
 
 def test_committed_no_dup_wins_over_no_repeat_when_scarce(app_config: AppConfig, make_test_image):

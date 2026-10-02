@@ -14,6 +14,7 @@ import logging
 import random
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
@@ -36,6 +37,9 @@ logger = logging.getLogger(__name__)
 _DB_FILENAME = "serve_scheduler.json"
 # Dated snapshots, deduplicated by content — see Plans/CRASH_SAFE_STATE_PLAN.md
 _BACKUP_KEEP = 14
+# Once a skip walk is past the never-shown photos, each skip picks at random among this many
+# longest-unseen photos. That keeps it old-first without dealing the same sequence every time.
+_SKIP_OLDEST_WINDOW = 10
 
 
 @dataclass(frozen=True)
@@ -121,10 +125,10 @@ class ServeScheduler:
         # always. Recomputed for ALL screens on every advance / pin change / reconcile.
         # Persisted (frames sleep for hours). A pin (_next_for_screen) still wins over this.
         self._committed_next_for_screen: dict[str, str] = {}
-        # Per-frame HARD-skip "penalty box": screen -> {image -> release_serve_count}. A skipped
-        # image is excluded from THAT screen's up-next until the screen's serve count passes the
-        # release count (~a full cycle). Per-frame, NOT global — the same photo can still be up
-        # next on another frame. Persisted so a skip survives a restart while the frame sleeps.
+        # Per-frame skip box: screen -> {image -> release_serve_count}. A skipped image is
+        # excluded from THAT screen's up-next until the screen's next real serve. Per-frame, NOT
+        # global — the same photo can still be up next on another frame. Persisted so a skip
+        # survives a restart while the frame sleeps.
         self._skip_until: dict[str, dict[str, int]] = {}
         # Per-screen count of actual serves (advances the skip cooldown clock). Persisted.
         self._serve_count: dict[str, int] = {}
@@ -428,36 +432,46 @@ class ServeScheduler:
             self._recommit_all_screens_locked(ready)
             self._save()
 
-    def skip_next(self, screen_name: str) -> str | None:
-        """Skip this screen's current 'up next' — pass on it THIS round, then put it straight
-        back in the pool. Re-picks a fresh up-next for this screen only.
+    def skip_next(
+        self, screen_name: str, seen: Iterable[str] | None = None
+    ) -> tuple[str | None, bool]:
+        """Skip this screen's current 'up next' and deal the next photo from a shuffled deck.
+        Returns ``(new_up_next, walk_reset)``.
 
-        The skipped photo is excluded from just the next pick, so the skip visibly does
-        something, and is eligible again as soon as this frame has served the replacement.
-        It keeps its place in the rotation: skipping is "not this one, now", not a penalty.
+        The deck is the frame's eligible photos. Each skip deals one not dealt yet: first the
+        photos the rotation would pick anyway (the lowest show count) in random order, then
+        the rest longest-unseen first, picked at random among the ``_SKIP_OLDEST_WINDOW``
+        oldest so it never becomes a fixed playlist. Nothing repeats until every eligible photo
+        has come up; then the deck reshuffles and ``walk_reset`` is True.
 
-        (It used to be boxed for a FULL CYCLE — ``cooldown`` = eligible pool − 1. That scales
-        with the library, so at 184 eligible photos and two refreshes a day one skip removed a
-        photo from that frame for ~3 months, and got worse as the library grew. Nothing about
-        tapping Skip implies that.)
+        "Dealt" means the frame's skip box (photos skipped since its last real serve) plus
+        ``seen``, the photos the open frame-preview modal has shown, sent by the client. The
+        box empties when the frame refreshes but ``seen`` doesn't, so a refresh in the middle
+        of a skipping session can't bring photos back while the modal is open.
 
-        Per-frame, not global: tracked in a per-screen box, NOT the shared show count, so the
-        same photo can still be up next on a different frame. Other frames' committed picks are
-        untouched (passive recommit). Returns the new committed image — or the same one when the
-        screen has no other eligible photo. A skipped pin is cleared. Not a real display:
-        rotation stats (total_show_count/minutes) are untouched, so global fairness is
-        undisturbed. For a permanent removal, Delete is the tool."""
+        (Skips used to re-run the rotation's own pick. Once the lowest tier ran out, that was
+        a uniform draw from photos shown once, and half of those had been on the wall within
+        the past month. The rotation still makes the frame's next pick after it serves; this
+        only decides what Skip offers.)
+
+        Changes only THIS frame's up next: show counts and dates are untouched, another
+        frame's wall photo or up next is never dealt, and other frames keep their picks. A
+        skipped pin is cleared. For a permanent removal, Delete is the tool."""
+        exclude = {s for s in (seen or ()) if isinstance(s, str)}
         with self._lock:
             ready = [r for r in self._manager.list() if r.convert_status == ConvertStatus.OK]
             ready_names = {r.name for r in ready}
             self._reconcile(ready_names)
             if not ready:
-                return None
+                return None, False
 
             # The current up-next is the pin (if still ready) else the committed rotation pick.
-            current = self._next_for_screen.get(screen_name)
-            if current not in ready_names:
-                current = self._committed_next_for_screen.get(screen_name)
+            pin = self._next_for_screen.get(screen_name)
+            current = pin if pin in ready_names else self._committed_next_for_screen.get(screen_name)
+            if pin is not None and pin == current:
+                # Cleared whether or not it suits the frame: a pin bypasses the orientation
+                # filter, and skipping a mismatched one used to leave it in place.
+                del self._next_for_screen[screen_name]
 
             # This screen's eligible pool (its orientation filter).
             cfg = self.get_screen_config(screen_name)
@@ -466,24 +480,67 @@ class ServeScheduler:
                 eligible = [r.name for r in ready]
             else:
                 eligible = [r.name for r in ready if r.matches_orientation_filter(orient)]
-            n_elig = len(set(eligible))
 
-            # Only skip when there's genuinely something else to move to.
-            if current is not None and current in eligible and n_elig > 1:
-                # Hold it out of the NEXT pick only — enough to guarantee the skip changes what
-                # you see — then it is back in the pool with its place in the rotation intact.
-                cooldown = 1
+            pick, walk_reset = self._deal_skip_locked(screen_name, eligible, current, exclude)
+            if pick is None:
+                walk_reset = False        # nothing else to move to: the up next stays as it is
+            else:
                 box = self._skip_until.setdefault(screen_name, {})
-                box[current] = self._serve_count.get(screen_name, 0) + cooldown
-                if self._next_for_screen.get(screen_name) == current:
-                    del self._next_for_screen[screen_name]     # a skipped pin is cleared
-                self._committed_next_for_screen.pop(screen_name, None)   # force a fresh pick
-
-            # Re-pick this screen (others preserved — passive, minimal-disturbance recommit).
+                if walk_reset:
+                    box.clear()           # a fresh deck: everything boxed this walk is back in
+                if current in eligible:
+                    # Out until the frame's next real serve (cooldown 1), then back in the
+                    # pool with its place in the rotation intact.
+                    box[current] = self._serve_count.get(screen_name, 0) + 1
+                if not box:
+                    self._skip_until.pop(screen_name, None)
+                self._committed_next_for_screen[screen_name] = pick
+            # Passive recommit: Pass 2 keeps this pick and every other frame's.
             self._precompute_all_locked(ready)
             self._recommit_all_screens_locked(ready, include_screen=screen_name)
             self._save()
-            return self._committed_next_for_screen.get(screen_name)
+            return self._committed_next_for_screen.get(screen_name), walk_reset
+
+    def _deal_skip_locked(
+        self, screen_name: str, eligible: list[str], current: str | None, exclude: set[str]
+    ) -> tuple[str | None, bool]:
+        """The next card from the skip deck (see skip_next). Returns ``(pick, walk_reset)``;
+        the pick is None only when the frame has no other photo at all. Must hold self._lock."""
+        displaying = {s: e.last_served for s, e in self._screens.items() if e.last_served}
+        own = displaying.get(screen_name)
+        # Hard rules, same as the rotation's: never another frame's wall photo or up next.
+        taken = {img for s, img in displaying.items() if s != screen_name}
+        taken |= {img for s, img in self._committed_next_for_screen.items() if s != screen_name}
+        taken |= {img for s, img in self._next_for_screen.items() if s != screen_name}
+        pool = [n for n in dict.fromkeys(eligible) if n not in taken and n != current]
+        dealt = self._active_skips_for(screen_name) | exclude
+
+        def avoiding_own(names: list[str]) -> list[str]:
+            # The frame's own wall photo only as a last resort, as in the rotation.
+            return [n for n in names if n != own] or names
+
+        cands = avoiding_own([n for n in pool if n not in dealt])
+        walk_reset = not cands
+        if walk_reset:
+            cands = avoiding_own(pool)
+        if not cands:
+            return None, walk_reset
+
+        def shown(n: str) -> int:
+            return self._stats[n].show_index if n in self._stats else 0
+
+        def last_shown(n: str) -> float:
+            s = self._stats.get(n)
+            return (s.last_served_at or 0.0) if s else 0.0
+
+        # First the tier the rotation itself is drawing from, in random order...
+        lowest = min(shown(n) for n in eligible)
+        fresh = [n for n in cands if shown(n) == lowest]
+        if fresh:
+            return self._rng.choice(fresh), walk_reset
+        # ...then longest-unseen first, shuffled within the oldest few.
+        oldest = sorted(cands, key=lambda n: (last_shown(n), self._rng.random()))
+        return self._rng.choice(oldest[:_SKIP_OLDEST_WINDOW]), walk_reset
 
     def _active_skips_for(self, screen_name: str) -> set[str]:
         """Images currently boxed (skipped) for a screen — those whose cooldown hasn't elapsed

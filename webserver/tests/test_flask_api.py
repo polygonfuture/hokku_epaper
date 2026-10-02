@@ -895,6 +895,26 @@ def test_screen_skip_rerolls_up_next(synced_client):
     assert after == body["next_image"], "the drawer's up-next must match the skip's new pick"
 
 
+def test_screen_skip_with_seen_deals_around_it_then_reshuffles(synced_client):
+    """The preview sends what it has shown; the endpoint never re-deals one of those, and says
+    when the deck is used up and has been reshuffled."""
+    client, state, first = synced_client
+    for extra in ("second.png", "third.png", "fourth.png"):
+        _add_ready_image(state, extra)
+    _register_screen(client, "frame-a")              # serves a photo: frame-a has a wall photo
+    sc = client.get("/hokku/api/status").get_json()["screens"]["frame-a"]
+    seen = [sc["last_served"], sc["next"]]            # what the open modal has put in front of you
+
+    for _ in range(2):
+        body = client.post("/hokku/api/screens/frame-a/skip", json={"seen": seen}).get_json()
+        assert body["walk_reset"] is False
+        assert body["next_image"] not in seen
+        seen.append(body["next_image"])
+    body = client.post("/hokku/api/screens/frame-a/skip", json={"seen": seen}).get_json()
+    assert body["walk_reset"] is True, "all four photos have come up, so the deck reshuffles"
+    assert body["next_image"] != seen[-1]
+
+
 def test_screen_skip_unknown_screen_returns_404(synced_client):
     client, _, _ = synced_client
     assert client.post("/hokku/api/screens/ghost/skip").status_code == 404

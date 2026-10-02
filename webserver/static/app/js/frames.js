@@ -299,6 +299,10 @@ const fpvMeta = $("#fpv-meta");
 const fpvSkip = $("#fpv-skip");
 const fpvLib = $("#fpv-lib");
 let pvFrame = null, pvKind = "now";   // which frame, and which slot (now|next) is shown
+// Skip deck memory for THIS modal session: every photo the preview has put in front of you
+// (wall + each up next). Sent with each Skip so nothing repeats until the deck is used up,
+// even if the frame refreshes mid-session and clears its server-side skip box.
+let walkSeen = null, skipping = false;
 
 // the image entry a given slot resolves to (upnext = the committed serve pick; now = last served)
 const fpvEntry = (sc, kind) => entryByName(kind === "next" ? nextForScreen(sc) : sc.last_served);
@@ -312,6 +316,11 @@ function fpvRender(sc, entry) {
 function renderFramePreview() {
   const sc = screens()[pvFrame];
   if (!sc) { closeFramePreview(); return; }   // frame removed while open → dismiss
+  if (walkSeen) {
+    if (sc.last_served) walkSeen.add(sc.last_served);
+    const up = nextForScreen(sc);
+    if (up) walkSeen.add(up);
+  }
   const color = frameColor(pvFrame);
   fpvCard.style.setProperty("--fc", color);
   fpvDot.style.background = color;
@@ -360,6 +369,7 @@ function renderFramePreview() {
 export function openFramePreview(name, kind) {
   if (!screens()[name]) return;
   pvFrame = name; pvKind = (kind === "next" ? "next" : "now");
+  walkSeen = new Set();      // a new session deals from a fresh deck
   fpvImg.dataset.src = "";   // force a fresh assignment for this open
   renderFramePreview();
   fpv.hidden = false;
@@ -369,7 +379,7 @@ export function openFramePreview(name, kind) {
   // Escape is handled document-wide.
   setTimeout(() => fpvCard.focus({ preventScroll: true }), 30);
 }
-function closeFramePreview() { if (!fpv.hidden) { fpv.hidden = true; pvFrame = null; } }
+function closeFramePreview() { if (!fpv.hidden) { fpv.hidden = true; pvFrame = null; walkSeen = null; } }
 
 fpvImg.addEventListener("error", () => {
   if (!fpvImg.dataset.src) return;   // ignore the src-cleared (empty-slot) case
@@ -382,11 +392,18 @@ fpv.querySelector(".fpv-toggle").addEventListener("click", (e) => {
   renderFramePreview();
 });
 fpvSkip.addEventListener("click", () => {
-  const n = pvFrame; if (!n) return;
+  // one skip in flight at a time: each deal has to know what the last one handed out
+  const n = pvFrame; if (!n || skipping) return;
   const label = screens()[n]?.display_name || n;
-  skipScreenNext(n)
-    .then((resp) => { mutate((st) => { if (st.screens[n]) st.screens[n].next = resp.next_image; }); toast(`Skipped — up next changed on ${label}`); })
-    .catch((err) => toast("Skip failed: " + err.message));
+  skipping = true;
+  skipScreenNext(n, [...(walkSeen || [])])
+    .then((resp) => {
+      if (resp.walk_reset && walkSeen) walkSeen.clear();   // every photo has come up: reshuffled
+      mutate((st) => { if (st.screens[n]) st.screens[n].next = resp.next_image; });
+      toast(resp.walk_reset ? `Every photo has come up — starting over on ${label}` : `Skipped — up next changed on ${label}`);
+    })
+    .catch((err) => toast("Skip failed: " + err.message))
+    .finally(() => { skipping = false; });
 });
 // "See photo in library": close the modal + frames drawer, then scroll to and flash the tile
 fpvLib.addEventListener("click", () => {
