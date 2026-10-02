@@ -587,10 +587,23 @@
   /* --fpv-vh: the SMALLEST height the visible viewport can be. Plain vh on iOS is the
      LARGEST (URL bar shown ≠ counted), which let the footer clip on short phones
      (iPhone SE) while tall phones looked fine; svh is the honest floor. */
-  .fpv-card { --fpv-vh: 100vh; position: relative; display: flex; flex-direction: column; width: min(440px, 100%); max-height: min(calc(var(--fpv-vh) - 20px), 780px); background: var(--bg-elev); border: 1px solid var(--hair); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.6); transition: width .3s ease; }
+  .fpv-card { --fpv-vh: 100vh; position: relative; display: flex; flex-direction: column; width: min(440px, 100%); max-height: calc(var(--fpv-vh) - 20px); background: var(--bg-elev); border: 1px solid var(--hair); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.6); transition: width .3s ease; }
   @supports (height: 1svh) { .fpv-card { --fpv-vh: 100svh; } }
-  .fpv-card.port { width: min(392px, 100%); }
-  .fpv-card.land { width: min(500px, 100%); }
+  /* the card takes focus on open (frames.js) so no button wears the keyboard ring */
+  .fpv-card:focus { outline: none; }
+  /* Preview size. It used to be a fixed 430×323 (landscape) / 300×400 (portrait) on every
+     desktop, so it shrank to a sixth of the window on a 4K screen. Now it starts --fpv-grow
+     bigger than that, and from there tracks a share of the window height on taller screens.
+     --fpv-grow: 1 with both shares 0 reproduces the old sizes exactly. Phones and short
+     windows are still bound by the vw / height-budget terms, so they are unchanged. */
+  .fpv-card {
+    --fpv-grow: 1.15; --fpv-share-land: .39; --fpv-share-port: .49;
+    --fpv-land-w: min(84vw, max(150px, calc((var(--fpv-vh) - 330px) * 1.3333)), max(calc(430px * var(--fpv-grow)), calc(var(--fpv-vh) * var(--fpv-share-land) * 1.3333)));
+    --fpv-port-w: min(70vw, max(150px, calc((var(--fpv-vh) - 330px) * .75)), max(calc(300px * var(--fpv-grow)), calc(var(--fpv-vh) * var(--fpv-share-port) * .75)));
+  }
+  /* the card keeps the margin it always had around the device: 70px landscape, 92px portrait */
+  .fpv-card.port { width: min(max(392px, calc(var(--fpv-port-w) + 92px)), 100%); }
+  .fpv-card.land { width: min(max(500px, calc(var(--fpv-land-w) + 70px)), 100%); }
   .fpv-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 0; }
   .fpv-id { flex: 1; min-width: 0; }
   .fpv-eyebrow { margin: 0 0 5px; font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
@@ -609,8 +622,8 @@
   /* screen width is ALSO capped by the height budget (card minus ~310px of chrome:
      header, toggle, meta, footer, paddings) so every control — especially the footer —
      stays visible on short screens; the 150px floor keeps the render recognisable */
-  .fpv-device.portrait .fpv-screen { width: min(70vw, 300px, max(150px, calc((var(--fpv-vh) - 330px) * .75))); aspect-ratio: 3 / 4; }
-  .fpv-device.landscape .fpv-screen { width: min(84vw, 430px, max(150px, calc((var(--fpv-vh) - 330px) * 1.3333))); aspect-ratio: 4 / 3; }
+  .fpv-device.portrait .fpv-screen { width: var(--fpv-port-w); aspect-ratio: 3 / 4; }
+  .fpv-device.landscape .fpv-screen { width: var(--fpv-land-w); aspect-ratio: 4 / 3; }
   .fpv-img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .fpv-img.broken { visibility: hidden; }
   .fpv-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; font-size: .8rem; color: var(--faint); }

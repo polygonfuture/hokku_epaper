@@ -363,8 +363,11 @@ export function openFramePreview(name, kind) {
   fpvImg.dataset.src = "";   // force a fresh assignment for this open
   renderFramePreview();
   fpv.hidden = false;
-  const focusEl = !fpvSkip.hidden ? fpvSkip : (!fpvLib.hidden ? fpvLib : fpv.querySelector("[data-fpv-close]"));
-  setTimeout(() => focusEl && focusEl.focus(), 30);
+  // Focus the card, not a button. Chrome treats a scripted focus() as keyboard focus even
+  // when a mouse click opened the modal, so focusing Skip / See in library lit it with the
+  // keyboard focus ring on every open. On the card, Tab still starts inside the modal and
+  // Escape is handled document-wide.
+  setTimeout(() => fpvCard.focus({ preventScroll: true }), 30);
 }
 function closeFramePreview() { if (!fpv.hidden) { fpv.hidden = true; pvFrame = null; } }
 
