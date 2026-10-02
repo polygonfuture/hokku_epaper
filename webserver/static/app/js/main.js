@@ -4,7 +4,7 @@
 import { clearCache } from "./api.js";
 import { state, subscribe, refreshStatus, refreshConfig, startPolling, mutate } from "./state.js";
 import { $, $$, esc, toast, fmtBytes, fmtAgo, fmtClock, frameColor, isMobileVp, armConfirm } from "./ui.js";
-import "./gallery.js";   // self-registers: filter tabs, slider/pinch, and the status→grid render
+import { galleryCounts } from "./gallery.js";   // self-registers: filter tabs, slider/pinch, status→grid render
 import "./photo.js";     // self-registers: tile gestures, detail lightbox, action menus/sheet
 import "./header.js";    // self-registers: status tiles, uploads (XHR + drag-drop), failed modal
 import "./frames.js";    // self-registers: frame cards, ⋯ menu, diagnostics, orientation PATCH, remove
@@ -95,8 +95,18 @@ clearBtn.addEventListener("click", (e) => {
 function renderMeta(st) {
   const photos = st.upload_size ?? 0;
   const frames = Object.keys(st.screens || {}).length;
-  $("#meta").innerHTML = `<b>${photos}</b> photo${photos === 1 ? "" : "s"} · <b>${frames}</b> frame${frames === 1 ? "" : "s"}`;
+  // When the gallery is filtered, the count is the whole signal that something is hidden —
+  // and it lives here, in an element that is always present, so narrowing the set never
+  // shifts the page (no appearing/disappearing filter bar).
+  const { shown, total } = galleryCounts();
+  const filtered = total > 0 && shown < total;
+  const photoPart = filtered
+    ? `<b>${shown}</b> <span class="of">of ${total}</span> photo${shown === 1 ? "" : "s"}`
+    : `<b>${photos}</b> photo${photos === 1 ? "" : "s"}`;
+  $("#meta").innerHTML = `${photoPart} · <b>${frames}</b> frame${frames === 1 ? "" : "s"}`;
 }
+// the gallery's sort/kind/shape controls changed — refresh the count now, not in 5s
+document.addEventListener("gallery:find", () => { if (state.status) renderMeta(state.status); });
 
 function renderFdots(st) {
   $("#fdots").innerHTML = Object.keys(st.screens || {})

@@ -5,6 +5,19 @@
   .ftabs button { border: 0; background: transparent; color: var(--dim); cursor: pointer; font: inherit; font-size: .82rem; font-weight: 500; padding: 6px 14px; border-radius: 8px; transition: background .15s, color .15s; }
   .ftabs button.on { background: color-mix(in srgb, var(--text) 13%, transparent); color: var(--text); }
   .ftabs button:hover:not(.on) { color: var(--text); }
+  .ftabs[hidden] { display: none; }
+  /* The finding controls (size · Sort · Show · Shape). Their own gap, wider than .head's,
+     because they are four separate instruments rather than one cluster — .ftabs already
+     draws its own border/background, so adjacent ones read as separate without labels. */
+  .controls { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 14px 28px; }
+  .selwrap { display: inline-flex; align-items: center; gap: 8px; }
+  .selwrap[hidden] { display: none; }
+  .selwrap label { font-size: .72rem; color: var(--faint); letter-spacing: .02em; white-space: nowrap; }
+  .gsel { font: inherit; font-size: .82rem; color: var(--text); background: var(--bg-elev);
+          border: 1px solid var(--hair); border-radius: 11px; padding: 7px 10px; cursor: pointer; }
+  .gsel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* the filtered count rides inside .meta — always present, so narrowing shifts nothing */
+  .meta .of { color: var(--faint); font-weight: 400; }
 
   .size-ctrl { display: inline-flex; align-items: center; gap: 9px; color: var(--faint); }
   .size-ctrl[hidden] { display: none; }
@@ -1007,6 +1020,7 @@
 
     /* gallery head: tabs scroll instead of wrapping awkwardly */
     .head { gap: 10px 12px; }
+    .controls { gap: 10px 16px; }
     .ftabs { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     .ftabs::-webkit-scrollbar { display: none; }
     .ftabs button { padding: 6px 11px; white-space: nowrap; }

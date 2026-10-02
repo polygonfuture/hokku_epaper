@@ -9,7 +9,7 @@
 
 import { state, subscribe } from "./state.js";
 import { thumbnailUrl, ditheredUrl, ditheredUrlMono } from "./api.js";
-import { $, $$, esc, frameColor, isMobileVp } from "./ui.js";
+import { $, $$, esc, frameColor, isMobileVp, fmtAgo } from "./ui.js";
 
 const root = document.documentElement;
 const gallery = $("#gallery");
@@ -17,10 +17,62 @@ const sizeCtrl = $("#size-ctrl");
 const sizeSlider = $("#size-slider");
 
 // filter → layout. Every view uses the adjustable "immersive" height (slider / pinch).
-// Grouped additionally splits into Landscape/Portrait sections (see updateGallery),
-// but shares the same size control as the rest.
+// ("Grouped" — one Landscape section then one Portrait — was removed: on a large library you
+//  scroll forever to reach the second section, so it stopped being a way to find anything.)
 let filter = "mixed";
-const FILTER_LAYOUT = { mixed: "immersive", grouped: "immersive", landscape: "immersive", portrait: "immersive" };
+const FILTER_LAYOUT = { mixed: "immersive", landscape: "immersive", portrait: "immersive" };
+
+// ── finding: sort + kind ──────────────────────────────────────────────────────
+// Below this many photos the whole library is a screen or two of scrolling, so Sort and Show
+// can only tell you things you can already see — they stay hidden rather than add clutter.
+const FIND_MIN = 60;
+let sortMode = "added_desc";
+let kind = "all";
+
+// Kind is a single choice, so these are lenses rather than buckets: a B&W photo with faces
+// appears under both B&W and People, which is invisible because only one can be active.
+// is_bw is tri-state (null = the classifier never ran / is disabled) and must not read as false
+// in a way that hides photos: an unknown photo is simply not B&W-classified.
+const faceCount = (e) => (e.face_bboxes || []).length;
+const KINDS = {
+  all: () => true,
+  bw: (e) => e.is_bw === true,
+  people: (e) => faceCount(e) > 0,
+  nopeople: (e) => faceCount(e) === 0,
+};
+
+// last_request is the only rotation field with real variance — the scheduler works to
+// EQUALISE show counts (least-shown-first), so sorting by count degenerates into its
+// tie-break. Never-served sorts to the extreme of both directions, which is where it belongs.
+// /status sends last_request as an ISO STRING (flask_app: isoformat), not epoch seconds —
+// parse it the same way the rest of the app does (ui.fmtAgo) or every comparison is NaN.
+const lastShownISO = (e) => state.status?.serve_data?.[e.name]?.last_request || null;
+function lastShown(e) {
+  const iso = lastShownISO(e);
+  if (!iso) return 0;                       // never served → sorts to the extreme
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) ? t / 1000 : 0;
+}
+const SORTS = {
+  added_desc: (a, b) => (b.added_at || 0) - (a.added_at || 0),
+  added_asc: (a, b) => (a.added_at || 0) - (b.added_at || 0),
+  name_asc: (a, b) => a.name.localeCompare(b.name),
+  name_desc: (a, b) => b.name.localeCompare(a.name),
+  unseen: (a, b) => lastShown(a) - lastShown(b),
+  recent: (a, b) => lastShown(b) - lastShown(a),
+};
+const isTimeSort = () => sortMode === "unseen" || sortMode === "recent";
+
+// Time buckets label a last-shown ordering so it reads as an answer rather than an
+// unexplained reordering. Only used when a time sort is active.
+const DAY = 86400;
+const TIME_BUCKETS = [
+  ["Never shown", (s) => !s],
+  ["Over a year", (s, now) => now - s > 365 * DAY],
+  ["6–12 months", (s, now) => now - s > 182 * DAY],
+  ["1–6 months", (s, now) => now - s > 30 * DAY],
+  ["This month", () => true],
+];
 let immersiveH = +sizeSlider.value || 320;   // adjustable in immersive layout only
 // slider/pinch bounds — SMAX also flips the gallery to one-tile-per-row at max zoom
 const SMIN = +sizeSlider.min || 150, SMAX = +sizeSlider.max || 600;
@@ -31,10 +83,16 @@ let lastStructural = "";   // gate: only rebuild DOM + re-justify when structure
 let visibleOrder = [];     // flat top-to-bottom order of the grid, for detail-view ←/→ nav
 
 // The names currently in the grid, in exactly the order they're rendered (respects the active
-// filter: mixed = upload order; grouped = Landscape section then Portrait; single = that half).
+// filter: mixed = the active sort order; landscape/portrait = that half only).
 // Kept in sync by updateGallery below, so the detail-view arrow keys (photo.js) step through
 // precisely what's on screen.
 export const galleryOrder = () => visibleOrder;
+
+// {shown, total} for the header count. main.js owns #meta and renders "N of M photos" from
+// this; gallery fires "gallery:find" when the user changes sort/kind/shape so the count
+// updates immediately instead of waiting for the next 5s poll.
+let counts = { shown: 0, total: 0 };
+export const galleryCounts = () => counts;
 
 // ── per-entry derivations from the live status payload ──
 // which connected frames are currently displaying this image
@@ -88,6 +146,12 @@ function arOf(e) {
   return e.image_width && e.image_height ? e.image_width / e.image_height : 4 / 3;
 }
 function dimText(e) {
+  // When you've ordered by last-shown, the caption reports THAT — otherwise the sort is an
+  // invisible reordering you can't read or verify from the grid.
+  if (isTimeSort() && e.status === "ok") {
+    const iso = lastShownISO(e);
+    return iso ? fmtAgo(iso) : "never shown";
+  }
   if (e.image_width && e.image_height) return `${e.image_width}×${e.image_height}`;
   return e.status === "pending" ? "converting" : "—";
 }
@@ -172,6 +236,42 @@ function section(label, entries) {
   return s;
 }
 
+// Split a last-shown ordering into labelled sections, so "Longest unseen" reads as an answer
+// ("Over a year: 12") instead of an unexplained reordering. Sections run oldest-first for
+// "Longest unseen" and newest-first for "Recently shown", matching the sort's direction.
+function timeSections(list) {
+  const now = Date.now() / 1000;
+  const left = list.slice();
+  const out = [];
+  for (const [label, test] of TIME_BUCKETS) {
+    const entries = [];
+    for (let i = left.length - 1; i >= 0; i--) {
+      if (test(lastShown(left[i]), now)) entries.unshift(left.splice(i, 1)[0]);
+    }
+    if (entries.length) { entries.sort(SORTS[sortMode]); out.push({ label, entries }); }
+  }
+  return sortMode === "recent" ? out.reverse() : out;
+}
+
+// Sort/Show appear only once the library is big enough to need them (FIND_MIN). If it drops
+// back under, any active state is cleared too — otherwise a filter could be left on with no
+// visible control to turn it off.
+function syncFindControls(total) {
+  const show = total >= FIND_MIN;
+  const sw = $("#sortwrap"), kt = $("#ktabs");
+  if (sw) sw.hidden = !show;
+  if (kt) kt.hidden = !show;
+  if (!show) { kind = "all"; sortMode = "added_desc"; }
+}
+
+const FILTERED_EMPTY_HTML =
+  '<div class="gempty">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M4 19l6-6 4 4 2.5-2.5L21 19"/></svg>' +
+    '<b>No photos match</b>' +
+    '<span>Nothing in your library fits this combination.</span>' +
+    '<button class="ghost-btn" id="find-reset">Show all photos</button>' +
+  '</div>';
+
 const EMPTY_HTML =
   '<div class="gempty">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M4 19l6-6 4 4 2.5-2.5L21 19"/></svg>' +
@@ -186,13 +286,18 @@ function updateGallery() {
   // failed photos live in the failed modal (M4), not the grid.
   // newest uploads first (by added_at) so fresh photos land at the top of every view;
   // stable sort keeps the backend's name order as the tie-break.
-  const all = (st.upload_files || [])
-    .filter((e) => e.status !== "failed")
-    .sort((a, b) => (b.added_at || 0) - (a.added_at || 0));
+  const ready = (st.upload_files || []).filter((e) => e.status !== "failed");
 
-  // prune cache of names that no longer exist (deleted upstream)
-  const live = new Set(all.map((e) => e.name));
+  // prune cache of names that no longer exist (deleted upstream) — keyed on the WHOLE
+  // library, never the filtered view, or filtering would evict tiles it later needs.
+  const live = new Set(ready.map((e) => e.name));
   for (const name of [...tileCache.keys()]) if (!live.has(name)) tileCache.delete(name);
+
+  // kind filter, then sort. The default (newest added first) is the original behaviour, so
+  // fresh uploads still land at the top of every view unless you asked for another order.
+  syncFindControls(ready.length);   // before filtering, so a shrunken library can't strand a filter
+  const all = ready.filter(KINDS[kind]).slice().sort(SORTS[sortMode]);
+  counts = { shown: all.length, total: ready.length };
 
   const land = all.filter((e) => arOf(e) >= 1);
   const port = all.filter((e) => arOf(e) < 1);
@@ -201,20 +306,16 @@ function updateGallery() {
   // determines the layout. If it's unchanged, skip the rebuild + re-justify and
   // only refresh per-tile content (badges/markers/thumb) in place — no flicker.
   let groups;   // [{label|null, entries}]
-  if (!all.length) groups = null;
-  else if (filter === "mixed") groups = [{ label: null, entries: all }];
-  else if (filter === "landscape") groups = [{ label: "Landscape", entries: land }];
-  else if (filter === "portrait") groups = [{ label: "Portrait", entries: port }];
-  else {   // grouped: one Landscape section then one Portrait section (omit an empty half)
-    groups = [];
-    if (land.length) groups.push({ label: "Landscape", entries: land });
-    if (port.length) groups.push({ label: "Portrait", entries: port });
-  }
+  const shaped = filter === "landscape" ? land : filter === "portrait" ? port : all;
+  if (!shaped.length) groups = null;
+  else if (isTimeSort()) groups = timeSections(shaped);   // labelled by how long unseen
+  else if (filter === "mixed") groups = [{ label: null, entries: shaped }];
+  else groups = [{ label: filter === "landscape" ? "Landscape" : "Portrait", entries: shaped }];
 
   // Flatten the SAME `groups` that drives rendering below → the exact on-screen order, no drift.
   visibleOrder = groups ? groups.flatMap((g) => g.entries).map((e) => e.name) : [];
 
-  const structural = filter + "|" + (groups ? groups.map((g) =>
+  const structural = [filter, sortMode, kind].join("|") + "|" + (groups ? groups.map((g) =>
     (g.label || "") + ":" + g.entries.map((e) => e.name + "@" + arOf(e).toFixed(4)).join(",")).join(";") : "empty");
 
   if (structural === lastStructural) {
@@ -232,8 +333,15 @@ function updateGallery() {
 
   // structure changed → rebuild the gallery frame (reusing cached tiles) + justify
   gallery.textContent = "";
-  if (!groups) { gallery.innerHTML = EMPTY_HTML; return; }
-  if (filter === "mixed") gallery.appendChild(gridOf(groups[0].entries));   // no label, upload order
+  if (!groups) {
+    // "no photos at all" and "nothing matches your filter" are different dead ends and only
+    // the second one is recoverable — give it a way out.
+    const filtered = ready.length > 0;
+    gallery.innerHTML = filtered ? FILTERED_EMPTY_HTML : EMPTY_HTML;
+    if (filtered) $("#find-reset")?.addEventListener("click", resetFinding);
+    return;
+  }
+  if (groups.length === 1 && groups[0].label === null) gallery.appendChild(gridOf(groups[0].entries));
   else groups.forEach((g) => gallery.appendChild(section(g.label, g.entries)));
   justifyAll();
 
@@ -310,19 +418,66 @@ function justifyAll() {
 }
 
 // ── controls: filter tabs, size slider, pinch-zoom, resize ──
+function pressTabs(sel, attr, value) {
+  $$(sel + " button").forEach((b) => {
+    const on = b.dataset[attr] === value;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+
+// every finding change ends here: repaint, and tell main.js so the header count follows
+// immediately rather than at the next 5s poll
+function applyFinding() {
+  lastStructural = "";   // force a rebuild — order and/or membership changed
+  updateGallery();
+  document.dispatchEvent(new CustomEvent("gallery:find"));
+}
+
 function setFilter(f) {
   filter = f;
   root.setAttribute("data-layout", FILTER_LAYOUT[f]);
-  $$("#ftabs button").forEach((b) => b.classList.toggle("on", b.dataset.filter === f));
+  pressTabs("#ftabs", "filter", f);
   sizeCtrl.hidden = FILTER_LAYOUT[f] !== "immersive";
-  lastStructural = "";   // force a rebuild for the new arrangement
-  updateGallery();
+  applyFinding();
+}
+
+function setKind(k) {
+  kind = k;
+  pressTabs("#ktabs", "kind", k);
+  applyFinding();
+}
+
+function setSort(s) {
+  sortMode = s;
+  const sel = $("#sortsel");
+  if (sel && sel.value !== s) sel.value = s;
+  applyFinding();
+}
+
+// the single way out of an over-narrow view (from the filtered empty state)
+function resetFinding() {
+  kind = "all"; sortMode = "added_desc"; filter = "mixed";
+  pressTabs("#ktabs", "kind", "all");
+  pressTabs("#ftabs", "filter", "mixed");
+  const sel = $("#sortsel");
+  if (sel) sel.value = "added_desc";
+  root.setAttribute("data-layout", FILTER_LAYOUT.mixed);
+  sizeCtrl.hidden = false;
+  applyFinding();
 }
 
 $("#ftabs").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (b) setFilter(b.dataset.filter);
 });
+
+$("#ktabs")?.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b) setKind(b.dataset.kind);
+});
+
+$("#sortsel")?.addEventListener("change", (e) => setSort(e.target.value));
 
 sizeSlider.addEventListener("input", (e) => { immersiveH = +e.target.value; justifyAll(); });
 

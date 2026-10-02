@@ -85,16 +85,37 @@
     <h1>Gallery</h1>
     <span class="meta" id="meta">— photos · — frames</span>
     <span class="grow"></span>
-    <div class="size-ctrl" id="size-ctrl">
-      <svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-      <input type="range" id="size-slider" min="180" max="560" value="320" aria-label="Thumbnail size">
-      <svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-    </div>
-    <div class="ftabs" id="ftabs" role="tablist" aria-label="Arrangement">
-      <button data-filter="mixed" role="tab" class="on">Mixed</button>
-      <button data-filter="grouped" role="tab">Grouped</button>
-      <button data-filter="landscape" role="tab">Landscape</button>
-      <button data-filter="portrait" role="tab">Portrait</button>
+    <!-- The finding controls. Each is its own instrument, so they get more air between them
+         than .head's own column gap gives. Sort + Show are hidden on a small library
+         (gallery.js FIND_MIN) — with 20 photos they can only tell you things you can see. -->
+    <div class="controls">
+      <div class="size-ctrl" id="size-ctrl">
+        <svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+        <input type="range" id="size-slider" min="180" max="560" value="320" aria-label="Thumbnail size">
+        <svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+      </div>
+      <div class="selwrap" id="sortwrap" hidden>
+        <label for="sortsel">Sort</label>
+        <select class="gsel" id="sortsel">
+          <option value="added_desc">Newest added</option>
+          <option value="added_asc">Oldest added</option>
+          <option value="unseen">Longest unseen</option>
+          <option value="recent">Recently shown</option>
+          <option value="name_asc">Name A–Z</option>
+          <option value="name_desc">Name Z–A</option>
+        </select>
+      </div>
+      <div class="ftabs" id="ktabs" role="group" aria-label="Photo kind" hidden>
+        <button data-kind="all" class="on" aria-pressed="true">All</button>
+        <button data-kind="bw" aria-pressed="false">B&amp;W</button>
+        <button data-kind="people" aria-pressed="false">People</button>
+        <button data-kind="nopeople" aria-pressed="false">Non-People</button>
+      </div>
+      <div class="ftabs" id="ftabs" role="group" aria-label="Shape">
+        <button data-filter="mixed" class="on" aria-pressed="true">Mixed</button>
+        <button data-filter="landscape" aria-pressed="false">Landscape</button>
+        <button data-filter="portrait" aria-pressed="false">Portrait</button>
+      </div>
     </div>
   </div>
   <div id="gallery"></div>
