@@ -269,5 +269,50 @@ and speeds up large uploads.
 
 ---
 
+## 4. `hokku.local` silently dies after a Wi-Fi / VPN bounce (server stays up, frame can't find it)
+
+**Where:** `start_mdns()` in `mdns.py` (upstream: `python/hokku/webserver/mdns.py`). Upstream
+creates one `Zeroconf` instance at startup and never looks at it again.
+
+**Applies to:** every frame whose NVS `image_url` uses `hokku.local` (the documented default),
+on any host OS — seen on Windows 11, but Linux drops multicast memberships on interface
+down/up the same way. A frame configured with a raw IP is unaffected.
+
+### Symptom
+Frames stop refreshing with "Image download failed" while the server is demonstrably up
+(UI works, a frame configured with the IP still updates). The server log shows NO request from
+the affected frame — it never got as far as TCP. `ping hokku.local` fails from other LAN
+machines too. Restarting the server fixes it instantly. Observed 2026-09-11: Wi-Fi + VPN
+adapter bounced at 18:38–18:45; the 20:00 refresh failed; the frame retried every 60 s for
+2.5 h until a restart.
+
+### Root cause
+The OS silently drops the zeroconf listening socket's `224.0.0.251` group membership when the
+Wi-Fi profile or a VPN adapter is torn down and rebuilt. python-zeroconf joins the group once at
+startup and gets no notification. The responder is still alive — it answers a UNICAST query to
+`<ip>:5353` correctly — but never receives another multicast query, so nobody on the LAN can
+resolve the name. Binding Zeroconf to the LAN IP (the earlier VPN-egress fix) does not cover this; it is
+a different failure from the VPN-egress one.
+
+Prove it in 10 s with a raw mDNS A-record query for `hokku.local`: sent to `224.0.0.251:5353`
+→ times out; sent to `<server-ip>:5353` → answers. Alive-for-unicast, deaf-for-multicast is the
+signature.
+
+### Fix
+Wrap the `Zeroconf` in an advertiser object with a daemon watchdog thread. Every 30 s send a
+real A-record query for `<hostname>.local` to the multicast group from the LAN IP, from an
+ephemeral port (RFC 6762 §6.7 legacy-unicast: the responder must RECEIVE it via the group but
+replies unicast to the probe, so the probe needs no membership). Use a fresh transaction id per
+query so zeroconf's duplicate-question suppression doesn't swallow it; accept only a reply with
+matching id, QR bit set, ≥1 answer. Two consecutive unanswered ticks (2 tries each), or a
+changed LAN IP, → `unregister_all_services()` + `close()` the old instance and register a new
+one from scratch (re-picking the LAN IP). Keep `stop_mdns()` accepting the wrapper, a bare
+`Zeroconf`, or `None` so callers don't change. Reproduce for a test by calling
+`IP_DROP_MEMBERSHIP` on the responder's listening socket; the watchdog must detect and heal
+within two ticks. Expect one probe miss right after re-registration (zeroconf's own probing
+phase) — that's normal.
+
+---
+
 <!-- Add further upstream-affecting fixes below as they are found, same format:
      Where (concept, not our path) / Applies to / Symptom / Root cause / Fix / Rationale / Tests. -->
