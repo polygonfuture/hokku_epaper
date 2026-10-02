@@ -20,7 +20,7 @@ from hokku_server.app_config import AppConfig
 from hokku_server.bounding_box import BoundingBox
 from hokku_server.dither_streaming import rgb_to_lab
 from hokku_server.face_detect_yunet_opencv import OpenCVYuNetFaceDetector
-from hokku_server.filesystem import atomic_write_json
+from hokku_server.filesystem import StateLoadError, atomic_write_json, load_json_guarded
 from hokku_server.image_config import ImageConfig
 from hokku_server.image_renderer import open_image_for_render
 
@@ -189,9 +189,14 @@ class ImageClassifier:
             return cfg.image_config_default, ()
 
     def _load(self) -> dict[str, Observations]:
+        # Lowest-severity store: everything here is re-derivable by re-running detection, so a
+        # total loss starts empty. It still prefers the .bak over throwing the work away.
         try:
-            data = json.loads(self._db_path.read_text("utf-8"))
-        except (OSError, ValueError):
+            data, _source = load_json_guarded(self._db_path, label="classifier observations")
+        except StateLoadError as e:
+            logger.warning("%s — re-detecting from scratch", e)
+            return {}
+        if data is None:
             return {}
         out: dict[str, Observations] = {}
         for sha1, d in data.get("observations", {}).items():

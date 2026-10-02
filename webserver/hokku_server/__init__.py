@@ -13,6 +13,7 @@ import psutil as _psutil
 
 from hokku_server.app_config import AppConfig
 from hokku_server.app_state import AppState, build_manager
+from hokku_server.filesystem import StateLoadError
 from hokku_server.flask_app import create_app
 from hokku_server.image_classifier import ImageClassifier
 from hokku_server import serve_log
@@ -73,7 +74,19 @@ def main() -> None:
         sys.exit(1)
 
     classifier = ImageClassifier(config)
-    manager = build_manager(config, classifier)
+    try:
+        manager = build_manager(config, classifier)
+    except StateLoadError as e:
+        # The image DB is unreadable and unrecoverable. Refusing is deliberate: starting empty
+        # would rebuild from the images folder and save that over the file, destroying every
+        # per-image edit still recoverable inside it (this is exactly what happened on
+        # 2026-09-06). Print the operator's options as a block, not a traceback.
+        bar = "=" * 62
+        logger.critical(
+            "\n%s\n HOKKU CANNOT START — the image database could not be read\n%s\n%s\n%s",
+            bar, bar, e, bar,
+        )
+        sys.exit(1)
     logger.info(
         "Image workers: configured=%s -> resolved=%s (%s, cores=%s, free RAM=%.1f GB)",
         config.image_worker_thread_count,

@@ -17,7 +17,13 @@ import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from hokku_server.filesystem import atomic_write_json
+from hokku_server.filesystem import (
+    StateLoadError,
+    atomic_write_json,
+    backups_dir_for,
+    load_json_guarded,
+    snapshot,
+)
 from hokku_server.image_manager_abstract import AbstractImageManager
 from hokku_server.image_record import ConvertStatus, ImageRecord
 from hokku_server.orientation import Orientation
@@ -28,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 
 _DB_FILENAME = "serve_scheduler.json"
+# Dated snapshots, deduplicated by content — see Plans/CRASH_SAFE_STATE_PLAN.md
+_BACKUP_KEEP = 14
 
 
 @dataclass(frozen=True)
@@ -797,13 +805,18 @@ class ServeScheduler:
         )
 
     def _load(self) -> None:
-        if not self._db_path.exists():
-            return
+        """Load rotation state, recovering from the .bak if the primary is unreadable.
+
+        Unlike the image DB this state is DERIVED — losing it costs rotation history, not user
+        work — so a total loss starts empty rather than refusing to boot. The .bak and the
+        dated snapshots still make that a last resort instead of the first response.
+        """
         try:
-            with open(self._db_path) as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("Failed to load %s: %s (starting empty)", _DB_FILENAME, e)
+            data, source = load_json_guarded(self._db_path, label="rotation state")
+        except StateLoadError as e:
+            logger.error("%s — starting with empty rotation history", e)
+            return
+        if data is None:
             return
         for name, blob in data.get("by_name", {}).items():
             try:
@@ -826,6 +839,13 @@ class ServeScheduler:
                 self._last_served = (ls["name"], float(ls["served_at"]))
             except (TypeError, ValueError):
                 pass
+
+        # Archive only what just parsed cleanly (never in-memory state), deduplicated by
+        # content so quiet days cost nothing.
+        snapshot(self._db_path, backups_dir_for(self._db_path.parent),
+                 store="serve_scheduler", keep=_BACKUP_KEEP)
+        if source == "backup":
+            self._save()      # promote the recovered state back to primary
         # Load next_for; migrate from old "next_image" key if needed.
         next_for_raw = data.get("next_for")
         if isinstance(next_for_raw, dict):

@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Callable
 
-from hokku_server.filesystem import atomic_write_json
+from hokku_server.filesystem import atomic_write_json, backups_dir_for, snapshot
 from hokku_server.image_config import (
     ImageConfig,
     _image_config_from_dict,
@@ -296,6 +296,16 @@ class AppConfig:
         except (TypeError, ValueError) as e:
             logger.error("Failed to parse config from %s: %s", path, e)
             sys.exit(1)
+
+        # Monthly archive of a config that just parsed cleanly. Settings change rarely, so the
+        # snapshot dedupes to almost nothing; six months of history costs a few KB. (This file
+        # already refuses to start rather than overwrite itself, which is the pattern the data
+        # stores now follow — see Plans/CRASH_SAFE_STATE_PLAN.md.)
+        try:
+            snapshot(path, backups_dir_for(Path(cfg.cache_dir)), store="config",
+                     keep=6, monthly=True)
+        except Exception as e:                    # never let a backup stop the server booting
+            logger.debug("Config snapshot skipped: %s", e)
 
         if "version" not in data:
             # Write the default back so the next load is clean.

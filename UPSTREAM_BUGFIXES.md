@@ -178,5 +178,96 @@ sitting near a boundary, and their already-cached renders are otherwise reused f
 
 ---
 
+## 3. A power cut can silently erase the image database (and every per-image edit)
+
+**Where:** `atomic_write_json` in `filesystem.py`, and the load path of every JSON state store
+(`image_manager.py` / `serve_scheduler.py` / `image_classifier.py`). Verified byte-identical in
+`upstream/main`: the write has no `fsync`, and `_load_db` still does
+`except (json.JSONDecodeError, OSError): logger.warning("... (starting empty)"); return`.
+
+**Applies to:** every install, any unclean shutdown — power loss, hard reset, host crash. Not
+panel- or platform-specific, though NTFS makes it easy to hit.
+
+### Symptom
+After an unclean shutdown the server starts, logs
+
+```
+WARNING Failed to load image_manager.json: Expecting value: line 1 column 1 (char 0) (starting empty)
+INFO    Registered new image: ...   (x every photo in the library)
+```
+
+and comes back with the library intact but **every per-image edit gone** — crops, per-image
+image configs, any per-image overrides — plus the real `added_at` history, so "newest first"
+silently becomes filesystem scan order. We lost 129 editor crops this way on 2026-09-06.
+
+### Root cause — two independent defects that combine
+1. **The "atomic" write is not durable.** `atomic_write_json` does
+   `open → json.dump → os.replace`. `os.replace` is atomic for the *rename*, but nothing
+   flushes the data first. NTFS journals metadata (the rename) and not file data, so the
+   directory entry can reach the platter while the contents are still in the page cache. A
+   power cut then leaves a file that **exists and is empty** — hence the byte-zero parse error.
+2. **A failed load becomes an authoritative empty state.** `_load_db` catches the error, logs,
+   and returns with zero records. The next `_save_db()` — and registration saves the whole file
+   *per photo*, so hundreds follow immediately — writes that emptiness over the file. **The
+   crash corrupts; the application deletes.** Until that first save the old blocks are still on
+   disk and recoverable.
+
+Note `AppConfig.load` already gets this right: on a parse failure it `sys.exit(1)` rather than
+overwriting the user's settings with defaults. The correct pattern is already in the tree; the
+data stores just don't use it.
+
+### Fix
+Three parts; (1) alone prevents most occurrences, (2) makes the rest survivable, (3) is what
+stops a corruption becoming a deletion.
+
+1. **fsync before the rename:**
+   ```python
+   with open(tmp, "w") as f:
+       json.dump(payload, f, indent=2)
+       f.flush()
+       os.fsync(f.fileno())
+   os.replace(tmp, path)
+   ```
+   Measured cost on a 235 KB DB: **7.0 ms → 7.6 ms per save** (+0.6 ms). Over a 358-photo
+   rescan that is 2.5 s → 2.7 s. There is no performance argument against it.
+2. **Keep one previous generation** — copy the current file to `<name>.bak` before replacing.
+   Note this is worthless on its own: on the failed-load path the rebuild's first save rotates
+   the corrupt file into `.bak` and the next pushes the good copy out. It only helps combined
+   with (3).
+3. **A failed load must never overwrite.** Quarantine the unreadable file as
+   `<name>.corrupt-<timestamp>` (keep the evidence), try `.bak`, and then branch on how
+   replaceable the store is:
+   - **image DB** (holds irreplaceable user edits): refuse to start, exactly as config does.
+     Frames keep showing their last image; nothing is destroyed; the operator fixes it
+     deliberately.
+   - **scheduler / classifier** (derived, re-computable): start empty, but only after the
+     quarantine + `.bak` attempt.
+
+Optional and independent: registration saving the entire DB per photo widens the crash window
+enormously (358 full writes in 19 s during a rescan). Batching it per sync shrinks the exposure
+and speeds up large uploads.
+
+### Rationale / safety
+- **fsync ordering is the whole point** — fsync *then* rename. Reversed, it protects nothing.
+- **Refusing beats guessing** for the image DB: an offline server is recoverable in minutes; an
+  overwritten database is not recoverable at all. Frames hold their last image, so the wall
+  looks normal while it's down.
+- **Quarantine rather than delete** — the corrupt file is the only forensic evidence, and
+  keeping it also stops the next start tripping over the same file.
+- **Only snapshot a file that just parsed** if you add dated backups; archiving in-memory state
+  risks writing a corrupt copy over a good one.
+
+### Suggested tests
+- Assert the call ORDER: monkeypatch `os.fsync` and `os.replace`, write, assert `fsync`
+  precedes `replace`. Ordering is the fix.
+- Truncate the store to zero bytes, reconstruct the manager, assert it loads from `.bak` and
+  that records are non-empty.
+- Truncate with no `.bak`: assert it raises rather than returning empty, and that the corrupt
+  file was moved aside rather than overwritten.
+- End-to-end regression: save an edit/crop, zero the file, restart, assert the edit survives —
+  and then run a sync (the step that used to make the loss permanent) and assert it still does.
+
+---
+
 <!-- Add further upstream-affecting fixes below as they are found, same format:
      Where (concept, not our path) / Applies to / Symptom / Root cause / Fix / Rationale / Tests. -->

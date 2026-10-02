@@ -29,7 +29,12 @@ from PIL import Image, ImageOps
 
 from hokku_server.app_config import AppConfig
 from hokku_server.display import TOTAL_BYTES
-from hokku_server.filesystem import atomic_write_json
+from hokku_server.filesystem import (
+    atomic_write_json,
+    backups_dir_for,
+    load_json_guarded,
+    snapshot,
+)
 from hokku_server.image_abc import _apply_crop_rotation
 from hokku_server.image_classifier import ImageClassifier, ImageClassifierDecision
 from hokku_server.image_config import _image_config_from_dict
@@ -52,6 +57,9 @@ logger = logging.getLogger(__name__)
 
 
 _DB_FILENAME = "image_manager.json"
+# Dated snapshots kept for the image DB. Deduplicated by content, so these are days on
+# which something actually CHANGED - which reaches back much further than 14 calendar days.
+_BACKUP_KEEP = 14
 _DB_VERSION = 3  # bump whenever ImageRecord schema changes; old DB is nuked on mismatch
 _IMAGES_SUBDIR = "images"
 _PANEL_SUFFIX = "_panel.bin.zst"
@@ -868,26 +876,47 @@ class AbstractImageManager(ABC):
         return self._images_dir / f"{rec.name_hash}{_DISPLAY_SUFFIX}"
 
     def _load_db(self) -> None:
-        if not self._db_path.exists():
-            return
-        try:
-            with open(self._db_path) as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("Failed to load %s: %s (starting empty)", _DB_FILENAME, e)
-            return
+        """Load the image DB, or refuse to run rather than silently rebuild it.
+
+        This file holds the only copy of the per-image editor state (edit_crop, edit_mono,
+        edit_image_config). On 2026-09-06 a power cut left it empty, the old code read that as
+        "no photos", rescanned the folder and SAVED the empty state over it — destroying 129
+        crops. So an unreadable file now recovers from the .bak, and if that is impossible it
+        raises: a dead server is recoverable, an overwritten one is not.
+        """
+        data, source = load_json_guarded(self._db_path, label="image database")
+        if data is None:
+            return                                  # genuinely first run
+
+        backups = backups_dir_for(self._cache_dir)
         if data.get("version") != _DB_VERSION:
+            # A version bump deliberately discards derived state — but it would also discard
+            # every editor crop. Archive the old file first so those stay recoverable.
+            # (Upstream's _salvaged_overrides drains them back automatically; porting that is
+            # tracked as F5 in Plans/CRASH_SAFE_STATE_PLAN.md.)
+            snapshot(self._db_path, backups, store="image_manager", keep=_BACKUP_KEEP)
             logger.warning(
-                "DB version mismatch (got %r, need %d) — wiping cache DB; images will be re-rendered on next sync",
+                "DB version mismatch (got %r, need %d) — wiping cache DB; images will be "
+                "re-rendered on next sync. The old DB was archived under %s first.",
                 data.get("version"),
                 _DB_VERSION,
+                backups.name,
             )
             return
+
         for name, rec_dict in data.get("images", {}).items():
             try:
                 self._records[name] = ImageRecord.from_dict(rec_dict)
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning("Skipping malformed db entry %r: %s", name, e)
+
+        # Snapshot only what just parsed cleanly — never in-memory state, or a corrupt file
+        # could be archived over a good one.
+        snapshot(self._db_path, backups, store="image_manager", keep=_BACKUP_KEEP)
+        if source == "backup":
+            # Promote the recovered state back to primary, so the next crash has a fresh .bak
+            # rather than the one we just consumed.
+            self._save_db()
 
     def _save_db(self) -> None:
         if self._closed:
