@@ -265,6 +265,12 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 **Each frame card** shows a thumbnail of the photo it is currently displaying, the frame's name and colour dot, its IP address and firmware version, its battery level (flagged red below 20%), when it was last seen, and when it is next expected to check in. A frame that has missed its expected check-in is flagged **Overdue**. An **Up next** thumbnail shows what it will display next — or **Pinned**, if you have sent a specific photo to it, which you can cancel here.
 
+**Seeing a photo as the frame shows it** — tap a card's thumbnail to open a preview of that frame: the photo drawn inside the frame's own shape, rendered exactly as the panel renders it — cropped or letterboxed the same way, and in black and white for a mono frame. Switch between **Now** and **Up next**, reroll a queued photo with **Skip up next**, or jump to the photo in your library. It's read-only; nothing you do here changes the framing.
+
+The same preview opens from anywhere a photo and a frame meet: the frame badge on a gallery thumbnail, the **On display** and **Up next** rows in a photo's details, and **Preview frame** in a card's ⋯ menu.
+
+Under the preview, a line names the photo, the panel type, and how the photo fits: **Exact fit** when it fills the frame with nothing lost, **Zoomed 71%** when it was scaled in to remove the bars (the edges are cropped), or **Needs 113%** when it's letterboxed — that number being the Zoom to fill value that would make it fill. A small outline before that label is the photo's own shape, shown only when it differs from the frame's.
+
 **How frames connect** — a frame doesn't hold a live connection; it wakes on schedule, fetches an image, and returns to deep sleep. The panel only updates when a frame checks in, so “last seen 12 hours ago” is normal, not a fault.
 
 <a href="../images/ui_v2_diagnostics.png"><img src="../images/ui_v2_diagnostics.png" width="560" alt="View diagnostics: the frame's full self-reported state."></a>
@@ -298,7 +304,7 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 - **Refresh Schedule** — how often each frame wakes to fetch a new photo: an **interval** (every 15 minutes up to 24 hours, optionally only during set hours so the battery lasts longer), or a list of **specific times**. The server computes each frame's sleep for you; a live line shows what's next.
 - **Frame Orientation** — set each connected frame to Landscape or Portrait, and whether it should be sent only matching photos (the same controls as in a frame's diagnostics).
 - **Smart Photo Detection** — whether Hokku detects black-and-white photos and faces and routes each to a conversion tuned for it, with an option to protect faces from local-contrast boosting. It all runs on your own server; nothing leaves your network.
-- **Image Conversion & Colour** — the default dither preset, and how far a photo may be zoomed to fill the frame rather than showing letterbox bars.
+- **Image Conversion & Colour** — the default dither preset, how far a photo may be zoomed to fill the frame rather than showing letterbox bars, and whether a photo that must be zoomed keeps faces in frame.
 - **Server & Storage** — how often the app polls for updates, the debug screen, automatic cache clearing, the mDNS/Bonjour name, how many photos convert in parallel, and a button to clear all caches and reconvert.
 
 &nbsp; 
@@ -414,7 +420,13 @@ Either way, the server computes the sleep duration (using the timezone set on th
 
 **Image workers** — how many photos the server converts in parallel. Set to Auto and the server picks based on available CPU cores and memory. Set it higher on a faster machine to convert large libraries faster; set it to 1 on very constrained hardware. Each worker uses around 50 MB of RAM during conversion.
 
-**Crop to fill** — when a photo's aspect ratio is close to the frame's but not exact, the server can crop slightly rather than showing a thin letterbox band. The threshold controls how much cropping is acceptable (e.g. 0.05 = up to 5%). Set to 0 to always letterbox. See [dithering.md](dithering.md) for more detail on how this interacts with the conversion pipeline.
+**Zoom to fill** — every photo is shown upright for its frame's orientation, and this single setting decides whether a photo that doesn't match the frame's shape is zoomed in to fill it or shown whole with letterbox bars. The value is the most zoom you'll allow: 0% always letterboxes, and higher values crop more to remove the bars.
+
+How much a photo needs depends on the gap between its shape and the frame's. A 3:2 photo on a 4:3 frame needs about 13%; a landscape photo on a portrait frame is far more expensive — just over 100% for a 3:2 camera, around 137% for 16:9 — which is why the slider goes to 150%. A photo already the frame's shape needs none and always fills.
+
+The same limit governs photos you cropped in the editor. A crop is cut to the frame's shape, so on a frame of that shape it fills exactly, with nothing trimmed. On a frame of the *other* shape the crop doesn't apply at all — that frame shows the original photo, framed by this setting — so a crop you made for portrait is never re-cut to fit a landscape frame.
+
+See [dithering.md](dithering.md) for more detail on how this interacts with the conversion pipeline.
 
 <a href="../images/ui_config_dither.png"><img src="../images/ui_config_dither.png" width="480"></a>
 
