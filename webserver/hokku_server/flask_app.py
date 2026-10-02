@@ -350,7 +350,13 @@ def create_app(
             resp.headers["X-Sleep-Seconds"] = str(sleep_seconds)
             return resp
 
-        scheduler.mark_served(chosen, screen_name=screen_name)
+        # Debug fast-refresh must not touch the fairness rotation: it cycles every
+        # DEBUG_FAST_REFRESH_SECONDS (3 min), so an afternoon of firmware testing would
+        # otherwise consume more turns than a month of real refreshes and leave the library
+        # marked "shown" without anything having actually been displayed.
+        scheduler.mark_served(
+            chosen, screen_name=screen_name, count_turn=not config.debug_fast_refresh
+        )
         scheduler.record_screen_call(
             screen_name,
             screen_ip,

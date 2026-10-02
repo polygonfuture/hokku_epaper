@@ -494,25 +494,41 @@ class ServeScheduler:
             if release_at > served
         }
 
-    def mark_served(self, name: str, screen_name: str | None = None) -> None:
+    def mark_served(
+        self, name: str, screen_name: str | None = None, *, count_turn: bool = True
+    ) -> None:
         """Bump rotation pointer and stats. Attributes elapsed time to the
         previously-served image. Pre-computes the next image for all orientations
         so the UI reflects the upcoming choice immediately.
 
         When ``screen_name`` is given and that screen had a pending per-screen
-        override for exactly this image, the override is consumed."""
+        override for exactly this image, the override is consumed.
+
+        ``count_turn=False`` serves the image WITHOUT spending its turn: no show_index,
+        no show count, no last-served stamp, no time attributed to the previous image.
+        Debug fast-refresh passes this. A 3-minute debug cycle across two frames burns 40
+        turns an hour — far more than a month of real refreshes — so counting them let a
+        few hours of firmware testing mark the whole library "shown" and demote it out of
+        the priority tier, while nothing had actually been on the wall for more than a
+        debug interval. Screen bookkeeping below still runs: the frame really is showing
+        this image, it just doesn't owe the rotation anything for it."""
         with self._lock:
             now = time.time()
-            self._attribute_show_time(now)
+            if count_turn:
+                self._attribute_show_time(now)
 
-            cur = self._stats.get(name) or ServeStats(0, None, 0, 0.0)
-            self._stats[name] = ServeStats(
-                show_index=cur.show_index + 1,
-                last_served_at=now,
-                total_show_count=cur.total_show_count + 1,
-                total_show_minutes=cur.total_show_minutes,
-            )
-            self._last_served = (name, now)
+                cur = self._stats.get(name) or ServeStats(0, None, 0, 0.0)
+                self._stats[name] = ServeStats(
+                    show_index=cur.show_index + 1,
+                    last_served_at=now,
+                    total_show_count=cur.total_show_count + 1,
+                    total_show_minutes=cur.total_show_minutes,
+                )
+                self._last_served = (name, now)
+            else:
+                # Don't let the NEXT real serve attribute this debug interval as display
+                # time on the previous image either.
+                self._last_served = None
             if screen_name is not None:
                 # Advance this screen's serve clock (releases expired per-frame skips) and prune
                 # any now-elapsed skip entries so the box doesn't grow without bound.

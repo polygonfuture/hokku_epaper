@@ -72,6 +72,34 @@ def test_stats_after_serves(app_config: AppConfig, make_test_image):
     assert s.last_served_at is not None
 
 
+def test_debug_serve_does_not_spend_a_turn(app_config: AppConfig, make_test_image):
+    """Debug fast-refresh must not touch the fairness rotation.
+
+    It cycles every 3 minutes, so a few hours of firmware testing burns more turns than a
+    month of real refreshes — which marked the whole library "shown" and demoted it out of
+    the priority tier while nothing had actually been displayed for more than a debug
+    interval. A debug serve leaves every rotation counter untouched.
+    """
+    _, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
+
+    sched.mark_served("a.png", count_turn=False)
+    s = sched.stats_for("a.png")
+    assert s is not None
+    assert s.show_index == 0 and s.total_show_count == 0 and s.last_served_at is None
+
+    # ...so it is still the least-shown, and fairness is unchanged: a real serve after any
+    # number of debug serves is the FIRST turn either photo has spent.
+    for _ in range(5):
+        sched.mark_served("a.png", count_turn=False)
+    sched.mark_served("a.png")
+    assert sched.stats_for("a.png").total_show_count == 1
+
+    # and a debug serve doesn't back-fill display time onto the previous image either
+    sched.mark_served("b.png", count_turn=False)
+    sched.mark_served("b.png")
+    assert sched.stats_for("a.png").total_show_minutes == 0.0
+
+
 def test_persistence(app_config: AppConfig, make_test_image):
     mgr, sched = _setup(app_config, make_test_image, ["a.png", "b.png"])
     sched.mark_served("a.png")
