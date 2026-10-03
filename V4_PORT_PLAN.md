@@ -60,11 +60,11 @@ Items 1–4 are written up in [UPSTREAM_BUGFIXES.md](UPSTREAM_BUGFIXES.md).
 
 ## Phase 4: long tail
 
-- **Windows installer and interval / active-hours refresh:** the two commits on `feat/local-pc-server-install` (`5223f68`, `2d688fe`) are still not in `dev`.
+- **Windows installer:** `feat/local-pc-server-install` (`5223f68`) is an old branch. It isn't in `dev` and won't be merged; it may be worth a look later. Its refresh-schedule changes (`2d688fe`) are superseded and won't be used.
 - **Docs:** move the manual and the E1003 docs into his per-screen docs layout.
 
 ## Open items
 
-- **Interval refresh on `dev`:** the web app's Settings offers Interval and active hours, but `dev`'s server doesn't have those settings (they're on `feat/local-pc-server-install` only), so choosing Interval saves without changing the schedule. Bring `2d688fe` into `dev`, or hide the option until it lands.
+- **The Interval tab on `dev`:** the web app's Refresh Schedule page has had an Interval tab (with active hours) since July, but `dev`'s server has no interval settings, so choosing it changes nothing. Specific times, the schedule in use, works. Either hide the tab or build interval support fresh on `dev`.
 - **Timing:** wait for a stable 4.0.0 tag, or start an integration branch now on his latest main.
 - **Contact:** whether to raise the plan with defl before the first PR.
