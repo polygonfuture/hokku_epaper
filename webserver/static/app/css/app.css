@@ -80,34 +80,46 @@
   .cell::after { content: ""; position: absolute; right: -3px; top: 2.5px; width: 2px; height: 4px; background: var(--dim); border-radius: 0 1px 1px 0; }
   .cell i { display: block; height: 100%; background: var(--fc, var(--accent)); border-radius: 1px; }
 
-  /* per-frame cards inside the frames panel — thumbnail + name + IP + stats */
-  .frames-panel.open { max-height: calc(620 * var(--uk)); overflow-y: auto; }
-  /* tiles and the orientation button share one top-aligned row; the button sits far
-     right with a horizontal keepout between it and the tiles */
-  .fpanel-body { display: flex; align-items: flex-start; gap: 72px; padding: 16px var(--pad); }
-  /* Frame cards grow with the screen, like the frame preview modal: every size in a card is
-     a multiple of --uk, the shared "UI pixel" (tokens.css): 1px on phones and FHD, 1.2px
-     in a maximized QHD window, ~1.6px on 4K at 100% scaling. */
-  .fcards { display: flex; flex-wrap: wrap; gap: calc(12 * var(--uk)); flex: 1; min-width: 0; }
-  .fpanel-body .ghost { flex: none; margin-left: 0; display: inline-flex; align-items: center; gap: calc(7 * var(--uk)); }
-  /* the shortcuts grow like the cards; one class more specific than the later .drawer .ghost */
-  .frames-panel .fpanel-body .ghost { font-size: calc(.76rem + 12.16 * var(--ue)); padding: calc(5 * var(--uk)) calc(12 * var(--uk)); border-radius: calc(7 * var(--uk)); }
-  /* right-side column of frame shortcuts (Orientation, Refresh schedule) — equal width */
-  .fpanel-actions { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: calc(8 * var(--uk)); }
+  /* per-frame cards inside the frames panel — thumbnail + name + IP + stats.
+     The drawer shows every row (up to 620 UI px or 72% of the window, then it scrolls); the
+     generic .drawer.open 200px cap would otherwise cut the second row off. Phones: 80vh. */
+  .drawer.frames-panel.open { max-height: min(calc(620 * var(--uk)), 72vh); overflow-y: auto; }
+  /* Narrow (phones, tablets, windows under 1400px): the two shortcuts are a toolbar row ABOVE
+     the cards, right-aligned under the Frames button (centred on phones). Wide desktops keep
+     them as a right-hand column (the 1400px rule below). */
+  .fpanel-body { display: flex; flex-direction: column; align-items: stretch; gap: calc(12 * var(--uk)); padding: 14px var(--pad) 16px; }
+  .fpanel-actions { order: -1; flex: none; display: flex; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: stretch; gap: calc(8 * var(--uk)); }
+  /* Frame cards: a grid of EQUAL widths that fill the row (as many 320-UI-px columns as fit;
+     one full-width column on a phone), so rows line up. Every size in a card is a multiple of
+     --uk, the shared "UI pixel" (tokens.css): 1px on phones, tablets and FHD, 1.2px in a
+     maximized QHD window, ~1.6px on 4K at 100% scaling. */
+  .fcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(320 * var(--uk))), 1fr)); gap: calc(12 * var(--uk)); min-width: 0; }
+  @media (min-width: 1400px) {
+    .fpanel-body { flex-direction: row; align-items: flex-start; gap: 72px; padding: 16px var(--pad); }
+    .fpanel-actions { order: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; }   /* equal-width column */
+    .fcards { flex: 1; }
+  }
+  .fpanel-body .ghost { flex: none; display: inline-flex; align-items: center; gap: calc(7 * var(--uk)); }
+  /* the shortcuts grow like the cards; one class more specific than the later .drawer .ghost
+     (whose margin-left:auto would push the toolbar's two buttons apart) */
+  .frames-panel .fpanel-body .ghost { margin-left: 0; font-size: calc(.76rem + 12.16 * var(--ue)); padding: calc(5 * var(--uk)) calc(12 * var(--uk)); border-radius: calc(7 * var(--uk)); }
   .fpanel-body .ghost svg { width: calc(14 * var(--uk)); height: calc(14 * var(--uk)); }
+  /* narrowest phones (iPhone SE, 320px): 9px side padding keeps the two shortcuts side by side */
+  @media (max-width: 360px) { .frames-panel .fpanel-body .ghost { padding-left: 9px; padding-right: 9px; } }
   .fcard {
     display: flex; gap: calc(7 * var(--uk)); padding: calc(13 * var(--uk)) calc(18 * var(--uk)) calc(13 * var(--uk)) calc(13 * var(--uk));
     border: 1px solid var(--hair); border-radius: calc(14 * var(--uk));
-    background: var(--bg-elev); align-items: center;
-    flex: 0 0 auto;   /* box hugs its content — does not stretch across the row */
+    background: var(--bg-elev); align-items: center; min-width: 0;
+    container: fcard / inline-size;   /* the status line below reacts to the card's own width */
   }
-  /* thumbnail + a divider, then the frame info (tightened spacing) */
-  .qstrip { display: flex; align-items: center; flex: none; align-self: stretch; padding-right: calc(10 * var(--uk)); border-right: 1px solid var(--hair); }
+  /* thumbnail + a divider, then the frame info. A SQUARE thumbnail slot, the same width in every
+     card so the text lines up; each thumbnail is sized by its long side (landscape 70 x 52.5,
+     portrait 52.5 x 70), so both orientations are the same size and keep their shape. */
+  .qstrip { display: flex; align-items: center; justify-content: center; flex: none; align-self: stretch; width: calc(80 * var(--uk) + 1px); padding-right: calc(10 * var(--uk)); border-right: 1px solid var(--hair); }
   /* single frame thumbnail — its SHAPE reflects the frame's orientation; hovering it
      swaps to the "next" image. Orientation is changed in Settings, not by clicking here. */
-  .fthumb { position: relative; height: calc(62 * var(--uk)); border-radius: 2px; overflow: hidden; flex: none; border: 1px solid var(--accent); box-shadow: 0 3px 12px rgba(0,0,0,.4); background: var(--bg); container-type: size; }
-  .fthumb.shape-landscape { aspect-ratio: 4 / 3; }
-  .fthumb.shape-portrait { aspect-ratio: 3 / 4; }
+  .fthumb { position: relative; width: calc(70 * var(--uk)); height: calc(52.5 * var(--uk)); border-radius: 2px; overflow: hidden; flex: none; border: 1px solid var(--accent); box-shadow: 0 3px 12px rgba(0,0,0,.4); background: var(--bg); container-type: size; }
+  .fthumb.shape-portrait { width: calc(52.5 * var(--uk)); height: calc(70 * var(--uk)); }
   .fthumb canvas, .fthumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: auto; transition: opacity .2s ease; }
   .fthumb img.broken { visibility: hidden; }
   .fthumb .c-next { opacity: 0; }
@@ -135,6 +147,11 @@
   .fcard .row { display: flex; flex-wrap: wrap; gap: calc(5 * var(--uk)) calc(10 * var(--uk)); margin-top: calc(3 * var(--uk)); font-size: calc(.7rem + 11.2 * var(--ue)); color: var(--dim); }   /* small enough that the batt/next/seen line never wraps */
   .fcard .row b { color: var(--text); font-weight: 550; }
   .fcard .bt { display: inline-flex; align-items: center; gap: calc(6 * var(--uk)); }
+  /* next + seen are one unit: on a card too narrow for one status line (content < 295px: the
+     battery + the longest "next 23h 59m · seen 23h 59m") they move together to their own last
+     line, the battery alone above. That's the narrowest phones and the 712px Galaxy Tab. */
+  .fcard .ns { display: inline-flex; gap: calc(10 * var(--uk)); white-space: nowrap; }
+  @container fcard (width < 295px) { .fcard .row .ns { flex-basis: 100%; } }
   /* the battery glyph in a card scales with it (the header's .cell stays as is) */
   .fcard .cell { width: calc(20 * var(--uk)); height: calc(10 * var(--uk)); padding: calc(1.4 * var(--uk)); }
   .fcard .cell::after { right: calc(-3 * var(--uk)); top: calc(2.5 * var(--uk)); width: calc(2 * var(--uk)); height: calc(4 * var(--uk)); }
@@ -1103,9 +1120,8 @@
 
     /* drawers stack vertically */
     .drawer .inner { gap: 6px 22px; padding: 12px 14px; }
-    .fpanel-body { flex-direction: column; gap: 18px; padding: 14px; }
-    .fcard { flex: 0 0 100%; }
-    .frames-panel.open, #server-drawer.open { max-height: 80vh; overflow-y: auto; }
+    .fpanel-actions { justify-content: center; }   /* single column: the shortcut toolbar is centred */
+    .drawer.frames-panel.open, #server-drawer.open { max-height: 80vh; overflow-y: auto; }
 
     /* photo detail on mobile: a centered MODAL (not full-screen) — media stacked over
        the scrollable info panel. Actions live in the press-hold sheet, so hidden here. */

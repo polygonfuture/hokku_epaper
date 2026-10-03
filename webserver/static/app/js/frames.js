@@ -60,8 +60,10 @@ function makeCard(name) {
     '<div class="info">' +
       '<span class="nm"><span class="d"></span><span class="nm-text"></span></span>' +
       '<span class="row idrow"><span class="ip"></span><span>fw <b class="fw"></b></span></span>' +
+      // battery first (it never moves), then next + seen as one unit (.ns): a card too narrow
+      // for one line puts them together on their own last line instead of splitting them
       '<span class="row"><span class="bt"><span class="cell"><i></i></span><span class="batt-pct"></span></span>' +
-        '<span class="next-wrap">next <b class="next"></b></span><span>seen <b class="seen"></b></span></span>' +
+        '<span class="ns"><span class="next-wrap">next <b class="next"></b></span><span>seen <b class="seen"></b></span></span></span>' +
     '</div>';
   el.querySelector(".c-now").addEventListener("error", function () { this.classList.add("broken"); });
   el.querySelector(".c-next").addEventListener("error", function () { this.classList.add("broken"); });
