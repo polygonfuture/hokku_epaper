@@ -40,17 +40,19 @@ const iTog = (key, on) => `<button class="sw${on ? " on" : ""}" data-toggle="${k
 const iRow = (label, control) => `<div class="iset-row"><span class="iset-lab">${label}</span>${control}</div>`;
 const iGroup = (inner, foot, footCls) => `<div class="igroup"><div class="iset">${inner}</div>${foot ? `<p class="iset-foot ${footCls || ""}">${foot}</p>` : ""}</div>`;
 
-// ── reset-to-defaults (Detection + Image pages): restore the shipped presets/settings ──
-const resetBtnHTML = () =>
+// ── reset-to-defaults (Image Rendering page): restore the shipped presets/settings ──
+const resetBtnHTML = (hint) =>
   '<div class="set-reset"><button class="set-reset-btn" data-reset-defaults><span class="lbl">Reset to defaults</span></button>' +
-  '<span class="set-reset-hint">Restores the presets and detection settings Hokku ships with.</span></div>';
+  `<span class="set-reset-hint">${hint}</span></div>`;
 // resets the ACTIVE tab's config keys to config_defaults (the server's fresh AppConfig),
-// updates the draft + re-renders; Save then persists it.
+// updates the draft + re-renders; Save then persists it. A tab's `resetKeys` (when set)
+// narrows what Reset touches — Image Rendering saves the E1003 keys but never resets them.
 function resetActiveTabToDefaults() {
   const defs = state.config ? state.config.config_defaults : null;
   const tab = SETTINGS[activeTab];
-  if (!defs || !tab || !tab.keys.length) return;
-  tab.keys.forEach((k) => { if (k in defs) draft[k] = clone(defs[k]); });
+  const keys = tab ? tab.resetKeys || tab.keys : [];
+  if (!defs || !keys.length) return;
+  keys.forEach((k) => { if (k in defs) draft[k] = clone(defs[k]); });
   renderTab(activeTab);
   toast("Reset to defaults — Save to keep");
 }
@@ -141,57 +143,80 @@ function wireRefresh() {
   renderTimes(); preview();
 }
 
-// ══ DETECTION ══
-function detectBody() {
-  const condRow = (when, label, control) => `<div class="iset-row cond" data-when="${when}"><span class="iset-lab">${label}</span>${control}</div>`;
-  return (
-    '<p class="set-desc">Hokku analyzes each photo before converting it — <b>black &amp; white</b> photos and photos with <b>faces</b> are routed to conversion pipelines tuned for each. Runs entirely on your server; nothing leaves your network.</p>' +
-    '<div class="igroup"><div class="iset">' +
-      iRow("Detect black &amp; white photos", iTog("bw", draft.classifier_bw_detect_enabled)) +
-      condRow("bw", "B&amp;W preset", presetControl("bwPreset", "image_config_bw", "Black & White")) +
-    '</div><p class="iset-foot">Detected B&amp;W photos use this pipeline — it skips the colour-boosting steps that would tint grays.</p></div>' +
-    '<div class="igroup"><div class="iset">' +
-      iRow("Detect faces", iTog("face", draft.classifier_face_detect_enabled)) +
-      condRow("face", "Protect faces from CLAHE", iTog("clahe", draft.classifier_face_detect_clahe_keepout)) +
-      condRow("face", "Face preset", presetControl("facePreset", "image_config_face", "Face")) +
-    '</div><p class="iset-foot">Detected face photos use this pipeline — tuned to preserve natural skin tones.</p></div>' +
-    resetBtnHTML()
-  );
-}
-function wireDetect() {
-  const TKEY = { bw: "classifier_bw_detect_enabled", face: "classifier_face_detect_enabled", clahe: "classifier_face_detect_clahe_keepout" };
-  const sync = () => $$("[data-when]").forEach((row) => row.classList.toggle("off", !$(`[data-toggle="${row.dataset.when}"]`).classList.contains("on")));
-  $$("[data-toggle]").forEach((sw) => sw.addEventListener("click", () => { const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on); draft[TKEY[sw.dataset.toggle]] = on; sync(); }));
-  wirePreset("bwPreset", "image_config_bw");
-  wirePreset("facePreset", "image_config_face");
-  sync();
-}
-
-// ══ IMAGE ══
-function imageBody() {
-  const cur = presetMatch(draft.image_config_default);
-  const desc = cur ? presets()[cur].description || "" : "Custom pipeline (edited).";
+// ══ IMAGE RENDERING ══
+// One page for how every image is converted: a section per kind of image (each with its
+// dither preset, under the switch that turns it on), cropping & framing, and — only when
+// one is connected — the E1003 look. Labels follow upstream's "Image rendering" section
+// where they can (Dither preset, Face-aware cropping); the text is ours, in plain words.
+// The page's Reset never touches the E1003 look: Custom's settings reset in the tone editor.
+const secLabel = (text) => `<p class="iset-sec">${text}</p>`;
+const condRow = (when, label, control) => `<div class="iset-row cond" data-when="${when}"><span class="iset-lab">${label}</span>${control}</div>`;
+const RENDER_TOGGLES = { bw: "classifier_bw_detect_enabled", face: "classifier_face_detect_enabled", clahe: "classifier_face_detect_clahe_keepout", facecrop: "classifier_face_aware_crop_enabled" };
+const RENDER_KEYS = ["image_config_default", "image_config_face", "image_config_bw", ...Object.values(RENDER_TOGGLES), "crop_to_fill_threshold"];
+const presetDescText = () => { const cur = presetMatch(draft.image_config_default); return cur ? presets()[cur].description || "" : "Custom pipeline (edited)."; };
+function renderBody() {
   const fillPct = Math.round((draft.crop_to_fill_threshold ?? 0) * 100);
+  const profile = draft.mono_e1003_profile || "faithful";
+  const monoOpts = MONO_PROFILES.map(([v, l]) => `<option value="${v}"${v === profile ? " selected" : ""}>${l}</option>`).join("");
   return (
-    iGroup(iRow("Default dither preset", presetControl("imPreset", "image_config_default", "Default")), `<span id="imPresetDesc">${esc(desc)}</span>`, "reserve2") +
-    iGroup('<div class="iset-row"><span class="iset-lab">Zoom to fill</span><span class="range-val" id="imFillVal">' + fillPct + '%</span></div>' +
-      `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="150" step="1" value="${fillPct}"></div>`,
-      "Every photo is shown upright for its frame's orientation. This is the most a photo may be zoomed in to remove letterbox bars: 0% = always letterbox; higher crops more. A landscape photo on a portrait frame needs a lot — just over 100% for a 3:2 camera, about 137% for 16:9. The same limit applies to photos you cropped in the editor — a crop cut to the frame's shape always fills it exactly.") +
-    iGroup(iRow("Keep faces in frame", iTog("classifier_face_aware_crop_enabled", !!draft.classifier_face_aware_crop_enabled)),
-      "When a photo has to be zoomed in to fill the frame, cut the background rather than the people — the crop is centred on the faces Hokku detected instead of the middle of the photo.") +
-    resetBtnHTML()
+    '<p class="set-desc">Hokku checks each image for <b>faces</b> and <b>black &amp; white</b>, then converts it with the pipeline for that type. All on your server; nothing leaves your network.</p>' +
+    secLabel("Standard images") +
+    iGroup(iRow("Dither preset", presetControl("imPreset", "image_config_default", "Standard images")),
+      `For images that aren't black &amp; white or portraits.<span class="foot-desc" id="imPresetDesc">${esc(presetDescText())}</span>`) +
+    secLabel("Portraits") +
+    iGroup(
+      iRow("Detect faces", iTog("face", draft.classifier_face_detect_enabled)) +
+      condRow("face", "Dither preset", presetControl("facePreset", "image_config_face", "Portraits")) +
+      condRow("face", 'Protect faces from local contrast (CLAHE)<span class="sw-hint">Keeps the contrast boost off skin</span>', iTog("clahe", draft.classifier_face_detect_clahe_keepout)),
+      "For images with faces, tuned so skin doesn't turn orange or grey on e-ink.") +
+    secLabel("Black &amp; white images") +
+    iGroup(
+      iRow("Detect B&amp;W images", iTog("bw", draft.classifier_bw_detect_enabled)) +
+      condRow("bw", "Dither preset", presetControl("bwPreset", "image_config_bw", "Black & white images")),
+      "For black-and-white images like film scans and monochrome art. Skips colour boosting so grays don't tint pink or yellow. Also used for black-and-white images with faces.") +
+    secLabel("Cropping &amp; framing") +
+    // one card: the slider, then the switch that only acts when it crops
+    iGroup(
+      '<div class="iset-row"><span class="iset-lab">Zoom to fill</span><span class="range-val" id="imFillVal">' + fillPct + "%</span></div>" +
+      `<div class="iset-slider"><input type="range" class="set-range" id="imFill" min="0" max="150" step="1" value="${fillPct}" aria-label="Zoom to fill"></div>` +
+      // greys out (stays visible) while face detection is off — it uses the detected faces
+      '<div class="iset-row dim" data-dim="face"><span class="iset-lab">Face-aware cropping<span class="sw-hint">Crops around faces so zooming won\'t cut off heads. Needs face detection (Portraits).</span></span>' +
+        `${iTog("facecrop", !!draft.classifier_face_aware_crop_enabled)}</div>`,
+      "How far Hokku may zoom in, cropping the edges, instead of showing white letterbox bars when an image isn't the frame's 4:3 shape. 0% always shows bars; at 100%, half the image is cropped away. Editor crops already fit." +
+      '<span class="foot-ref">Zoom needed: 13% for 3:2 images, 33% for 16:9 or square. For a landscape image on a portrait frame (or the reverse): 78% for 4:3, 100% for 3:2, 137% for 16:9.</span>') +
+    (hasMonoPanel()
+      ? secLabel("E1003 Mono") +
+        iGroup(iRow("Tone profile", `<span class="right"><select class="sel-input" id="moPreset" aria-label="E1003 tone profile">${monoOpts}</select>` +
+            '<button class="mini-btn" data-mono-custom>Edit custom…</button></span>'),
+          "The look of the 16-grey E1003 panel. Faithful (the classic look) and B&amp;W Contrast (filmic) are fixed; Custom is yours to edit, with a live preview.")
+      : "") +
+    resetBtnHTML("Restores presets, detection and cropping. Leaves the E1003 look alone.")
   );
 }
-function wireImage() {
-  const updDesc = () => { const cur = presetMatch(draft.image_config_default); $("#imPresetDesc").textContent = cur ? presets()[cur].description || "" : "Custom pipeline (edited)."; };
-  wirePreset("imPreset", "image_config_default", updDesc);
+function wireRender() {
+  const isOn = (key) => !!$(`[data-toggle="${key}"]`, setBody)?.classList.contains("on");
+  const sync = () => {
+    $$("[data-when]", setBody).forEach((row) => row.classList.toggle("off", !isOn(row.dataset.when)));
+    $$("[data-dim]", setBody).forEach((row) => {
+      const off = !isOn(row.dataset.dim);
+      row.classList.toggle("off", off);
+      const sw = row.querySelector(".sw"); sw.disabled = off; sw.setAttribute("aria-disabled", off);
+    });
+  };
+  $$(".sw[data-toggle]", setBody).forEach((sw) => sw.addEventListener("click", () => {
+    if (sw.disabled) return;
+    const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on);
+    draft[RENDER_TOGGLES[sw.dataset.toggle]] = on;
+    sync();
+  }));
+  wirePreset("imPreset", "image_config_default", () => { $("#imPresetDesc").textContent = presetDescText(); });
+  wirePreset("facePreset", "image_config_face");
+  wirePreset("bwPreset", "image_config_bw");
   const fill = $("#imFill"), fv = $("#imFillVal");
   fill.addEventListener("input", () => { fv.textContent = fill.value + "%"; draft.crop_to_fill_threshold = +fill.value / 100; });
-  // the toggle's data-toggle IS the draft key directly (no TKEY indirection here)
-  $$('[data-toggle="classifier_face_aware_crop_enabled"]').forEach((sw) => sw.addEventListener("click", () => {
-    const on = sw.classList.toggle("on"); sw.setAttribute("aria-checked", on);
-    draft.classifier_face_aware_crop_enabled = on;
-  }));
+  const mono = $("#moPreset");
+  if (mono) mono.addEventListener("change", () => { draft.mono_e1003_profile = mono.value; if (mono.value === "custom") openMono(); });
+  sync();
 }
 
 // ══ SERVER ══
@@ -254,7 +279,10 @@ function framesBody() {
   const names = Object.keys(screens);
   if (!names.length) return '<p class="set-desc">No frames connected yet — a frame appears here the first time it wakes up and checks in with this server.</p>';
   return (
-    "<p class=\"set-desc\">Each frame shows photos matching its shape. Pin a frame to <b>Landscape</b> or <b>Portrait</b>, and optionally only queue matching photos.</p>" +
+    // one statement per line, so the bold "Only matching images" never runs into "Portrait"
+    '<p class="set-desc"><span class="dline">Set each frame to <b>Landscape</b> or <b>Portrait</b>.</span>' +
+      '<span class="dline"><b>Only matching images</b> sends it only images of that shape.</span>' +
+      '<span class="dline">Letterbox bars and zoom are set in <b>Image Rendering → Cropping &amp; framing</b>.</span></p>' +
     '<div class="igroup"><div class="iset">' +
       names.map((n) => {
         const sc = screens[n];
@@ -263,7 +291,7 @@ function framesBody() {
           '<div class="seg orient">' +
             ["landscape", "portrait"].map((o) => `<button data-orient="${o}"${sc.orientation === o ? ' class="on"' : ""}>${cap(o)}</button>`).join("") +
           "</div></div>" +
-          `<div class="iset-row cond"><span class="iset-lab" style="padding-left:22px">Only matching photos</span>${iTog("match:" + n, sc.filter_by_orientation)}</div>`;
+          `<div class="iset-row cond"><span class="iset-lab" style="padding-left:22px">Only matching images</span>${iTog("match:" + n, sc.filter_by_orientation)}</div>`;
       }).join("") +
     "</div></div>"
   );
@@ -283,7 +311,7 @@ function wireFrames() {
   }));
 }
 
-// ══ E1003 MONO (only shown when a mono16_e1003 panel is connected) ══
+// ══ E1003 MONO (a section of Image Rendering, shown only when a mono16_e1003 panel is connected) ══
 const hasMonoPanel = () => Object.values(state.status?.screens || {}).some((s) => s.panel_type === "mono16_e1003");
 // The two on-glass-validated panel looks (see mono_e1003.py). A "preset" here is
 // the full flat mono knob set; "Custom…" opens the mono tone editor (a mono-tailored
@@ -313,26 +341,6 @@ const MONO_KEYS = [
   "mono_e1003_sharpen_amount", "mono_e1003_sharpen_radius", "mono_e1003_sharpen_threshold",
 ];
 
-function monoBody() {
-  const profile = draft.mono_e1003_profile || "faithful";
-  const opts = MONO_PROFILES.map(([v, l]) => `<option value="${v}"${v === profile ? " selected" : ""}>${l}</option>`).join("");
-  return (
-    '<p class="set-desc">The panel-wide look for the 16-level monochrome E1003. <b>Faithful</b> is the frozen classic render; <b>B&amp;W&nbsp;Contrast</b> is the darktable+Lightroom-matched preset; <b>Custom</b> opens the live 3-page editor.</p>' +
-    iGroup(iRow("Tone profile",
-        `<span class="right"><select class="sel-input" id="moPreset">${opts}</select>` +
-        '<button class="mini-btn" data-mono-custom>Edit custom…</button></span>'),
-      "Faithful never changes. B&W Contrast is a fixed filmic look. Custom is your own tuned settings — Edit custom… opens the editor (Tone · Advanced Local Contrast · Details) with a live panel preview.") +
-    resetBtnHTML()
-  );
-}
-function wireMono() {
-  const sel = $("#moPreset");
-  sel.addEventListener("change", () => {
-    draft.mono_e1003_profile = sel.value;
-    if (sel.value === "custom") openMono();
-  });
-}
-
 // ── settings shell ──
 const svgIcon = (inner) => `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${inner}</svg>`;
 // Sections whose `gate` returns false are hidden (capability-gating).
@@ -340,9 +348,8 @@ const settingsEntries = () => Object.entries(SETTINGS).filter(([, c]) => !c.gate
 const SETTINGS = {
   refresh: { title: "Refresh Schedule", icon: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), body: refreshBody, wire: wireRefresh, keys: ["refresh_mode", "refresh_interval_minutes", "refresh_image_at_time", "refresh_active_start", "refresh_active_end"] },
   frames:  { title: "Frame Orientation", icon: svgIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>'), body: framesBody, wire: wireFrames, keys: [] },
-  detect:  { title: "Smart Photo Detection", icon: svgIcon('<circle cx="9" cy="10" r="3"/><path d="M4 20a5 5 0 0 1 10 0"/><path d="M17 9h4M19 7v4"/>'), body: detectBody, wire: wireDetect, keys: ["classifier_bw_detect_enabled", "classifier_face_detect_enabled", "classifier_face_detect_clahe_keepout", "image_config_bw", "image_config_face"] },
-  image:   { title: "Image Conversion & Color", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: imageBody, wire: wireImage, keys: ["image_config_default", "crop_to_fill_threshold", "classifier_face_aware_crop_enabled"] },
-  mono:    { title: "E1003 Mono", icon: svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/><path d="M15 5v14"/>'), body: monoBody, wire: wireMono, keys: MONO_KEYS, gate: hasMonoPanel },
+  // Saves the E1003 keys too (its section lives here) but Reset leaves them alone.
+  image:   { title: "Image Rendering", icon: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>'), body: renderBody, wire: wireRender, keys: [...RENDER_KEYS, ...MONO_KEYS], resetKeys: RENDER_KEYS },
   server:  { title: "Server & Storage", icon: svgIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>'), body: serverBody, wire: wireServer, keys: ["poll_interval_seconds", "debug_fast_refresh", "serve_decision_log_enabled", "auto_clear_cache", "mdns_hostname", "image_worker_thread_count"] },
 };
 const setModal = $("#settings-modal"), setBody = $("#set-body"), setNav = $("#set-nav"), setBack = $("#set-back"), setTitle = $("#set-title");
@@ -750,6 +757,15 @@ moStage.addEventListener("pointermove", (e) => {
 moStage.addEventListener("contextmenu", (e) => e.preventDefault());
 moStage.addEventListener("dragstart", (e) => e.preventDefault());
 $("#mono-reset").addEventListener("click", () => { MONO_KEYS.forEach((k) => (monoCfg[k] = clone(state.config.config[k]))); monoCfg.mono_e1003_profile = "custom"; renderMonoControls(); runMonoPreview(); toast("Reset to saved"); });
+// Reset to defaults: Custom's settings back to the shipped defaults. This is the only reset
+// for the E1003 look (the settings page's Reset leaves it alone). It changes the editor's
+// working copy only — nothing is stored until "Use these settings" and then Save.
+$("#mono-defaults").addEventListener("click", (e) => armConfirm(e.currentTarget, () => {
+  const defs = state.config?.config_defaults; if (!defs) return;
+  MONO_KEYS.forEach((k) => { if (k !== "mono_e1003_profile" && k in defs) monoCfg[k] = clone(defs[k]); });
+  renderMonoControls(); runMonoPreview();
+  toast("Custom reset to defaults — Use these settings to apply");
+}, "Reset to defaults?"));
 $("#mono-save").addEventListener("click", () => {
   MONO_KEYS.forEach((k) => (draft[k] = clone(monoCfg[k])));
   closeMono();

@@ -333,6 +333,7 @@
   .set-head { display: flex; align-items: center; gap: 12px; padding: 17px 20px; border-bottom: 1px solid var(--hair); }
   /* mobile settings = iOS-style drill-down: category list → page with back chevron */
   .set-back { width: 34px; height: 34px; margin: -4px 0 -4px -8px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--text); cursor: pointer; }
+  .set-back[hidden] { display: none; }   /* display:grid above would otherwise keep it on desktop */
   .set-back svg { width: 19px; height: 19px; }
   .set-back:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
   .set-list { display: flex; flex-direction: column; margin: -6px 0; }
@@ -409,7 +410,7 @@
   .mdns-host { margin-right: 8px; }   /* breathing room before the mDNS toggle */
   /* footer action set apart with a divider + breathing room (avoids accidental clicks) */
   .danger-row { display: flex; margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--hair); }
-  /* reset-to-defaults footer on the Detection + Image settings pages */
+  /* reset-to-defaults footer on the Image Rendering settings page */
   .set-reset { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--hair); }
   .set-reset-btn { background: none; border: 1px solid var(--hair); color: var(--dim); font: inherit; font-size: .82rem; font-weight: 500; padding: 8px 14px; border-radius: 9px; cursor: pointer; transition: .15s; flex: none; }
   .set-reset-btn:hover { border-color: var(--faint); color: var(--text); }
@@ -433,10 +434,22 @@
   .iset-row + .iset-row { border-top: 1px solid var(--hair); }
   .iset-lab { font-size: .9rem; color: var(--text); }
   .iset-foot { margin: 0; padding: 5px 6px 0; font-size: .77rem; color: var(--faint); line-height: 1.45; }
-  .iset-foot.reserve2 { min-height: 3em; }   /* holds the dynamic preset description without resizing */
+  /* the preset's own description, on its own line under the section note; two lines
+     reserved so switching presets doesn't make the page jump */
+  .iset-foot .foot-desc { display: block; min-height: 2.9em; }
+  .iset-foot .foot-ref { display: block; margin-top: 1.45em; }   /* reference line after an empty line */
   .iset-slider { padding: 2px 16px 14px; }
+  .iset-slider + .iset-row { border-top: 1px solid var(--hair); }
   .iset-row.frow .seg { align-self: center; }
   .iset-row.cond.off { display: none; }   /* pipeline preset rows hidden when detection is off */
+  /* a switch that depends on another section greys out (stays visible) while that's off */
+  .iset-row.dim.off { opacity: .42; }
+  .iset-row.dim.off .sw { cursor: default; }
+  /* section heading inside a settings page (Image Rendering): extra air above, close to its card */
+  .iset-sec { margin: 18px 0 -12px 6px; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  /* one statement per line in a page intro */
+  .set-desc .dline { display: block; }
+  .set-desc .dline + .dline { margin-top: .45em; }
   .mini-btn { border: 1px solid var(--hair-2); background: transparent; color: var(--dim); font: inherit; font-size: .76rem; padding: 6px 11px; border-radius: 8px; cursor: pointer; flex: none; }
   .mini-btn:hover { color: var(--text); border-color: var(--hair-2); }
   /* custom dither editor (desktop only) — categories | that category's knobs | large preview */
@@ -527,6 +540,9 @@
   /* scrollbar-gutter + horizontal padding so the slider thumb never sits under the scrollbar */
   .mono-page { flex: 1; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 0 12px 0 6px; }
   .mono-page .dknob { padding: 4px 0; }   /* tight, equidistant spacing between sliders */
+  /* tone editor's Reset to defaults: two-step confirm, width reserved for "Reset to defaults?" */
+  #mono-defaults { min-width: 10.8em; text-align: center; }
+  #mono-defaults.armed { border-color: #E9836F; color: #E9836F; }
   .mono-group { padding: 2px 0; }
   .mono-group + .mono-group { margin-top: 8px; border-top: 1px solid var(--hair); padding-top: 8px; }
   .mono-toggle { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--text); font-weight: 600; margin: 2px 0 4px; cursor: pointer; user-select: none; }
