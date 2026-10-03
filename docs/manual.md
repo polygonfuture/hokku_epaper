@@ -80,11 +80,21 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 **Live previews** — every photo appears as a thumbnail of its **converted** six-colour render (what the frame will actually display, not the original), so you can catch anything that dithers poorly before it goes on the wall. The most recently uploaded photos appear first.
 
-**Arrangements** — the tabs at the top change the layout: **Mixed** lays every photo out in one flowing grid, **Grouped** splits them into Landscape and Portrait sections, and **Landscape** or **Portrait** show just one shape.
+**Arrangements** — the tabs at the top change the layout: **Mixed** lays every photo out in one flowing grid, and **Landscape** or **Portrait** show just one shape.
 
 **Thumbnail size** — the slider beside the tabs makes the thumbnails larger or smaller in any arrangement. On a phone, pinch the grid to zoom in and out instead.
 
-**Frame chips** — a photo that is currently on a frame carries a small coloured chip with that frame's name in its corner (a green “Living Room” chip, a blue “Studio” chip, and so on), so you can see at a glance which photo is on which wall. Every frame has its own colour, used consistently throughout the app.
+**Finding a photo** — once your library passes 60 photos, two more controls join the bar. **Sort** orders the grid by newest or oldest added, longest unseen, recently shown, or name. **Show** narrows it to **B&W** photos, photos with **People**, or **Non-People**, using the server's own photo analysis; while it's narrowed, the header count reads like “12 of 354 photos”.
+
+**Longest unseen** — sorting by when photos were last shown splits the grid into sections (*Never shown*, *Over a year*, *6–12 months*, *1–6 months*, *This month*), and each thumbnail says how long ago it was last on a frame.
+
+<a href="../images/ui_v2_gallery_find.png"><img src="../images/ui_v2_gallery_find.png" width="760" alt="The gallery bar: thumbnail size, Sort, Show (All, B&W, People, Non-People), and the shape tabs."></a>
+
+*The gallery bar: thumbnail size, Sort, Show, and the shape tabs. Sort and Show appear from 60 photos.*
+
+&nbsp;
+
+**Frame chips** — a photo that is currently on a frame carries a small coloured chip with that frame's name in its corner (a blue “Kitchen” chip, an orange “Living Room” chip, and so on), so you can see at a glance which photo is on which wall. Every frame has its own colour, chosen to stay easy to tell apart with colour blindness, and used consistently throughout the app.
 
 **Status badges** — a photo still being converted shows a **Converting** badge; anything that failed to convert is set aside in the failed panel (see [1.4](#14-uploading-photos-and-watching-progress)).
 
@@ -102,7 +112,7 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 &nbsp;
 
-**Two views** — the toggle at the top switches between the **E-ink render** (how it will look on the frame) and the **Original**.
+**Two views** — the toggle at the top switches between the **Spectra 6** render (how it will look on the frame) and the **Original**. If you have a black-and-white E1003 frame, a third **Mono 16** tab shows how it will look on that frame.
 
 <a href="../images/ui_v2_two_views.png"><img src="../images/ui_v2_two_views.png" width="560" alt="Two buttons let you swap between dithered image and orignal photo."></a>
 
@@ -116,6 +126,12 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 **Faces** — if the photo contains faces, a **Faces** button on the Original view outlines them.
 
 **Open full size** — click the image itself to open it full size in a new tab.
+
+**Moving between photos** — *on a computer*, press **←** or **→**, or click the arrows either side of the detail view, to step to the previous or next photo without closing it. The order matches the gallery's, including any sort or filter you have on.
+
+<a href="../images/ui_v2_detail_nav.png"><img src="../images/ui_v2_detail_nav.png" width="560" alt="The arrows either side of the detail view step to the previous and next photo."></a>
+
+*The arrows either side of the detail view (or the ← and → keys) step through your photos.*
 
 &nbsp;
 
@@ -134,6 +150,7 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 - **Send to a frame** — with more than one frame connected, choose which frame should show this photo at its next refresh. If the photo's orientation does not match the frame's, Hokku asks you to confirm (“… shows landscape — send anyway?”) before sending.
 - **Show next** — with a single frame, queue the photo to be shown next.
 - **View details** — open the full detail view (from the menu or the action sheet).
+- **Download original** — in the detail view, save the photo exactly as you uploaded it.
 - **Delete** — remove the photo and all of its cached renders; a second tap confirms.
 - **Retry conversion** and **View error** — shown in place of the above for a photo that failed to convert.
 
@@ -230,6 +247,18 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 &nbsp;
 
+**Zoom in to check the dots.** The preview opens fitted to the screen. The **magnifier** button in its corner jumps to **100%**, one dot on the frame per dot on your screen, and back to **Fit**; double-click a spot (double-tap on a phone) or press **Z** to do the same. Scroll or pinch to zoom anywhere in between, and drag to move around. Press and hold still shows the original while you're zoomed in.
+
+<a href="../images/ui_v2_editor_zoom_btn.png"><img src="../images/ui_v2_editor_zoom_btn.png" width="132" alt="The magnifier button in the preview's corner, reading 1:1."></a>
+
+*The magnifier button: **1:1** zooms to 100%; zoomed in, it reads **Fit**.*
+
+<a href="../images/ui_v2_editor_zoom.png"><img src="../images/ui_v2_editor_zoom.png" height="360" alt="The editor zoomed to 100% on a computer: the magnifier reads Fit, with the zoom level and the full-resolution note along the bottom."></a> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_editor_zoom.png"><img src="../images/ui_v2_mobile_editor_zoom.png" height="360" alt="The editor zoomed to 100% on a phone."></a>
+
+*At 100% on a computer … (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  *… and on a phone. (right)*
+
+&nbsp;
+
 **Pipeline presets — the ••• menu.** The **•••** button (by the badge on a computer, in the header on a phone) swaps the whole conversion pipeline at once: **Default**, **Face**, or **B&W**, plus **Auto (best-guess)** to return to the server's own choice and **Reset all** to drop every tweak. Reach for it when the automatic pick isn't what you want — for instance forcing **B&W** on a photo the detector read as colour.
 
 <a href="../images/ui_v2_editor_preset.png"><img src="../images/ui_v2_editor_preset.png" height="400" alt="The three-dot menu swaps the whole pipeline: Default, Face, B&W, Auto best-guess, and Reset all."></a> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_editor_preset.png"><img src="../images/ui_v2_mobile_editor_preset.png" height="400" alt="The same three-dot preset menu opened in the editor on a phone."></a>
@@ -241,9 +270,17 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 **Fine-tuning the conversion.** Past the presets, the **Tonal**, **Color**, **Palette**, and **Kernel** tools expose the same controls as the Settings dither editor — tonal preparation, colour enhancement, the palette-matching LUT, and the dither kernel — with the preview updating live as you drag, and a dot marking any group you've changed. For what each control does and why, see [dithering.md](dithering.md).
 
+**Draft first, then full resolution.** While you move a slider, the preview updates from a quick half-resolution draft, and a small note under it reads **draft · half resolution**. About half a second after you stop, the full-resolution render, exactly what the frame will show, takes its place (**rendering full resolution…**, then **full resolution**). Judge fine detail on the full version.
+
 <a href="../images/ui_v2_mobile_editor.png"><img src="../images/ui_v2_mobile_editor.png" height="720" alt="The editor on a phone: the preview fills the screen with the tools along the bottom."></a>
 
 *On a phone the preview fills the screen and the tools sit along the bottom.*
+
+**Editing for a B&W frame.** If a black-and-white E1003 frame is connected, an **Editing for** switch at the top picks which version you're editing: **Color · Spectra 6** or **E1003 Mono**. The mono version previews in the B&W frame's 16 greys and in that frame's shape, and has its own tools: **Tone** (exposure, contrast, highlights, shadows, whites, blacks, and local contrast), **Advanced**, and **Details**. Its crop follows the colour crop (**Following Spectra crop**) until you choose **Frame separately**; **↺ Match Spectra** links them again.
+
+<a href="../images/ui_v2_editor_mono.png"><img src="../images/ui_v2_editor_mono.png" width="560" alt="The editor switched to E1003 Mono: a 16-grey preview in the B&W frame's shape, with the Tone controls."></a>
+
+*Editing for the B&W frame: its own 16-grey preview and Tone controls.*
 
 **Non-destructive, and re-editable.** Editing never alters your original — the server keeps it and simply renders a fresh six-colour version from your crop and settings. Re-open the same photo any time and the editor comes back exactly as you left it, every crop and adjustment restored, so you can nudge one value or hit **Reset all** and start over. Edit as often as you like.
 
@@ -257,21 +294,41 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 ### 1.6 Your frames
 
-**Opening the panel** — the **Frames** button in the header opens a panel of every frame that has connected to this server. On a computer it drops down and stays open while you browse the gallery.
+**Opening the panel** — the **Frames** button in the header opens a panel of every frame that has connected to this server. On a computer it is already open when the app loads, and stays open while you browse the gallery. On a phone or tablet it starts closed, so the gallery comes first.
 
-<a href="../images/ui_v2_frames.png"><img src="../images/ui_v2_frames.png" width="560" alt="The Frames panel: one card per connected frame."></a>
+<a href="../images/ui_v2_frames.png"><img src="../images/ui_v2_frames.png" width="760" alt="The Frames panel: one card per connected frame, with the Frame orientation and Refresh schedule shortcuts above them."></a>
 
-*The Frames panel: one card per connected frame.*
+*The Frames panel: one card per connected frame, with two Settings shortcuts above them.*
+
+**Shortcuts** — the **Frame orientation** and **Refresh schedule** buttons above the cards open those pages of Settings (see [1.7](#17-settings)). On a wide screen they sit in a column to the right of the cards.
+
+<a href="../images/ui_v2_frame_card.png"><img src="../images/ui_v2_frame_card.png" width="436" alt="A frame card: the photo the frame is showing, its name and colour dot, IP address, firmware, battery, next check-in and last seen."></a>
+
+*A frame card: the photo it's showing, and how the frame is doing.*
 
 **Each frame card** shows a thumbnail of the photo it is currently displaying, the frame's name and colour dot, its IP address and firmware version, its battery level (flagged red below 20%), when it was last seen, and when it is next expected to check in. A frame that has missed its expected check-in is flagged **Overdue**. An **Up next** thumbnail shows what it will display next — or **Pinned**, if you have sent a specific photo to it, which you can cancel here.
 
+<a href="../images/ui_v2_frame_preview.png"><img src="../images/ui_v2_frame_preview.png" height="480" alt="The frame preview on Now: the photo inside the frame's shape, with the photo, panel and fit line underneath."></a>
+
+*Tap a card's thumbnail to see the photo as that frame shows it.*
+
 **Seeing a photo as the frame shows it** — tap a card's thumbnail to open a preview of that frame: the photo drawn inside the frame's own shape, rendered exactly as the panel renders it — cropped or letterboxed the same way, and in black and white for a mono frame. Switch between **Now** and **Up next**, reroll a queued photo with **Skip up next**, or jump to the photo in your library. It's read-only; nothing you do here changes the framing.
+
+<a href="../images/ui_v2_frame_preview_next.png"><img src="../images/ui_v2_frame_preview_next.png" height="480" alt="The frame preview on Up next, with Skip up next underneath."></a>
+
+*The same preview on Up next, with Skip up next underneath.*
 
 **Skip up next** works through the frame's photos like a shuffled deck. First come the photos the frame would pick next anyway (usually ones it has never shown), in random order. Then come the rest, roughly the longest-unseen first. While the preview is open, no photo comes up twice until every photo that suits the frame has. After that it starts over, and a note says so. A skip only changes what that frame shows next: the photo you skipped keeps its place in the rotation and can come back after the frame's next refresh, and nothing about the other frame changes.
 
 The same preview opens from anywhere a photo and a frame meet: the frame badge on a gallery thumbnail, the **On display** and **Up next** rows in a photo's details, and **Preview frame** in a card's ⋯ menu.
 
+<a href="../images/ui_v2_frame_fit.png"><img src="../images/ui_v2_frame_fit.png" width="437" alt="The bottom of the frame preview: a landscape photo letterboxed on a portrait frame, and the line under it reading the photo's name, Spectra 6, and a landscape outline with Needs 100%."></a>
+
+*A landscape photo letterboxed on a portrait frame: its outline, and the Zoom to fill it needs.*
+
 Under the preview, a line names the photo, the panel type, and how the photo fits: **Exact fit** when it fills the frame with nothing lost, **Zoomed 71%** when it was scaled in to remove the bars (the edges are cropped), or **Needs 113%** when it's letterboxed — that number being the Zoom to fill value that would make it fill. A small outline before that label is the photo's own shape, shown only when it differs from the frame's.
+
+&nbsp;
 
 **How frames connect** — a frame doesn't hold a live connection; it wakes on schedule, fetches an image, and returns to deep sleep. The panel only updates when a frame checks in, so “last seen 12 hours ago” is normal, not a fault.
 
@@ -281,15 +338,25 @@ Under the preview, a line names the photo, the panel type, and how the photo fit
 
 **View diagnostics** — the **⋯** button on a card opens its menu. **View diagnostics** shows everything the frame reports about itself — firmware, wake reason, uptime, battery, Wi-Fi signal, free memory, clock drift, next wake, and the raw firmware log from its last few refreshes — enough to see why a refresh failed without reaching for a cable.
 
-**Orientation** — the diagnostics panel is also where you set the frame's orientation (Landscape or Portrait) and whether it should be sent only photos matching that orientation.
+**Orientation** — the diagnostics panel is also where you set the frame's orientation (Landscape or Portrait) and whether it should be sent only photos matching that orientation. To set every frame on one page, use the **Frame orientation** shortcut.
 
 **Remove a frame** — the same **⋯** menu has a **Remove frame** option.
+
+**Rename a frame** — **Rename**, in the same menu, gives a frame a friendlier name. It's shown only in the app: the name the frame was set up with stays its internal ID, so renaming never breaks anything. **Skip up next** is in the menu too, for a quick skip without opening the preview.
+
+<a href="../images/ui_v2_frame_menu.png"><img src="../images/ui_v2_frame_menu.png" width="190" alt="A frame card's ⋯ menu: Preview Frame, Rename, Skip up next, View diagnostics, Remove frame."></a>
+
+*A frame card's ⋯ menu.*
+
+&nbsp;
 
 <a href="../images/ui_v2_mobile_frames.png"><img src="../images/ui_v2_mobile_frames.png" height="720" alt="The Frames panel on a phone."></a>
 
 *The Frames panel on a phone.*
 
-**Multiple frames** — you can run as many frames as you like from one server. Each is tracked separately, keeps its own orientation, and draws from the same photo library.
+**Multiple frames** — you can run as many frames as you like from one server. Each is tracked separately, keeps its own orientation, and draws from the same photo library. The panel fits as many columns of cards as the screen has room for, down to one on a phone.
+
+**Black-and-white frames** — an E1003 frame works like any other, with photos rendered in its 16 greys. Its preview and the photo detail's **Mono 16** tab show exactly what it will display, and the editor can tune its version separately (see [1.5](#15-editing-a-photo)).
 
 &nbsp;
 
@@ -304,10 +371,9 @@ Under the preview, a line names the photo, the panel type, and how the photo fit
 **The categories:**
 
 - **Refresh Schedule** — how often each frame wakes to fetch a new photo: an **interval** (every 15 minutes up to 24 hours, optionally only during set hours so the battery lasts longer), or a list of **specific times**. The server computes each frame's sleep for you; a live line shows what's next.
-- **Frame Orientation** — set each connected frame to Landscape or Portrait, and whether it should be sent only matching photos (the same controls as in a frame's diagnostics).
-- **Smart Photo Detection** — whether Hokku detects black-and-white photos and faces and routes each to a conversion tuned for it, with an option to protect faces from local-contrast boosting. It all runs on your own server; nothing leaves your network.
-- **Image Conversion & Colour** — the default dither preset, how far a photo may be zoomed to fill the frame rather than showing letterbox bars, and whether a photo that must be zoomed keeps faces in frame.
-- **Server & Storage** — how often the app polls for updates, the debug screen, automatic cache clearing, the mDNS/Bonjour name, how many photos convert in parallel, and a button to clear all caches and reconvert.
+- **Frame Orientation** — set each connected frame to Landscape or Portrait, and turn on **Only matching images** to send it only photos of that shape (the same controls as in a frame's diagnostics).
+- **Image Rendering** — how photos are converted for the frames, all on one page: a section for each kind of photo, cropping and framing, and the look of a B&W frame. See below.
+- **Server & Storage** — how often the app polls for updates, the debug screen (fast test refreshes that don't use up any photo's turn), the serve-decision log (a troubleshooting record; leave it off normally), automatic cache clearing, the mDNS/Bonjour name, how many photos convert in parallel, and a button to clear all caches and reconvert.
 
 &nbsp; 
 &nbsp; 
@@ -316,13 +382,43 @@ Under the preview, a line names the photo, the panel type, and how the photo fit
 
 *On a phone, Settings is a list you drill into.*
 
-**Custom dither editor** — any conversion preset can be opened for fine tuning with its **Custom…** button, which brings up the dither editor on a computer.
+&nbsp;
 
-<a href="../images/ui_v2_dither.png"><img src="../images/ui_v2_dither.png" width="560" alt="The custom dither editor, with a live six-colour preview."></a>
+**Image Rendering** — Hokku checks each photo for faces and for black and white, then converts it with the pipeline for that kind of photo. It all runs on your own server; nothing leaves your network.
+
+<a href="../images/ui_v2_settings_rendering.png"><img src="../images/ui_v2_settings_rendering.png" width="560" alt="Settings, Image Rendering: Standard images, Portraits and Black & white images, each with its own dither preset."></a>
+
+*Image Rendering: a section for each kind of photo, each with its own dither preset.*
+
+- **Standard images** — the **Dither preset** for every photo that isn't a portrait or black and white.
+- **Portraits** — **Detect faces** turns this on. Photos with faces get their own dither preset, tuned so skin doesn't turn orange or grey, and **Protect faces from local contrast (CLAHE)** keeps the contrast boost off skin.
+- **Black & white images** — **Detect B&W images** turns this on, for film scans and monochrome art. Their preset skips colour boosting, so greys don't take on a pink or yellow tint.
+- **Cropping & framing** — **Zoom to fill** sets how far a photo that isn't the frame's shape may be zoomed in, cropping its edges, instead of showing white letterbox bars. 0% always shows bars; the page lists the zoom common shapes need. Photos you've cropped in the editor already fit. **Face-aware cropping** keeps faces in the frame when a photo is zoomed, and needs **Detect faces** on.
+- **E1003 Mono** — shown only when a B&W frame is connected: its **Tone profile**, either **Faithful** or **B&W Contrast**, or your own **Custom** (see the tone editor below).
+
+**Reset to defaults**, at the bottom of the page, restores the presets, detection and cropping. It leaves the E1003 look alone.
+
+&nbsp;
+
+**Custom dither editor** — any conversion preset can be opened for fine tuning with its **Custom…** button, which brings up the dither editor on a computer. Its title names the kind of photo you're tuning.
+
+<a href="../images/ui_v2_dither.png"><img src="../images/ui_v2_dither.png" width="560" alt="The custom dither editor, with a live six-colour preview and the magnifier in its corner."></a>
 
 *The custom dither editor, with a live six-colour preview.*
 
 The editor groups every conversion control into five stages — tonal preparation, colour enhancement, dynamic-range compression, palette matching, and the dither kernel — and shows a **live preview** of a real photo rendered with your current settings, updating as you adjust each control. Choose a different preview photo from the row beneath it. For a full explanation of what each control does and why the defaults are what they are, see [dithering.md](dithering.md).
+
+**Zooming in** — the preview opens fitted to its box. As in the photo editor, the **magnifier** in its corner switches between **Fit** and **100%** (one dot on the frame per dot on your screen); double-click a spot or press **Z** to do the same, and drag to move around. There is no scroll or pinch zoom here.
+
+&nbsp;
+
+**E1003 tone editor** — with a B&W frame connected, **Edit custom…** in the E1003 Mono section opens the tone editor for the **Custom** profile, on a computer. Its controls sit on three pages — **Tone**, **Advanced Local Contrast**, and **Details** — beside a live preview in the frame's 16 greys. Press and hold the preview to compare it with how it looked when you opened the editor. It zooms the same way as the dither editor.
+
+<a href="../images/ui_v2_tone.png"><img src="../images/ui_v2_tone.png" width="560" alt="The E1003 tone editor: the Tone controls beside a live 16-grey preview of the B&W frame."></a>
+
+*The E1003 tone editor, with a live 16-grey preview.*
+
+**Reset to saved** puts the controls back to your last saved settings. **Reset to defaults** puts Custom back to its shipped settings; click it twice to confirm. Nothing is kept until you press **Use these settings** and then **Save**. The Image Rendering page's own **Reset to defaults** never touches the E1003 look.
 
 &nbsp;
 
@@ -336,7 +432,7 @@ The editor groups every conversion control into five stages — tonal preparatio
 
 <a href="../images/ui_v2_server.png"><img src="../images/ui_v2_server.png" width="560" alt="Clicking the wordmark opens server info — a drawer on a computer."></a>
 
-* Clicking the wordmark opens server info — a drawer on a computer.*
+*Clicking the wordmark opens server info — a drawer on a computer.*
 
 &nbsp;
 
@@ -347,6 +443,10 @@ The editor groups every conversion control into five stages — tonal preparatio
 *On a phone the same information opens as a panel.*
 
 **The footer** — the current server time and version also appear in the footer at the bottom of every page.
+
+&nbsp;
+
+**Backups and power cuts** — your photo library's database (which holds every edit), the rotation history, and your settings are saved safely: the previous copy is kept as a `.bak`, and dated snapshots go to a `backups` folder next to the cache folder. After a crash the server recovers from the `.bak` on its own. If even that fails, it refuses to start rather than overwrite your edits, and says how to restore a snapshot from `backups/`.
 
 ---
 
@@ -448,7 +548,7 @@ See [dithering.md](dithering.md) for more detail on how this interacts with the 
 
 **Config file options** — a few settings can't be changed from the web app and need to be edited in the config file directly (`/var/lib/hokku/config.json` on a deb install, or `./config.json` from source). These are:
 
-- **`mdns_hostname`** — the mDNS/Bonjour hostname the server advertises on your network. When set (default: `"hokku"`), the server is reachable as `hokku.local` in addition to its IP address, which means you can bookmark `http://hokku.local:8080/` and never worry about the IP changing. Set to an empty string to disable mDNS.
+- **`mdns_hostname`** — the mDNS/Bonjour hostname the server advertises on your network. When set (default: `"hokku"`), the server is reachable as `hokku.local` in addition to its IP address, which means you can bookmark `http://hokku.local:8080/` and never worry about the IP changing. Set to an empty string to disable mDNS. If the server's computer also runs a VPN, the server still announces itself on your home network, and if Wi-Fi or the VPN reconnects, it re-announces `hokku.local` by itself within about a minute.
 - **`port`** — the port the server listens on (default: `8080`). Change this if something else on your server is already using 8080.
 - **`upload_dir`** / **`cache_dir`** — where originals and converted images are stored. The defaults are sensible for a deb install; override these if you want to put your photo library on a different drive or mount point.
 
