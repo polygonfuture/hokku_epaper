@@ -22,6 +22,19 @@
     --gap: 6px;
     --radius: 2px;
     --pad: clamp(18px, 4vw, 44px);
+
+    /* one "UI pixel" for things that grow on big screens (frame cards, header buttons, the
+       Frames drawer's shortcuts): 1px up to a full-HD browser window (960 px tall), then
+       growing with the window's height — 1.2px in a maximized QHD window (about the physical
+       size on a 24" FHD screen), ~1.6px on 4K at 100% scaling, capped at 2px. Use
+       calc(N * var(--uk)); rem font sizes add N * var(--ue), the extra over 1px. Phones and
+       FHD stay at exactly 1px. */
+    --uk: clamp(1px, calc(1px + (100vh - 960px) / 1700), 2px);
+    --ue: calc(var(--uk) - 1px);
+    /* header height: 78px (phone, FHD, QHD) until the growing 43-"px" buttons need 12px of
+       air above and below — only on very tall windows (4K at 100% scaling ≈ 94px). The
+       drawers that hang under the sticky header use the same value. */
+    --bar-h: max(78px, calc(43 * var(--uk) + 24px));
   }
 
   * { box-sizing: border-box; }

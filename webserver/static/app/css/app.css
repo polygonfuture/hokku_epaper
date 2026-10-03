@@ -32,7 +32,7 @@
   header.bar {
     position: sticky; top: 0; z-index: 40;
     display: flex; align-items: center; gap: 20px;
-    padding: 0 var(--pad); height: 78px;
+    padding: 0 var(--pad); height: var(--bar-h);   /* 78px, taller only on very tall windows (tokens.css) */
     background: color-mix(in srgb, var(--bg) 78%, transparent);
     backdrop-filter: blur(16px) saturate(1.2);
     border-bottom: 1px solid var(--hair);
@@ -48,30 +48,32 @@
   @keyframes dotbreath { 0%, 100% { transform: scale(.85); opacity: .5; } 50% { transform: scale(1.14); opacity: 1; } }
   .bar .sp { flex: 1; }
 
+  /* Header buttons (Upload, Frames, Settings) grow with the screen like the frame cards: sizes
+     are multiples of --uk (tokens.css) — 1px on phones and FHD, 1.2px in a QHD window. */
   /* settings gear — icon button next to the server chip; opens a dropdown */
   .icon-pill {
-    display: inline-grid; place-items: center; width: 43px; height: 43px; border-radius: 50%;
+    display: inline-grid; place-items: center; width: calc(43 * var(--uk)); height: calc(43 * var(--uk)); border-radius: 50%;
     border: 1px solid var(--hair); background: var(--bg-elev); color: var(--dim); cursor: pointer;
     transition: color .15s, border-color .15s;
   }
   .icon-pill:hover { color: var(--text); border-color: var(--hair-2); }
-  .icon-pill svg { width: 19px; height: 19px; }
+  .icon-pill svg { width: calc(19 * var(--uk)); height: calc(19 * var(--uk)); }
 
 
 
   /* frames pill — summarises connected frames (colour dots); expands to cards */
   .frames-pill {
-    display: inline-flex; align-items: center; gap: 9px; height: 43px; padding: 0 9px 0 14px; border-radius: 24px;
+    display: inline-flex; align-items: center; gap: calc(9 * var(--uk)); height: calc(43 * var(--uk)); padding: 0 calc(9 * var(--uk)) 0 calc(14 * var(--uk)); border-radius: calc(24 * var(--uk));
     border: 1px solid var(--hair); background: var(--bg-elev); cursor: pointer; transition: border-color .15s;
-    font: inherit; font-size: .82rem; color: var(--text);
+    font: inherit; font-size: calc(.82rem + 13.12 * var(--ue)); color: var(--text);
   }
   .frames-pill:hover { border-color: var(--hair-2); }
-  .fp-frame { display: none; width: 19px; height: 19px; color: var(--dim); }   /* mobile-only picture-frame icon */
+  .fp-frame { display: none; width: calc(19 * var(--uk)); height: calc(19 * var(--uk)); color: var(--dim); }   /* mobile-only picture-frame icon */
   .fdots { display: inline-flex; }
-  .fdots i { width: 10px; height: 10px; border-radius: 50%; background: var(--fc); border: 2px solid var(--bg-elev); margin-left: -5px; }
+  .fdots i { width: calc(10 * var(--uk)); height: calc(10 * var(--uk)); border-radius: 50%; background: var(--fc); border: 2px solid var(--bg-elev); margin-left: calc(-5 * var(--uk)); }
   .fdots i:first-child { margin-left: 0; }
-  .frames-pill .chev { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--text) 8%, transparent); }
-  .frames-pill .chev svg { width: 13px; height: 13px; }
+  .frames-pill .chev { width: calc(24 * var(--uk)); height: calc(24 * var(--uk)); border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .frames-pill .chev svg { width: calc(13 * var(--uk)); height: calc(13 * var(--uk)); }
 
   /* battery cell (used in frame cards) */
   .cell { width: 20px; height: 10px; border: 1.4px solid var(--dim); border-radius: 3px; padding: 1.4px; position: relative; display: inline-block; vertical-align: middle; }
@@ -79,25 +81,31 @@
   .cell i { display: block; height: 100%; background: var(--fc, var(--accent)); border-radius: 1px; }
 
   /* per-frame cards inside the frames panel — thumbnail + name + IP + stats */
-  .frames-panel.open { max-height: 620px; overflow-y: auto; }
+  .frames-panel.open { max-height: calc(620 * var(--uk)); overflow-y: auto; }
   /* tiles and the orientation button share one top-aligned row; the button sits far
      right with a horizontal keepout between it and the tiles */
   .fpanel-body { display: flex; align-items: flex-start; gap: 72px; padding: 16px var(--pad); }
-  .fcards { display: flex; flex-wrap: wrap; gap: 12px; flex: 1; min-width: 0; }
-  .fpanel-body .ghost { flex: none; margin-left: 0; display: inline-flex; align-items: center; gap: 7px; }
+  /* Frame cards grow with the screen, like the frame preview modal: every size in a card is
+     a multiple of --uk, the shared "UI pixel" (tokens.css): 1px on phones and FHD, 1.2px
+     in a maximized QHD window, ~1.6px on 4K at 100% scaling. */
+  .fcards { display: flex; flex-wrap: wrap; gap: calc(12 * var(--uk)); flex: 1; min-width: 0; }
+  .fpanel-body .ghost { flex: none; margin-left: 0; display: inline-flex; align-items: center; gap: calc(7 * var(--uk)); }
+  /* the shortcuts grow like the cards; one class more specific than the later .drawer .ghost */
+  .frames-panel .fpanel-body .ghost { font-size: calc(.76rem + 12.16 * var(--ue)); padding: calc(5 * var(--uk)) calc(12 * var(--uk)); border-radius: calc(7 * var(--uk)); }
   /* right-side column of frame shortcuts (Orientation, Refresh schedule) — equal width */
-  .fpanel-actions { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
-  .fpanel-body .ghost svg { width: 14px; height: 14px; }
+  .fpanel-actions { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: calc(8 * var(--uk)); }
+  .fpanel-body .ghost svg { width: calc(14 * var(--uk)); height: calc(14 * var(--uk)); }
   .fcard {
-    display: flex; gap: 7px; padding: 13px 18px 13px 13px; border: 1px solid var(--hair); border-radius: 14px;
+    display: flex; gap: calc(7 * var(--uk)); padding: calc(13 * var(--uk)) calc(18 * var(--uk)) calc(13 * var(--uk)) calc(13 * var(--uk));
+    border: 1px solid var(--hair); border-radius: calc(14 * var(--uk));
     background: var(--bg-elev); align-items: center;
     flex: 0 0 auto;   /* box hugs its content — does not stretch across the row */
   }
   /* thumbnail + a divider, then the frame info (tightened spacing) */
-  .qstrip { display: flex; align-items: center; flex: none; align-self: stretch; padding-right: 10px; border-right: 1px solid var(--hair); }
+  .qstrip { display: flex; align-items: center; flex: none; align-self: stretch; padding-right: calc(10 * var(--uk)); border-right: 1px solid var(--hair); }
   /* single frame thumbnail — its SHAPE reflects the frame's orientation; hovering it
      swaps to the "next" image. Orientation is changed in Settings, not by clicking here. */
-  .fthumb { position: relative; height: 62px; border-radius: 2px; overflow: hidden; flex: none; border: 1px solid var(--accent); box-shadow: 0 3px 12px rgba(0,0,0,.4); background: var(--bg); container-type: size; }
+  .fthumb { position: relative; height: calc(62 * var(--uk)); border-radius: 2px; overflow: hidden; flex: none; border: 1px solid var(--accent); box-shadow: 0 3px 12px rgba(0,0,0,.4); background: var(--bg); container-type: size; }
   .fthumb.shape-landscape { aspect-ratio: 4 / 3; }
   .fthumb.shape-portrait { aspect-ratio: 3 / 4; }
   .fthumb canvas, .fthumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: auto; transition: opacity .2s ease; }
@@ -110,30 +118,34 @@
   .fthumb.pinned .c-now { opacity: 0; }
   .fthumb.pinned .c-next { opacity: 1; }
   .fthumb.pinned .upnext { opacity: 1; color: var(--accent-ink); background: linear-gradient(transparent, color-mix(in srgb, var(--accent) 88%, black)); }
-  .upnext-cancel { position: absolute; top: 3px; left: 3px; z-index: 3; width: 18px; height: 18px; display: none; place-items: center; border: 0; border-radius: 6px; background: rgba(11,12,16,.7); color: #fff; cursor: pointer; padding: 0; }
+  .upnext-cancel { position: absolute; top: calc(3 * var(--uk)); left: calc(3 * var(--uk)); z-index: 3; width: calc(18 * var(--uk)); height: calc(18 * var(--uk)); display: none; place-items: center; border: 0; border-radius: calc(6 * var(--uk)); background: rgba(11,12,16,.7); color: #fff; cursor: pointer; padding: 0; }
   .fthumb.pinned .upnext-cancel { display: grid; }
-  .upnext-cancel svg { width: 11px; height: 11px; }
+  .upnext-cancel svg { width: calc(11 * var(--uk)); height: calc(11 * var(--uk)); }
   .fthumb .upnext {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; text-align: center;
-    font-size: .5rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #fff;
-    background: linear-gradient(transparent, rgba(0,0,0,.65)); padding: 14px 4px 3px;
+    font-size: calc(.5rem + 8 * var(--ue)); font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #fff;
+    background: linear-gradient(transparent, rgba(0,0,0,.65)); padding: calc(14 * var(--uk)) calc(4 * var(--uk)) calc(3 * var(--uk));
     opacity: 0; transition: opacity .2s ease; pointer-events: none;
   }
   .fthumb:hover .upnext { opacity: 1; }
-  .fcard .info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .fcard .nm { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fcard .nm .d { width: 9px; height: 9px; border-radius: 50%; background: var(--fc); flex: none; box-shadow: 0 0 7px color-mix(in srgb, var(--fc) 60%, transparent); }
-  .fcard .ip { font-family: var(--mono); font-size: .73rem; color: var(--dim); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fcard .row { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 3px; font-size: .7rem; color: var(--dim); }   /* small enough that the batt/next/seen line never wraps */
+  .fcard .info { display: flex; flex-direction: column; gap: calc(3 * var(--uk)); min-width: 0; }
+  .fcard .nm { display: flex; align-items: center; gap: calc(8 * var(--uk)); font-weight: 600; font-size: calc(.88rem + 14.08 * var(--ue)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fcard .nm .d { width: calc(9 * var(--uk)); height: calc(9 * var(--uk)); border-radius: 50%; background: var(--fc); flex: none; box-shadow: 0 0 7px color-mix(in srgb, var(--fc) 60%, transparent); }
+  .fcard .ip { font-family: var(--mono); font-size: calc(.73rem + 11.68 * var(--ue)); color: var(--dim); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fcard .row { display: flex; flex-wrap: wrap; gap: calc(5 * var(--uk)) calc(10 * var(--uk)); margin-top: calc(3 * var(--uk)); font-size: calc(.7rem + 11.2 * var(--ue)); color: var(--dim); }   /* small enough that the batt/next/seen line never wraps */
   .fcard .row b { color: var(--text); font-weight: 550; }
-  .fcard .bt { display: inline-flex; align-items: center; gap: 6px; }
+  .fcard .bt { display: inline-flex; align-items: center; gap: calc(6 * var(--uk)); }
+  /* the battery glyph in a card scales with it (the header's .cell stays as is) */
+  .fcard .cell { width: calc(20 * var(--uk)); height: calc(10 * var(--uk)); padding: calc(1.4 * var(--uk)); }
+  .fcard .cell::after { right: calc(-3 * var(--uk)); top: calc(2.5 * var(--uk)); width: calc(2 * var(--uk)); height: calc(4 * var(--uk)); }
   .fcard .row .warn { color: var(--accent); }
   .fcard .idrow { align-items: baseline; }   /* ip · fw on one line */
   .up {
-    display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 16px; border-radius: 22px;
-    border: 0; cursor: pointer; font: inherit; font-size: .86rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: calc(7 * var(--uk)); height: calc(40 * var(--uk)); padding: 0 calc(16 * var(--uk)); border-radius: calc(22 * var(--uk));
+    border: 0; cursor: pointer; font: inherit; font-size: calc(.86rem + 13.76 * var(--ue)); font-weight: 600;
     background: var(--accent); color: var(--accent-ink); transition: filter .15s, transform .08s;
   }
+  .up svg { width: calc(15 * var(--uk)); height: calc(15 * var(--uk)); flex: none; }
   .up:hover { filter: brightness(1.07); }
   .up:active { transform: translateY(1px); }
 
@@ -561,12 +573,12 @@
 
   /* ── frame cluster: ⋯ actions, overdue banner, diagnostics ── */
   .fcard { position: relative; }
-  .fcard.overdue { box-shadow: inset 0 0 0 1px rgba(224,146,79,.5); border-radius: 12px; }
-  .fmore { position: absolute; top: 6px; right: 6px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(11,12,16,.55); color: var(--faint); cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s; }
+  .fcard.overdue { box-shadow: inset 0 0 0 1px rgba(224,146,79,.5); border-radius: calc(12 * var(--uk)); }
+  .fmore { position: absolute; top: calc(6 * var(--uk)); right: calc(6 * var(--uk)); z-index: 3; width: calc(26 * var(--uk)); height: calc(26 * var(--uk)); display: grid; place-items: center; border: 0; border-radius: calc(8 * var(--uk)); background: rgba(11,12,16,.55); color: var(--faint); cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s; }
   .fcard:hover .fmore, .fmore:focus-visible { opacity: 1; }
   .fmore:hover { color: var(--fg); background: rgba(11,12,16,.8); }
-  .fmore svg { width: 16px; height: 16px; }
-  .fover { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 8px; font-size: .62rem; font-weight: 700; letter-spacing: .02em; color: #1a140a; background: linear-gradient(0deg, rgba(227,169,79,.96), rgba(227,169,79,.82)); text-align: center; }
+  .fmore svg { width: calc(16 * var(--uk)); height: calc(16 * var(--uk)); }
+  .fover { position: absolute; left: 0; right: 0; bottom: 0; padding: calc(4 * var(--uk)) calc(8 * var(--uk)); font-size: calc(.62rem + 9.92 * var(--ue)); font-weight: 700; letter-spacing: .02em; color: #1a140a; background: linear-gradient(0deg, rgba(227,169,79,.96), rgba(227,169,79,.82)); text-align: center; }
   .frame-menu { position: fixed; z-index: 400; width: max-content; min-width: 176px; max-width: 230px; animation: ctxpop .14s cubic-bezier(.2,.8,.2,1); }
   .frame-menu[hidden] { display: none; }
   .frame-menu .ctx-item.danger, .anchor-menu .ctx-item.danger { color: #E9836F; }
@@ -759,7 +771,7 @@
      floating with no panel behind them. background-clip:padding-box keeps the closed
      (max-height:0) state from painting a hairline sliver under the 1px border. */
   .drawer {
-    position: sticky; top: 78px; z-index: 39; max-height: 0; overflow: hidden;
+    position: sticky; top: var(--bar-h); z-index: 39; max-height: 0; overflow: hidden;
     transition: max-height .3s ease; border-bottom: 1px solid transparent;
     background: color-mix(in srgb, var(--bg) 82%, transparent); background-clip: padding-box;
     -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
