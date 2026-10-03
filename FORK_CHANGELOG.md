@@ -1,6 +1,6 @@
 # Fork changes: `dev` vs upstream 3.1.0 alpha 1
 
-**Fork:** polygonfuture/hokku_epaper, branch `dev` · **Base:** defl/hokku_epaper `main` at `27d4cbf` (3.1.0 alpha 1, 2026-05-30) · **86 commits**, 2026-07-16 to 2026-10-03
+**Fork:** polygonfuture/hokku_epaper, branch `dev` · **Base:** defl/hokku_epaper `main` at `27d4cbf` (3.1.0 alpha 1, 2026-05-30) · changes since **2026-07-16**
 
 The fork's own `main` is an untouched mirror of that base. Nothing here has been merged with 4.x; the plan is to re-port features one at a time onto a stable 4.x release rather than merge. Two pieces were ported *from* 4.0.x verbatim (face-aware cropping, the manager's `retire()`), so a later port sees them as no-ops.
 

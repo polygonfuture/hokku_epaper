@@ -2,7 +2,7 @@
 
 **Compared:** polygonfuture/hokku_epaper `dev` and defl/hokku_epaper `main` at `32e3640` (4.0.0 beta 3, 2026-10-02), on 2026-10-03.
 
-Both grew from the same 3.1.0 alpha 1 (`27d4cbf`, 2026-05-30) and have moved apart since: **86 commits on dev, 376 on defl's main**. Neither contains the other, apart from two pieces dev ported from 4.0.x and a handful of fixes both sides made on their own. defl's 4.x also moved the server from `webserver/hokku_server/` to `python/hokku/webserver/`, so dev can't simply be merged; features have to be re-ported one at a time.
+Both grew from the same 3.1.0 alpha 1 (`27d4cbf`, 2026-05-30) and have moved apart since: **376 commits on defl's main** as of `32e3640`, and this fork's changes on dev. Neither contains the other, apart from two pieces dev ported from 4.0.x and a handful of fixes both sides made on their own. defl's 4.x also moved the server from `webserver/hokku_server/` to `python/hokku/webserver/`, so dev can't simply be merged; features have to be re-ported one at a time.
 
 For dev's full feature list see [FORK_CHANGELOG.md](FORK_CHANGELOG.md).
 

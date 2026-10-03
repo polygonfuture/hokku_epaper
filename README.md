@@ -1,5 +1,21 @@
 <img src="images/readme_banner.png" width="640">
 
+&nbsp;
+
+> **[IMPORTANT]**
+> 
+> **This is the UI + Darkroom fork** of [defl/hokku_epaper](https://github.com/defl/hokku_epaper), based on upstream **v3.1.0 (alpha 1)**, with a port to upstream's 4.x planned.
+>
+> - **What's new:** A mobile-first web app with a photo editor, modern gallery view, support for the reTerminal E1003 black-and-white frame, and reliability fixes.
+> 
+> -  **Start here:** [**This fork's documentation ↓**](#new-documentation-for-this-fork)  
+>    -  [User Manual](docs/manual.md)
+>    -   [Changelog](CHANGELOG.md)
+>    - [Port plan to v4.0](V4_PORT_PLAN.md)
+
+
+&nbsp; 
+
 Everything you'd want from a photo frame: accurate colours, full privacy, a clean web app, and the ability to run as many frames as you like from one cheap server. Open source replacement firmware and image server for the Hokku / Huessen 13.3" six-colour e-ink frame.
 
 &nbsp;
@@ -114,14 +130,23 @@ Prefer terminal tabs, mysterious pip errors, and the satisfaction of doing thing
 
 ## More Documentation
 
+#### **New Documentation for this fork**
 - **[User manual](docs/manual.md)** — full guide to the web app, frame behaviour, and day-to-day use.
+- **[Changelog](CHANGELOG.md)** — release history.
+- **[Fork Difference from Upstream 3.1.0](FORK_CHANGELOG.md)** — Changelog from upstream's version 3.1.0 my fork is based on.
+- **[Fork Difference From Upstream v4.0](FORK_VS_UPSTREAM_MAIN.md)** — Changelog from upstream's version 4.0+.
+- **[Port Plan to v4.0](V4_PORT_PLAN.md)** — how this fork's features will be moved onto upstream's 4.x, phase by phase.
+
+&nbsp; 
+
+
+#### **Main Documentation**
 - **[Installation](docs/install.md)** — step-by-step server + firmware setup for those who prefer the scenic route.
 - **[Dithering pipeline](docs/dithering.md)** — why it looks the way it does; failure modes and countermeasures.
 - **[Firmware documentation](firmware/README.md)** — building from source, manual flashing, developer notes.
 - **[Firmware design spec](docs/firmware_design.md)** — the state-machine spec the current firmware implements.
 - **[Hardware](docs/hardware.md)** — where to buy the frame and the recommended Pi server kit.
 - **[Hardware facts](docs/hardware_facts.md)** — confirmed GPIO map, SPI config, init sequence, USB-detection findings.
-- **[Changelog](CHANGELOG.md)** — release history.
 - **[Disclaimer](DISCLAIMER.md)** — warranty (none), intended use, reverse-engineering notes, privacy.
 
 &nbsp;

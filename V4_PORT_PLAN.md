@@ -4,7 +4,7 @@
 
 **Where things stand:**
 - **defl's `main`** is at `32e3640`: 4.0.0 beta 3, 376 commits past the shared base `27d4cbf` (3.1.0 alpha 1). There's no stable 4.0.0 yet.
-- **This fork's `dev`** carries 86 commits of changes on the same base.
+- **This fork's `dev`** carries its own changes on the same base, listed in [FORK_CHANGELOG.md](FORK_CHANGELOG.md).
 
 For what each side has, see [FORK_VS_UPSTREAM_MAIN.md](FORK_VS_UPSTREAM_MAIN.md); for dev's feature list, see [FORK_CHANGELOG.md](FORK_CHANGELOG.md).
 
