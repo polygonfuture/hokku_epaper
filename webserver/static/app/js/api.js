@@ -106,9 +106,10 @@ export function upload(files, onProgress) {
 
 // ── dither preview (settings' custom editor; desktop only) ──
 // Returns {blobUrl, faceBboxes} — caller must URL.revokeObjectURL(blobUrl) when done.
-export async function ditherPreview(name, imageConfig, claheKeepout, signal) {
+// maxSidePx (optional): the render's long side; the server default is 800, full panel 1600.
+export async function ditherPreview(name, imageConfig, claheKeepout, signal, maxSidePx) {
   const res = await fetch(`${API}/dither/preview`, {
-    ...json("POST", { name, image: imageConfig, ...(claheKeepout === undefined ? {} : { clahe_keepout: claheKeepout }) }),
+    ...json("POST", { name, image: imageConfig, ...(claheKeepout === undefined ? {} : { clahe_keepout: claheKeepout }), ...(maxSidePx ? { max_side_px: maxSidePx } : {}) }),
     signal,
   });
   if (!res.ok) {
@@ -123,9 +124,10 @@ export async function ditherPreview(name, imageConfig, claheKeepout, signal) {
 
 // Live E1003 (mono16) preview: renders the real wire pipeline and decodes through
 // the panel's perceived ramp. `mono` is the flat knob set (see settings.js openMono).
-// opts (optional): {rotation, crop:[x,y,w,h]} for the mono appearance's framing.
+// opts (optional): {rotation, crop:[x,y,w,h]} for the mono appearance's framing, and
+// maxSidePx for the render's long side (default 900; the panel's native 1872 for 100% zoom).
 export async function monoPreview(name, mono, signal, opts = {}) {
-  const body = { name, mono, max_side_px: 900 };
+  const body = { name, mono, max_side_px: opts.maxSidePx || 900 };
   if (opts.rotation) body.rotation = opts.rotation;
   if (opts.crop) body.crop = opts.crop;
   if (opts.frame_portrait) body.frame_portrait = true;   // E1003 frame orientation

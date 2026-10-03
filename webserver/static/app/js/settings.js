@@ -10,6 +10,7 @@
 import { state, refreshConfig, refreshStatus } from "./state.js";
 import { postConfig, clearCache, clearClassifier, scrub, patchScreen, ditherPreview, monoPreview, thumbnailUrl } from "./api.js";
 import { $, $$, esc, toast, isMobileVp, frameColor, armConfirm } from "./ui.js";
+import { stageZoom } from "./stage-zoom.js";
 
 // ── config draft (clone on open; every control mutates it; Save POSTs a subset) ──
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -449,6 +450,9 @@ function computeKnobDefaults() { const base = state.config?.config?.image_config
 
 const ditherModal = $("#dither-modal");
 let editPipeline = null, editCfg = null, ditherStage = 0, editSample = null, previewTimer = null, previewCtrl = null, previewUrl = null;
+// the shown render: whether it's full panel size (for 100% zoom), and its trim geometry
+let previewFull = false, previewGeom = null;
+const DITHER_DRAFT_SIDE = 800, DITHER_FULL_SIDE = 1600;   // the colour panel is 1600 x 1200
 const ditherPhotos = () => (state.status?.upload_files || []).filter((e) => e.status === "ok").slice(-5);
 
 function ditherKnobHTML(k) {
@@ -506,25 +510,29 @@ async function trimLetterbox(blobUrl) {
   while (r - l > 1 && colWhite(r - 1)) r--;
   while (b - t > 1 && rowWhite(t)) t++;
   while (b - t > 1 && rowWhite(b - 1)) b--;
-  if (l === 0 && t === 0 && r === W && b === H) return { url: blobUrl, box: [0, 0, 1, 1] };
+  const land = W >= H;   // the panel canvas it was rendered onto: landscape 1600 x 1200 or portrait
+  if (l === 0 && t === 0 && r === W && b === H) return { url: blobUrl, box: [0, 0, 1, 1], land };
   const o = document.createElement("canvas"); o.width = r - l; o.height = b - t;
   o.getContext("2d").drawImage(c, l, t, r - l, b - t, 0, 0, r - l, b - t);
   const blob = await new Promise((res) => o.toBlob(res, "image/png"));
   URL.revokeObjectURL(blobUrl);
-  return { url: URL.createObjectURL(blob), box: [l / W, t / H, (r - l) / W, (b - t) / H] };
+  return { url: URL.createObjectURL(blob), box: [l / W, t / H, (r - l) / W, (b - t) / H], land };
 }
 async function runPreview() {
   if (!editSample) return;
   if (previewCtrl) previewCtrl.abort();
   const ctrl = previewCtrl = new AbortController();
+  // zoomed in: render every panel pixel (~1 s) instead of the half-size draft (~0.3 s)
+  const full = dZoom.zoomed;
   $("#dprev-stage").classList.add("busy");
   try {
-    const { blobUrl, faceBboxes } = await ditherPreview(editSample.name, editCfg, undefined, ctrl.signal);
-    const { url, box } = await trimLetterbox(blobUrl);
+    const { blobUrl, faceBboxes } = await ditherPreview(editSample.name, editCfg, undefined, ctrl.signal, full ? DITHER_FULL_SIDE : DITHER_DRAFT_SIDE);
+    const { url, box, land } = await trimLetterbox(blobUrl);
     if (ctrl.signal.aborted) { URL.revokeObjectURL(url); return; }   // superseded while trimming
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    previewUrl = url;
+    previewUrl = url; previewFull = full; previewGeom = { box, land };
     const img = $("#dprev-img"); img.classList.remove("broken"); img.src = url;
+    dZoom.setReady(true);
     const layer = $("#dprev-faces");
     if (faceBboxes && faceBboxes.length) {
       // face boxes are normalised to the untrimmed render; re-normalise them to the trimmed one
@@ -550,13 +558,23 @@ function openDither(pipelineKey, pipelineLabel) {
   $("#dither-title").innerHTML = `Custom dither <span class="dt-sub">· ${esc(pipelineLabel || "")}</span>`;
   renderDitherCats(); renderDitherControls(); renderDitherPicker();
   const img = $("#dprev-img"); img.removeAttribute("src"); $("#dprev-faces").hidden = true;
+  dZoom.setReady(false);   // Fit, controls hidden until the first render arrives
   ditherModal.hidden = false;
   if (editSample) runPreview(); else toast("Upload a photo to preview the dither.");
 }
-function closeDither() { ditherModal.hidden = true; clearTimeout(previewTimer); if (previewCtrl) previewCtrl.abort(); }
+function closeDither() { ditherModal.hidden = true; clearTimeout(previewTimer); if (previewCtrl) previewCtrl.abort(); dZoom.reset(); }
 ditherModal.addEventListener("click", (e) => { if (e.target === ditherModal || e.target.closest("[data-dither-close]")) closeDither(); });
 $("#dcats").addEventListener("click", (e) => { const b = e.target.closest("[data-stage]"); if (!b) return; ditherStage = +b.dataset.stage; renderDitherCats(); renderDitherControls(); });
-$("#dprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; editSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderDitherPicker(); runPreview(); });
+$("#dprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; editSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderDitherPicker(); dZoom.reset(); runPreview(); });
+// Fit ↔ 100% (button, Z, double-click; drag pans). 100% wants every panel pixel, so zooming in
+// fetches the full-size render; the current one shows enlarged until it arrives. Zoom and
+// position stay put while sliders re-render, so the same patch of dots can be watched.
+const dZoom = stageZoom({
+  stage: $("#dprev-stage"), wrap: $("#dprev-stage .dprev-wrap"), img: $("#dprev-img"),
+  panelPx: () => (previewGeom ? (previewGeom.land ? 1600 : 1200) * previewGeom.box[2] : 0),
+  isOpen: () => !ditherModal.hidden,
+  onZoom: (zoomed) => { if (zoomed && !previewFull) runPreview(); },
+});
 $("#dither-reset").addEventListener("click", () => { editCfg = clone(state.config.config[editPipeline]); renderDitherControls(); runPreview(); toast("Reset to saved pipeline"); });
 $("#dither-save").addEventListener("click", () => {
   draft[editPipeline] = clone(editCfg);
@@ -570,6 +588,8 @@ $("#dither-save").addEventListener("click", () => {
 // the unmissable "you're editing the mono look" signal). Same desktop-only rule. ══
 const monoModal = $("#mono-modal");
 let monoCfg = null, monoSample = null, monoPrevTimer = null, monoPrevCtrl = null, monoPrevUrl = null, monoPrevKey = null;
+let monoFull = false;   // whether the shown render is the panel's native size (for 100% zoom)
+const MONO_PANEL_LONG = 1872, MONO_PANEL_SHORT = 1404;   // the E1003 panel (mono_e1003.MONO_W x MONO_H)
 // press-and-hold "before" peek: monoBaseCfg is the config the editor OPENED with
 // (your pre-edit baseline); its render is stacked over the live preview and shown
 // only while held. A quick tap must not flash it.
@@ -685,17 +705,19 @@ async function runMonoPreview() {
   // dbl-click resets to the current value, re-opening the same sample). Keyed on the
   // sample name + the exact payload we'd send.
   const payload = monoPayload();
-  const key = monoSample.name + "|" + JSON.stringify(payload);
+  const full = mZoom.zoomed;   // zoomed in: the panel's native size instead of the 900-px draft
+  const key = monoSample.name + "|" + full + "|" + JSON.stringify(payload);
   if (key === monoPrevKey && monoPrevUrl) return;
   if (monoPrevCtrl) monoPrevCtrl.abort();
   monoPrevCtrl = new AbortController();
   $("#moprev-stage").classList.add("busy");
   try {
-    const url = await monoPreview(monoSample.name, payload, monoPrevCtrl.signal);
-    monoPrevKey = key;
+    const url = await monoPreview(monoSample.name, payload, monoPrevCtrl.signal, full ? { maxSidePx: MONO_PANEL_LONG } : {});
+    monoPrevKey = key; monoFull = full;
     if (monoPrevUrl) URL.revokeObjectURL(monoPrevUrl);
     monoPrevUrl = url;
     const img = $("#moprev-img"); img.classList.remove("broken"); img.src = url;
+    mZoom.setReady(true);
     $("#moprev-stage").classList.remove("busy");
   } catch (e) {
     if (e.name === "AbortError") return;   // superseded by a newer request
@@ -710,7 +732,8 @@ async function renderMonoBefore() {
   if (monoBeforeCtrl) monoBeforeCtrl.abort();
   monoBeforeCtrl = new AbortController();
   try {
-    const url = await monoPreview(monoSample.name, monoPayload(monoBaseCfg), monoBeforeCtrl.signal);
+    // same size as the live render, so hold-to-compare lines up dot for dot at 100%
+    const url = await monoPreview(monoSample.name, monoPayload(monoBaseCfg), monoBeforeCtrl.signal, mZoom.zoomed ? { maxSidePx: MONO_PANEL_LONG } : {});
     if (monoBeforeUrl) URL.revokeObjectURL(monoBeforeUrl);
     monoBeforeUrl = url;
     $("#moprev-before").src = url;
@@ -730,6 +753,7 @@ function openMono() {
   renderMonoControls(); renderMonoPicker();
   $("#moprev-img").removeAttribute("src"); $("#moprev-before").removeAttribute("src");
   monoPrevUrl = null; monoPrevKey = null;   // cleared img -> force a fresh render even if the payload repeats
+  mZoom.setReady(false);   // Fit, controls hidden until the first render arrives
   monoModal.hidden = false;
   if (monoSample) { runMonoPreview(); renderMonoBefore(); } else toast("Upload a photo to preview the mono look.");
 }
@@ -737,9 +761,10 @@ function closeMono() {
   endMonoPeek();
   monoModal.hidden = true;
   clearTimeout(monoPrevTimer); if (monoPrevCtrl) monoPrevCtrl.abort(); if (monoBeforeCtrl) monoBeforeCtrl.abort();
+  mZoom.reset();
 }
 monoModal.addEventListener("click", (e) => { if (e.target === monoModal || e.target.closest("[data-mono-close]")) closeMono(); });
-$("#moprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; monoSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderMonoPicker(); runMonoPreview(); renderMonoBefore(); });
+$("#moprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; monoSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderMonoPicker(); mZoom.reset(); runMonoPreview(); renderMonoBefore(); });
 // press-and-hold the preview to peek at the pre-edit baseline (a quick tap never flashes it)
 const moStage = $("#moprev-stage");
 moStage.addEventListener("pointerdown", (e) => {
@@ -756,6 +781,16 @@ moStage.addEventListener("pointermove", (e) => {
 ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => moStage.addEventListener(ev, endMonoPeek));
 moStage.addEventListener("contextmenu", (e) => e.preventDefault());
 moStage.addEventListener("dragstart", (e) => e.preventDefault());
+// Fit ↔ 100% for the tone editor (button, Z, double-click; drag pans), sharing the press rules
+// above: holding still still compares, a drag pans instead. Zooming in fetches the live and
+// "before" renders at the panel's native size.
+const mZoom = stageZoom({
+  stage: moStage, wrap: $("#moprev-stage .dprev-wrap"), img: $("#moprev-img"),
+  panelPx: () => { const i = $("#moprev-img"); return i.naturalWidth >= i.naturalHeight ? MONO_PANEL_LONG : MONO_PANEL_SHORT; },
+  isOpen: () => !monoModal.hidden,
+  isPeeking: () => moPeeking,
+  onZoom: (zoomed) => { if (zoomed && !monoFull) { runMonoPreview(); renderMonoBefore(); } },
+});
 $("#mono-reset").addEventListener("click", () => { MONO_KEYS.forEach((k) => (monoCfg[k] = clone(state.config.config[k]))); monoCfg.mono_e1003_profile = "custom"; renderMonoControls(); runMonoPreview(); toast("Reset to saved"); });
 // Reset to defaults: Custom's settings back to the shipped defaults. This is the only reset
 // for the E1003 look (the settings page's Reset leaves it alone). It changes the editor's

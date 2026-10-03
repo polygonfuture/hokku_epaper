@@ -523,6 +523,14 @@
   .dpreview #dprev-img { align-self: center; box-sizing: content-box; padding: var(--dprev-mat); background: #fff;
     max-width: calc(100cqw - 2 * (var(--dprev-mat) + 1px)); max-height: calc(100cqh - 2 * (var(--dprev-mat) + 1px)); }
   #dprev-faces { inset: calc(var(--dprev-mat) + 1px); }
+  /* custom dither + E1003 tone editors: Fit ↔ 100% zoom (stage-zoom.js; the .pv-zoom button
+     and .pv-pct readout are the photo editor's). Clipped only while zoomed, so the Fit
+     view keeps its shadow. */
+  .dprev-stage { -webkit-user-select: none; user-select: none; }
+  .dprev-stage.pv-zoomed { overflow: hidden; cursor: grab; }
+  .dprev-stage.pv-zoomed:active { cursor: grabbing; }
+  .dprev-wrap.pv-anim { transition: transform .22s cubic-bezier(.2,.8,.25,1); }
+  .dprev-wrap.pv-px img { image-rendering: pixelated; }
   /* press-and-hold "before": the pre-edit render, stacked exactly over the live preview */
   #moprev-before { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); visibility: hidden; pointer-events: none; }
   .dprev-wrap.peek #moprev-before { visibility: visible; }

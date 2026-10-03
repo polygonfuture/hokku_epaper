@@ -1234,7 +1234,9 @@ def create_app(
                            frame_portrait=frame_portrait,
                            crop_to_fill_threshold=float(getattr(state.config, "crop_to_fill_threshold", 0.0)))
             profile = mono.get("profile", "faithful")
-            max_side_px = max(64, min(1600, int(body.get("max_side_px") or 900)))
+            # capped at the panel's native long side, so the tone editor's 100% zoom can
+            # show every panel pixel (1872 x 1404) rather than an upscaled 1600 render
+            max_side_px = max(64, min(mono_e1003.MONO_W, int(body.get("max_side_px") or 900)))
             # dtcore profiles (B&W Contrast / Custom) render at PREVIEW resolution — the
             # expensive local-laplacian runs on ~4x fewer pixels than the native panel,
             # so the live editor stays responsive. The frame-serve/save path is untouched
