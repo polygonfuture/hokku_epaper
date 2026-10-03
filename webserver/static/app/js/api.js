@@ -126,11 +126,13 @@ export async function ditherPreview(name, imageConfig, claheKeepout, signal, max
 // the panel's perceived ramp. `mono` is the flat knob set (see settings.js openMono).
 // opts (optional): {rotation, crop:[x,y,w,h]} for the mono appearance's framing, and
 // maxSidePx for the render's long side (default 900; the panel's native 1872 for 100% zoom).
+// fill:false never zooms to fill — the whole photo, letterboxed (the tone editor).
 export async function monoPreview(name, mono, signal, opts = {}) {
   const body = { name, mono, max_side_px: opts.maxSidePx || 900 };
   if (opts.rotation) body.rotation = opts.rotation;
   if (opts.crop) body.crop = opts.crop;
   if (opts.frame_portrait) body.frame_portrait = true;   // E1003 frame orientation
+  if (opts.fill === false) body.fill = false;
   const res = await fetch(`${API}/dither/preview_mono`, {
     ...json("POST", body),
     signal,

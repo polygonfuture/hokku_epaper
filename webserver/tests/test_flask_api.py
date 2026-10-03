@@ -512,6 +512,64 @@ def test_dither_preview_with_crop_rotation_and_max_side(synced_client):
     assert max(_preview_png_dims(resp.data)) <= 256
 
 
+# ── /hokku/api/dither/preview_mono POST: the tone editor's whole-photo preview ─
+
+
+@pytest.fixture
+def portrait_mono_client(app_config: AppConfig, tmp_path: Path):
+    """Flask test client with one mid-grey 2:3 portrait photo, and Zoom to fill at 150%:
+    enough to crop a portrait photo to fill the E1003's landscape canvas."""
+    from dataclasses import replace
+
+    from PIL import Image
+
+    cfg = replace(app_config, crop_to_fill_threshold=1.5)
+    name = "portrait_grey_600x900.png"
+    Image.new("RGB", (600, 900), (120, 120, 120)).save(Path(cfg.upload_dir) / name)
+    state = _make_state(cfg)
+    state.manager.sync()
+    state.manager.wait_for_idle()
+    app = create_app(state, config_path=tmp_path / "cfg.json", template_folder=None)
+    app.config["TESTING"] = True
+    return app.test_client(), name
+
+
+def _white_bars(data: bytes) -> tuple[int, int]:
+    """How many all-white columns and rows a preview PNG has (its letterbox bars)."""
+    import numpy as np
+    from PIL import Image
+
+    white = np.asarray(Image.open(io.BytesIO(data)).convert("L")) >= 250
+    return int(white.all(axis=0).sum()), int(white.all(axis=1).sum())
+
+
+def test_mono_preview_fill_false_shows_the_whole_photo(portrait_mono_client):
+    """By default the mono preview zooms a portrait photo to fill the landscape canvas
+    (no bars, top and bottom cropped away). fill=false — the tone editor — never zooms:
+    the whole photo, letterboxed with white bars at the sides."""
+    client, name = portrait_mono_client
+    body = {"name": name, "mono": {"profile": "custom"}, "max_side_px": 400}
+    filled = client.post("/hokku/api/dither/preview_mono", json=body)
+    whole = client.post("/hokku/api/dither/preview_mono", json={**body, "fill": False})
+    assert filled.status_code == 200 and whole.status_code == 200
+    assert _white_bars(filled.data) == (0, 0), "the default preview should fill the canvas"
+    side_bars, _ = _white_bars(whole.data)
+    assert side_bars > 0, "fill=false should show the whole photo, letterboxed"
+
+
+def test_mono_preview_portrait_canvas_keeps_a_portrait_photo_upright(portrait_mono_client):
+    """frame_portrait + fill=false (what the tone editor sends for a portrait photo): a
+    portrait canvas, upright, so the photo keeps its own shape."""
+    client, name = portrait_mono_client
+    resp = client.post(
+        "/hokku/api/dither/preview_mono",
+        json={"name": name, "mono": {"profile": "custom"}, "max_side_px": 400, "frame_portrait": True, "fill": False},
+    )
+    assert resp.status_code == 200
+    w, h = _preview_png_dims(resp.data)
+    assert h > w, "a portrait photo should come back on a portrait canvas"
+
+
 # ── per-image editor: upload_draft / suggested_config / edit ─────────────────
 
 

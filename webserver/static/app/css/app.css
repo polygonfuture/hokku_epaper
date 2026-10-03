@@ -538,19 +538,19 @@
   .dprev-wrap { position: relative; display: inline-flex; max-width: 100%; max-height: 100%; }
   #dprev-img.broken, #moprev-img.broken { visibility: hidden; }
   /* The preview <img> is a flex item in .dprev-wrap; the flex default align-items:stretch
-     stretches its height while max-width clamps width → broken aspect. Opt out of the
-     stretch so the 4:3 panel render keeps its shape. Cap the height (the wide 4:3 render
-     is width-bound and would otherwise fill the column and cover the photo picker). */
-  .dpreview #moprev-img, .dpreview #moprev-before { align-self: center; max-width: 100%; max-height: 56vh; }
-  /* Same stretch bug in the colour editor, whose renders can be portrait (height-bound). Bound
-     the image by the stage itself — a size container, so 100cqw/100cqh are the stage's real
-     box — never through the shrink-wrapping .dprev-wrap, whose auto height can't bound it. */
+     stretches its height while max-width clamps width → broken aspect. Opt out of the stretch,
+     and bound the image by the stage itself — a size container, so 100cqw/100cqh are the
+     stage's real box — never through the shrink-wrapping .dprev-wrap, whose auto height
+     can't bound it. Renders can be portrait (height-bound) or landscape (width-bound). */
   /* The letterbox bars are trimmed off in settings.js; every photo instead sits in the same
-     even white mat (--dprev-mat), on all four sides. The max sizes subtract the mat + border
-     (content-box). The face layer insets by the same amount so it covers only the photo. */
-  #dprev-stage { container-type: size; --dprev-mat: 10px; }
-  .dpreview #dprev-img { align-self: center; box-sizing: content-box; padding: var(--dprev-mat); background: #fff;
+     even white mat (--dprev-mat), on all four sides — in the dither and the E1003 tone editor
+     alike. The max sizes subtract the mat + border (content-box). The face layer insets by
+     the same amount so it covers only the photo; the tone editor's "before" image wears the
+     same mat and border, so it lines up exactly over the live one. */
+  #dprev-stage, #moprev-stage { container-type: size; --dprev-mat: 10px; }
+  .dpreview #dprev-img, .dpreview #moprev-img, .dpreview #moprev-before { align-self: center; box-sizing: content-box; padding: var(--dprev-mat); background: #fff;
     max-width: calc(100cqw - 2 * (var(--dprev-mat) + 1px)); max-height: calc(100cqh - 2 * (var(--dprev-mat) + 1px)); }
+  .dpreview #moprev-before { border: 1px solid var(--hair-2); border-radius: 3px; }
   #dprev-faces { inset: calc(var(--dprev-mat) + 1px); }
   /* custom dither + E1003 tone editors: Fit ↔ 100% zoom (stage-zoom.js; the .pv-zoom button
      and .pv-pct readout are the photo editor's). Clipped only while zoomed, so the Fit

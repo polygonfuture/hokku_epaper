@@ -494,13 +494,14 @@ function schedulePreview() {
   previewTimer = setTimeout(runPreview, 400);
 }
 // The render comes back letterboxed onto the panel canvas: pure-white bars on two sides
-// for some photos, none for others. This editor is for judging the dither, so trim the
-// bars off and let CSS frame every photo in the same even white mat instead.
-async function trimLetterbox(blobUrl) {
-  const im = new Image(); im.src = blobUrl; await im.decode();
-  const W = im.naturalWidth, H = im.naturalHeight;
+// for some photos, none for others. These editors (dither and E1003 tone) are for judging
+// the render, so trim the bars off and let CSS frame every photo in the same even white
+// mat instead. letterboxBox finds the photo's box (fractions of the canvas) in a decoded
+// render; cropToBox cuts that box out into a new blob URL.
+function letterboxBox(src) {
+  const W = src.naturalWidth || src.width, H = src.naturalHeight || src.height;
   const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(im, 0, 0);
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(src, 0, 0);
   const d = g.getImageData(0, 0, W, H).data;
   const white = (x, y) => { const i = (y * W + x) * 4; return d[i] >= 250 && d[i + 1] >= 250 && d[i + 2] >= 250; };
   const colWhite = (x) => { for (let y = 0; y < H; y++) if (!white(x, y)) return false; return true; };
@@ -510,13 +511,25 @@ async function trimLetterbox(blobUrl) {
   while (r - l > 1 && colWhite(r - 1)) r--;
   while (b - t > 1 && rowWhite(t)) t++;
   while (b - t > 1 && rowWhite(b - 1)) b--;
-  const land = W >= H;   // the panel canvas it was rendered onto: landscape 1600 x 1200 or portrait
-  if (l === 0 && t === 0 && r === W && b === H) return { url: blobUrl, box: [0, 0, 1, 1], land };
-  const o = document.createElement("canvas"); o.width = r - l; o.height = b - t;
-  o.getContext("2d").drawImage(c, l, t, r - l, b - t, 0, 0, r - l, b - t);
+  // land: the panel canvas it was rendered onto — landscape (1600 x 1200, E1003 1872 x 1404) or portrait
+  return { box: [l / W, t / H, (r - l) / W, (b - t) / H], land: W >= H };
+}
+// draws synchronously (the source may be released once this returns its promise), then encodes
+async function cropToBox(src, box) {
+  const W = src.naturalWidth || src.width, H = src.naturalHeight || src.height;
+  const l = Math.round(box[0] * W), t = Math.round(box[1] * H), w = Math.round(box[2] * W), h = Math.round(box[3] * H);
+  const o = document.createElement("canvas"); o.width = w; o.height = h;
+  o.getContext("2d").drawImage(src, l, t, w, h, 0, 0, w, h);
   const blob = await new Promise((res) => o.toBlob(res, "image/png"));
+  return URL.createObjectURL(blob);
+}
+async function trimLetterbox(blobUrl) {
+  const im = new Image(); im.src = blobUrl; await im.decode();
+  const { box, land } = letterboxBox(im);
+  if (box[0] === 0 && box[1] === 0 && box[2] === 1 && box[3] === 1) return { url: blobUrl, box, land };
+  const url = await cropToBox(im, box);
   URL.revokeObjectURL(blobUrl);
-  return { url: URL.createObjectURL(blob), box: [l / W, t / H, (r - l) / W, (b - t) / H], land };
+  return { url, box, land };
 }
 async function runPreview() {
   if (!editSample) return;
@@ -587,13 +600,19 @@ $("#dither-save").addEventListener("click", () => {
 // to the flat mono knobs. The preview is the real 16-level panel render (grayscale =
 // the unmissable "you're editing the mono look" signal). Same desktop-only rule. ══
 const monoModal = $("#mono-modal");
-let monoCfg = null, monoSample = null, monoPrevTimer = null, monoPrevCtrl = null, monoPrevUrl = null, monoPrevKey = null;
+let monoCfg = null, monoSample = null, monoPrevTimer = null, monoPrevCtrl = null, monoPrevKey = null;
 let monoFull = false;   // whether the shown render is the panel's native size (for 100% zoom)
 const MONO_PANEL_LONG = 1872, MONO_PANEL_SHORT = 1404;   // the E1003 panel (mono_e1003.MONO_W x MONO_H)
 // press-and-hold "before" peek: monoBaseCfg is the config the editor OPENED with
 // (your pre-edit baseline); its render is stacked over the live preview and shown
 // only while held. A quick tap must not flash it.
-let monoBaseCfg = null, monoBeforeUrl = null, monoBeforeCtrl = null;
+let monoBaseCfg = null, monoBeforeCtrl = null;
+// The live and "before" renders, decoded, and the blob URLs of their trimmed cut-outs. Both
+// are cut to ONE shared box (monoBox) so hold-to-compare lines up dot for dot. The box comes
+// from the pre-edit render once it's in, since a tone edit can turn a photo edge pure white
+// (which a per-render trim would eat, resizing the photo mid-drag); until then, the live one.
+const monoShots = { live: { bmp: null, url: null }, before: { bmp: null, url: null } };
+let monoBox = null;   // { box, land, base } — base: it came from the pre-edit render
 const MO_PEEK_HOLD_MS = 280, MO_PEEK_MOVE_TOL = 12;
 let moPeekTimer = null, moPeekAt = null, moPeeking = false;
 // ── Custom editor: control specs across 3 left-menu pages. Values are stored in the
@@ -699,6 +718,54 @@ function renderMonoPicker() {
   $("#moprev-pick").innerHTML = pics.map((t) => `<button data-sample="${esc(t.name)}"${monoSample && monoSample.name === t.name ? ' class="on"' : ""} title="${esc(t.name)}"><img alt="" src="${thumbnailUrl(t)}"></button>`).join("");
 }
 function scheduleMonoPreview() { clearTimeout(monoPrevTimer); monoPrevTimer = setTimeout(runMonoPreview, 400); }
+// Like the dither editor, the tone editor shows the WHOLE photo in its own shape: rendered on a
+// canvas of the photo's orientation and never zoomed to fill (the thin bars are trimmed into the
+// mat). Framing is the frame's business, not the look's. full: the panel's native size (100%).
+const monoOpts = (full) => ({
+  frame_portrait: (monoSample?.native_orientation || monoSample?.effective_orientation) === "portrait",
+  fill: false,
+  ...(full ? { maxSidePx: MONO_PANEL_LONG } : {}),
+});
+// Take a fresh render (blob URL) for the live or "before" slot: decode it, settle the shared
+// trim box, and show its cut-out in the white mat. isCurrent() is false once a newer request
+// has replaced this one; a superseded render is dropped. Returns whether it was shown.
+async function monoShow(which, blobUrl, isCurrent) {
+  const im = new Image(); im.src = blobUrl;
+  let bmp;
+  try { await im.decode(); bmp = await createImageBitmap(im); } finally { URL.revokeObjectURL(blobUrl); }
+  if (!isCurrent()) { bmp.close(); return false; }
+  const s = monoShots[which];
+  if (s.bmp) s.bmp.close();
+  s.bmp = bmp;
+  if (!monoBox || (which === "before" && !monoBox.base)) {
+    const found = letterboxBox(bmp);
+    const same = monoBox && found.box.every((v, i) => v === monoBox.box[i]);
+    monoBox = { ...found, base: which === "before" };
+    if (!same && which === "before") monoCut("live");   // re-cut the live render to the shared box
+  }
+  await monoCut(which);
+  return true;
+}
+async function monoCut(which) {
+  const s = monoShots[which], bmp = s.bmp;
+  if (!bmp || !monoBox) return;
+  const url = await cropToBox(bmp, monoBox.box);
+  if (s.bmp !== bmp) { URL.revokeObjectURL(url); return; }   // superseded while encoding
+  if (s.url) URL.revokeObjectURL(s.url);
+  s.url = url;
+  $(which === "live" ? "#moprev-img" : "#moprev-before").src = url;
+}
+// drop both renders and the shared box (the editor is opening afresh)
+function monoForget() {
+  for (const s of Object.values(monoShots)) { if (s.bmp) s.bmp.close(); if (s.url) URL.revokeObjectURL(s.url); s.bmp = s.url = null; }
+  monoBox = null;
+}
+// a new sample frames differently: forget the decoded renders and the box, but leave the
+// shown cut-outs up until the new sample's renders replace them
+function monoNewSample() {
+  for (const s of Object.values(monoShots)) { if (s.bmp) s.bmp.close(); s.bmp = null; }
+  monoBox = null;
+}
 async function runMonoPreview() {
   if (!monoSample) return;
   // Dedupe: skip the round-trip when the effective payload is unchanged (detent snaps,
@@ -707,16 +774,15 @@ async function runMonoPreview() {
   const payload = monoPayload();
   const full = mZoom.zoomed;   // zoomed in: the panel's native size instead of the 900-px draft
   const key = monoSample.name + "|" + full + "|" + JSON.stringify(payload);
-  if (key === monoPrevKey && monoPrevUrl) return;
+  if (key === monoPrevKey && monoShots.live.url) return;
   if (monoPrevCtrl) monoPrevCtrl.abort();
-  monoPrevCtrl = new AbortController();
+  const ctrl = monoPrevCtrl = new AbortController();
   $("#moprev-stage").classList.add("busy");
   try {
-    const url = await monoPreview(monoSample.name, payload, monoPrevCtrl.signal, full ? { maxSidePx: MONO_PANEL_LONG } : {});
+    const url = await monoPreview(monoSample.name, payload, ctrl.signal, monoOpts(full));
+    if (!(await monoShow("live", url, () => ctrl === monoPrevCtrl && !ctrl.signal.aborted))) return;
     monoPrevKey = key; monoFull = full;
-    if (monoPrevUrl) URL.revokeObjectURL(monoPrevUrl);
-    monoPrevUrl = url;
-    const img = $("#moprev-img"); img.classList.remove("broken"); img.src = url;
+    $("#moprev-img").classList.remove("broken");
     mZoom.setReady(true);
     $("#moprev-stage").classList.remove("busy");
   } catch (e) {
@@ -730,13 +796,11 @@ async function runMonoPreview() {
 async function renderMonoBefore() {
   if (!monoBaseCfg || !monoSample) return;
   if (monoBeforeCtrl) monoBeforeCtrl.abort();
-  monoBeforeCtrl = new AbortController();
+  const ctrl = monoBeforeCtrl = new AbortController();
   try {
     // same size as the live render, so hold-to-compare lines up dot for dot at 100%
-    const url = await monoPreview(monoSample.name, monoPayload(monoBaseCfg), monoBeforeCtrl.signal, mZoom.zoomed ? { maxSidePx: MONO_PANEL_LONG } : {});
-    if (monoBeforeUrl) URL.revokeObjectURL(monoBeforeUrl);
-    monoBeforeUrl = url;
-    $("#moprev-before").src = url;
+    const url = await monoPreview(monoSample.name, monoPayload(monoBaseCfg), ctrl.signal, monoOpts(mZoom.zoomed));
+    await monoShow("before", url, () => ctrl === monoBeforeCtrl && !ctrl.signal.aborted);
   } catch (e) { if (e.name !== "AbortError") $("#moprev-before").removeAttribute("src"); }
 }
 function endMonoPeek() {
@@ -752,7 +816,7 @@ function openMono() {
   monoSample = ditherPhotos()[0] || null;
   renderMonoControls(); renderMonoPicker();
   $("#moprev-img").removeAttribute("src"); $("#moprev-before").removeAttribute("src");
-  monoPrevUrl = null; monoPrevKey = null;   // cleared img -> force a fresh render even if the payload repeats
+  monoForget(); monoPrevKey = null;   // cleared img -> force a fresh render even if the payload repeats
   mZoom.setReady(false);   // Fit, controls hidden until the first render arrives
   monoModal.hidden = false;
   if (monoSample) { runMonoPreview(); renderMonoBefore(); } else toast("Upload a photo to preview the mono look.");
@@ -764,11 +828,11 @@ function closeMono() {
   mZoom.reset();
 }
 monoModal.addEventListener("click", (e) => { if (e.target === monoModal || e.target.closest("[data-mono-close]")) closeMono(); });
-$("#moprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; monoSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderMonoPicker(); mZoom.reset(); runMonoPreview(); renderMonoBefore(); });
+$("#moprev-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-sample]"); if (!b) return; monoSample = ditherPhotos().find((t) => t.name === b.dataset.sample); renderMonoPicker(); monoNewSample(); mZoom.reset(); runMonoPreview(); renderMonoBefore(); });
 // press-and-hold the preview to peek at the pre-edit baseline (a quick tap never flashes it)
 const moStage = $("#moprev-stage");
 moStage.addEventListener("pointerdown", (e) => {
-  if (!monoPrevUrl || !monoBeforeUrl || $("#moprev-img").classList.contains("broken")) return;
+  if (!monoShots.live.url || !monoShots.before.url || $("#moprev-img").classList.contains("broken")) return;
   moPeekAt = { x: e.clientX, y: e.clientY };
   try { moStage.setPointerCapture(e.pointerId); } catch (_) {}
   clearTimeout(moPeekTimer);
@@ -786,7 +850,7 @@ moStage.addEventListener("dragstart", (e) => e.preventDefault());
 // "before" renders at the panel's native size.
 const mZoom = stageZoom({
   stage: moStage, wrap: $("#moprev-stage .dprev-wrap"), img: $("#moprev-img"),
-  panelPx: () => { const i = $("#moprev-img"); return i.naturalWidth >= i.naturalHeight ? MONO_PANEL_LONG : MONO_PANEL_SHORT; },
+  panelPx: () => (monoBox ? (monoBox.land ? MONO_PANEL_LONG : MONO_PANEL_SHORT) * monoBox.box[2] : 0),
   isOpen: () => !monoModal.hidden,
   isPeeking: () => moPeeking,
   onZoom: (zoomed) => { if (zoomed && !monoFull) { runMonoPreview(); renderMonoBefore(); } },

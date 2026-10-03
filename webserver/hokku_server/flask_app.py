@@ -1192,7 +1192,10 @@ def create_app(
 
         Body: {name: str, mono: {use_measured_ramp, darken_gamma,
         sharpen_amount, sharpen_radius, sharpen_threshold, shadow_lift},
-        max_side_px?}. Renders through the real wire pipeline and decodes
+        max_side_px?, frame_portrait?, fill?}. fill=false never zooms to fill
+        (the whole photo, letterboxed) — the tone editor, which like the colour
+        dither editor is for judging the look, not the framing.
+        Renders through the real wire pipeline and decodes
         via the PERCEIVED calibrated ramp, so the preview shows what the
         panel will actually display (compressed blacks/whites included).
         Returns PNG bytes.
@@ -1230,9 +1233,10 @@ def create_app(
                 sharpen_threshold=int(mono.get("sharpen_threshold", mono_e1003.SHARPEN_THRESHOLD)),
             )
             frame_portrait = bool(body.get("frame_portrait"))   # the E1003 frame's orientation
+            fill = body.get("fill", True) is not False           # false: never zoom to fill
             crop_kw = dict(rotation_quarters=rotation_quarters, crop_rect=crop_rect,
                            frame_portrait=frame_portrait,
-                           crop_to_fill_threshold=float(getattr(state.config, "crop_to_fill_threshold", 0.0)))
+                           crop_to_fill_threshold=float(getattr(state.config, "crop_to_fill_threshold", 0.0)) if fill else 0.0)
             profile = mono.get("profile", "faithful")
             # capped at the panel's native long side, so the tone editor's 100% zoom can
             # show every panel pixel (1872 x 1404) rather than an upscaled 1600 render
