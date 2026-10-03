@@ -108,7 +108,12 @@ def main() -> None:
     logger.info("Hokku image server starting")
     logger.info("Upload dir: %s", upload_dir)
     logger.info("Cache dir: %s", cache_dir)
-    logger.info("Refresh at: %s", list(config.refresh_image_at_time))
+    if config.refresh_mode == "interval":
+        hours = (f", {config.refresh_active_start}-{config.refresh_active_end}"
+                 if config.refresh_active_start and config.refresh_active_end else ", all day")
+        logger.info("Refresh every: %s min%s", config.refresh_interval_minutes, hours)
+    else:
+        logger.info("Refresh at: %s", list(config.refresh_image_at_time))
     logger.info("Poll interval: %ss", config.poll_interval_seconds)
     logger.info("Pipeline slug: %s", config.cache_slug())
     logger.info("Endpoints: GET /hokku/screen/ (panel binary), GET /hokku/ui (web GUI)")

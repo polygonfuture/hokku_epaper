@@ -24,7 +24,16 @@ from hokku_server.presets import PRESET_IMAGE_CONFIGS
 
 logger = logging.getLogger(__name__)
 
-_CURRENT_VERSION = 6
+_CURRENT_VERSION = 7
+
+#: Refresh schedule modes: "times" = refresh_image_at_time (specific clock times);
+#: "interval" = every refresh_interval_minutes, optionally only during active hours.
+REFRESH_MODES = ("times", "interval")
+#: Interval bounds. Each refresh wakes Wi-Fi and repaints the panel (~30 s on Spectra 6),
+#: so more often than hourly costs battery and calm for nothing; debug_fast_refresh
+#: covers fast test cycles. 24 h is the longest a frame is ever asked to sleep.
+REFRESH_INTERVAL_MIN_MINUTES = 60
+REFRESH_INTERVAL_MAX_MINUTES = 1440
 
 
 def _migrate_v1_to_v2(d: dict) -> dict:
@@ -61,6 +70,26 @@ def _migrate_v5_to_v6(d: dict) -> dict:
     return d
 
 
+def _migrate_v6_to_v7(d: dict) -> dict:
+    """Add the interval refresh mode. Defaults to 'times', so an existing install keeps
+    its refresh_image_at_time schedule exactly as before."""
+    d.setdefault("refresh_mode", "times")
+    d.setdefault("refresh_interval_minutes", 120)
+    d.setdefault("refresh_active_start", "")
+    d.setdefault("refresh_active_end", "")
+    return d
+
+
+def clamp_interval_minutes(value: Any) -> int:
+    """An interval in whole minutes, inside [REFRESH_INTERVAL_MIN_MINUTES,
+    REFRESH_INTERVAL_MAX_MINUTES]. Anything that isn't a number gets the 120 default."""
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        minutes = 120
+    return min(max(minutes, REFRESH_INTERVAL_MIN_MINUTES), REFRESH_INTERVAL_MAX_MINUTES)
+
+
 # v(N) → v(N+1) upgrade functions. Populated as the schema evolves.
 _MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _migrate_v1_to_v2,
@@ -68,6 +97,7 @@ _MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 
@@ -86,7 +116,17 @@ class AppConfig:
     """Persisted server settings."""
 
     version: int = _CURRENT_VERSION
+    #: How the wake schedule is expressed (REFRESH_MODES): "times" uses
+    #: refresh_image_at_time; "interval" uses refresh_interval_minutes.
+    refresh_mode: str = "times"
     refresh_image_at_time: tuple[str, ...] = ("0600", "1200", "1800")
+    #: Interval mode: refresh every N minutes, 60-1440 (clamped on load).
+    refresh_interval_minutes: int = 120
+    #: Interval mode: optional active hours ("HHMM"). With both set, frames refresh only
+    #: inside the window (it may wrap past midnight) and otherwise sleep until it opens.
+    #: Empty = around the clock.
+    refresh_active_start: str = ""
+    refresh_active_end: str = ""
     upload_dir: str = "/var/lib/hokku/images"
     cache_dir: str = "/var/lib/hokku/cache"
     port: int = 8080
@@ -266,6 +306,14 @@ class AppConfig:
         rat = kwargs.get("refresh_image_at_time")
         if isinstance(rat, list):
             kwargs["refresh_image_at_time"] = tuple(rat)
+
+        # An unknown mode (a typo, a hand edit) falls back to the specific-times schedule
+        # rather than refusing to start; the interval is kept inside its bounds.
+        if "refresh_mode" in kwargs and kwargs["refresh_mode"] not in REFRESH_MODES:
+            logger.warning("Unknown refresh_mode %r — using 'times'", kwargs["refresh_mode"])
+            kwargs["refresh_mode"] = "times"
+        if "refresh_interval_minutes" in kwargs:
+            kwargs["refresh_interval_minutes"] = clamp_interval_minutes(kwargs["refresh_interval_minutes"])
 
         return cls(**kwargs)
 

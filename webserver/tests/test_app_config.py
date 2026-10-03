@@ -272,3 +272,39 @@ def test_v5_config_load_drops_orientation(tmp_path: Path):
 def test_cache_slug_invariant_to_mdns_hostname():
     """mDNS hostname doesn't affect rendered output so it must not influence the slug."""
     assert AppConfig(mdns_hostname="hokku").cache_slug() == AppConfig(mdns_hostname="").cache_slug()
+
+
+# ── refresh schedule: interval mode (v7) ──────────────────────────────────────
+
+
+def test_v6_migrates_to_v7_keeping_specific_times():
+    """An existing v6 config gains the interval fields, defaulting to the 'times' mode so its
+    refresh_image_at_time schedule keeps working exactly as before."""
+    migrated = _migrate({"version": 6, "refresh_image_at_time": ["0600", "2000"]})
+    assert migrated["version"] == _CURRENT_VERSION
+    assert migrated["refresh_mode"] == "times"
+    assert migrated["refresh_interval_minutes"] == 120
+    assert migrated["refresh_active_start"] == "" and migrated["refresh_active_end"] == ""
+    assert migrated["refresh_image_at_time"] == ["0600", "2000"]
+
+
+def test_interval_fields_roundtrip(tmp_path: Path):
+    cfg = AppConfig(refresh_mode="interval", refresh_interval_minutes=240,
+                    refresh_active_start="0700", refresh_active_end="2300")
+    p = tmp_path / "config.json"
+    cfg.save(p)
+    loaded = AppConfig.load(p)
+    assert (loaded.refresh_mode, loaded.refresh_interval_minutes) == ("interval", 240)
+    assert (loaded.refresh_active_start, loaded.refresh_active_end) == ("0700", "2300")
+
+
+def test_interval_minutes_clamped_on_load():
+    """The stored interval always lands in 1 h - 24 h; junk gets the 2 h default."""
+    for given, want in ((15, 60), (0, 60), (-30, 60), (90, 90), (5000, 1440), ("abc", 120)):
+        c = AppConfig.from_dict({"version": _CURRENT_VERSION, "refresh_interval_minutes": given})
+        assert c.refresh_interval_minutes == want, given
+
+
+def test_unknown_refresh_mode_falls_back_to_times():
+    c = AppConfig.from_dict({"version": _CURRENT_VERSION, "refresh_mode": "Interval"})
+    assert c.refresh_mode == "times"

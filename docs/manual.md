@@ -462,7 +462,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 **The categories:**
 
-- **Refresh Schedule** — how often each frame wakes to fetch a new photo: an **interval** (every 15 minutes up to 24 hours, optionally only during set hours so the battery lasts longer), or a list of **specific times**. The server computes each frame's sleep for you; a live line shows what's next.
+- **Refresh Schedule** — how often each frame wakes to fetch a new photo: an **interval** (every hour up to every 24 hours, optionally only during set hours so the battery lasts longer), or a list of **specific times**. The server computes each frame's sleep for you; a live line shows what's next.
 - **Frame Orientation** — set each connected frame to Landscape or Portrait, and turn on **Only matching images** to send it only photos of that shape (the same controls as in a frame's diagnostics).
 - **Image Rendering** — how photos are converted for the frames, all on one page: a section for each kind of photo, cropping and framing, and the look of a B&W frame. See below.
 - **Server & Storage** — how often the app polls for updates, the debug screen (fast test refreshes that don't use up any photo's turn), the serve-decision log (a troubleshooting record; leave it off normally), automatic cache clearing, the mDNS/Bonjour name, how many photos convert in parallel, and a button to clear all caches and reconvert.

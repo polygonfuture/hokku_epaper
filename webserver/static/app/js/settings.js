@@ -77,7 +77,7 @@ function wirePreset(selId, pipelineKey, onChange) {
 
 // ══ REFRESH ══
 function refreshBody() {
-  const chips = [15, 30, 60, 120, 240, 360, 720, 1440]
+  const chips = [60, 120, 240, 360, 720, 1440]   // the server's interval range: 1 h to 24 h
     .map((m) => `<button data-min="${m}"${m === draft.refresh_interval_minutes ? ' class="on"' : ""}>${fmtMin(m)}</button>`).join("");
   const presetBtns = [
     ["3&times; daily", "0600,1200,1800"], ["Every 2h", seq(0, 22, 2).join(",")],

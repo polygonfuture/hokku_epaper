@@ -141,6 +141,93 @@ def test_mid_gap_wake_unaffected_by_grace():
     assert 10_600 <= result <= 10_900, f"Expected ~10800 s to noon, got {result}s"
 
 
+# ── interval mode ─────────────────────────────────────────────────────────────
+
+
+def _interval_sleep_at(hour, minute, minutes, start="", end=""):
+    cfg = _cfg(refresh_mode="interval", refresh_interval_minutes=minutes,
+               refresh_active_start=start, refresh_active_end=end)
+    with patch("hokku_server.time_utils.datetime") as mock_dt:
+        mock_dt.now.return_value = _fake_now(hour, minute)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        return calculate_sleep_seconds(cfg)
+
+
+def test_interval_mode_flat_cadence():
+    """Interval mode with no active hours sleeps interval_minutes * 60."""
+    cfg = _cfg(refresh_mode="interval", refresh_interval_minutes=120)
+    assert calculate_sleep_seconds(cfg) == 7200
+
+
+def test_interval_mode_minimum_is_one_hour():
+    """Anything under an hour (30, 0, negative) is raised to the 1-hour minimum."""
+    for minutes in (30, 0, -30):
+        cfg = _cfg(refresh_mode="interval", refresh_interval_minutes=minutes)
+        assert calculate_sleep_seconds(cfg) == 3600, minutes
+
+
+def test_interval_mode_maximum_is_one_day():
+    cfg = _cfg(refresh_mode="interval", refresh_interval_minutes=5000)
+    assert calculate_sleep_seconds(cfg) == 86400
+
+
+def test_interval_mode_ignores_refresh_times():
+    """In interval mode the clock-time list is not consulted."""
+    cfg = _cfg(refresh_mode="interval", refresh_interval_minutes=120,
+               refresh_image_at_time=("0600", "1200"))
+    assert calculate_sleep_seconds(cfg) == 7200
+
+
+def test_times_mode_ignores_interval_settings():
+    """The default specific-times schedule is unaffected by the interval fields."""
+    plain = _sleep_at(9, 0, 0)
+    cfg = _cfg(refresh_interval_minutes=60, refresh_active_start="0700", refresh_active_end="2300",
+               refresh_image_at_time=("0600", "1200", "1800"))
+    with patch("hokku_server.time_utils.datetime") as mock_dt:
+        mock_dt.now.return_value = _fake_now(9, 0, 0)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        assert calculate_sleep_seconds(cfg) == plain
+
+
+def test_debug_fast_refresh_beats_interval_mode():
+    cfg = _cfg(refresh_mode="interval", refresh_interval_minutes=120, debug_fast_refresh=True)
+    assert calculate_sleep_seconds(cfg) == DEBUG_FAST_REFRESH_SECONDS
+
+
+def test_interval_active_hours_inside_returns_interval():
+    """Active 07:00–23:00; now 12:00, the 13:00 wake is inside → the full interval."""
+    assert _interval_sleep_at(12, 0, 60, "0700", "2300") == 3600
+
+
+def test_interval_active_hours_outside_sleeps_until_start():
+    """Active 07:00–23:00; now 02:00 → sleeps until 07:00 (5 h)."""
+    assert _interval_sleep_at(2, 0, 60, "0700", "2300") == 18000
+
+
+def test_interval_last_refresh_skips_to_next_morning():
+    """Every 2 h, active 07:00–23:00; now 21:30 → 23:30 is outside, so sleep to 07:00 (9.5 h)."""
+    assert _interval_sleep_at(21, 30, 120, "0700", "2300") == int(9.5 * 3600)
+
+
+def test_interval_active_hours_after_window_wraps_to_next_start():
+    """Active 07:00–23:00; now 23:30 → next start is 07:00 tomorrow (7.5 h)."""
+    assert _interval_sleep_at(23, 30, 60, "0700", "2300") == int(7.5 * 3600)
+
+
+def test_interval_active_hours_empty_is_24_7():
+    """Empty active hours mean the interval runs around the clock."""
+    assert _interval_sleep_at(2, 0, 120) == 7200
+
+
+def test_interval_active_hours_overnight_window():
+    """Overnight window 22:00–06:00; now 23:00, the 00:00 wake is inside → the interval."""
+    assert _interval_sleep_at(23, 0, 60, "2200", "0600") == 3600
+
+
+def test_interval_active_hours_equal_start_end_is_24_7():
+    assert _interval_sleep_at(12, 0, 120, "0700", "0700") == 7200
+
+
 # ── format_duration_human ─────────────────────────────────────────────────────
 
 
