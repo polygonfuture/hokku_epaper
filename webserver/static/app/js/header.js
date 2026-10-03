@@ -171,21 +171,39 @@ async function doUpload(files) {
   }
 }
 
-// desktop drag-and-drop overlay
+// Nothing in the app is meant to be dragged, so every drag that STARTS on the page is
+// stopped at the source. iOS lets you long-press-drag any web image (Chrome any image on
+// desktop) and hands it to the page as a FILE: holding a gallery photo and dragging it
+// opened the upload overlay, and dropping it uploaded a copy of the photo you were holding.
+// Files dragged in from OUTSIDE the page never fire dragstart here, so uploads still work.
+document.addEventListener("dragstart", (e) => e.preventDefault());
+
+// drag-and-drop overlay. It must never strand: it used to hide only on a drop or when an
+// enter/leave counter returned to zero, so a drag that ended any other way (cancelled,
+// dropped outside) left it on screen with no way to close it. Now it is held up only while
+// drag events keep arriving (browsers fire dragover at least every ~350 ms while a drag is
+// over the page), and also closes on drop, dragend, leaving the window, and any tap.
 const overlay = $("#drop-overlay");
-let dragDepth = 0;
 const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files");
-window.addEventListener("dragenter", (e) => { if (hasFiles(e)) { dragDepth++; overlay.hidden = false; } });
-window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
-window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) overlay.hidden = true; });
+const DRAG_IDLE_MS = 1200, DRAG_LEAVE_MS = 600;
+let dragIdle = null;
+function hideOverlay() { clearTimeout(dragIdle); overlay.hidden = true; }
+function holdOverlay(ms = DRAG_IDLE_MS) { overlay.hidden = false; clearTimeout(dragIdle); dragIdle = setTimeout(hideOverlay, ms); }
+window.addEventListener("dragenter", (e) => { if (hasFiles(e)) { e.preventDefault(); holdOverlay(); } });
+window.addEventListener("dragover", (e) => { if (hasFiles(e)) { e.preventDefault(); holdOverlay(); } });
+// dragleave also fires moving between elements (the next element's dragover re-holds it);
+// when it's the window being left, no dragover follows and it closes shortly after
+window.addEventListener("dragleave", () => { if (!overlay.hidden) holdOverlay(DRAG_LEAVE_MS); });
+window.addEventListener("dragend", hideOverlay);
 window.addEventListener("drop", (e) => {
   if (hasFiles(e)) {
     e.preventDefault();
     const f = [...e.dataTransfer.files];
     if (f.length === 1) uploadAndEdit(f[0]); else if (f.length) doUpload(f);
   }
-  dragDepth = 0; overlay.hidden = true;
+  hideOverlay();
 });
+overlay.addEventListener("pointerdown", hideOverlay);   // a tap always clears it
 
 // ══ Failed-conversions modal ══
 const failedModal = $("#failed-modal");

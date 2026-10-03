@@ -789,6 +789,9 @@
   .cell-tile, .cell-tile img, .ctx-preview img, .fthumb img, .detail-media img {
     -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
   }
+  /* ...and no image anywhere can be lifted for dragging: iOS hands a dragged image to the page
+     as a file, which opened the upload overlay (header.js also blocks every in-page dragstart) */
+  img { -webkit-user-drag: none; }
 
   /* Uniform — fixed-column grid; each tile fills its column at its true 4:3 / 3:4
      ratio (this is why portraits currently look taller — they're sized by the
