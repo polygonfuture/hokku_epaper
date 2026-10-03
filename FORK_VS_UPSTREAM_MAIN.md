@@ -2,7 +2,7 @@
 
 **Compared:** polygonfuture/hokku_epaper `dev` and defl/hokku_epaper `main` at `32e3640` (4.0.0 beta 3, 2026-10-02), on 2026-10-03.
 
-Both grew from the same 3.1.0 alpha 1 (`27d4cbf`, 2026-05-30) and have moved apart since: **82 commits on dev, 376 on defl's main**. Neither contains the other, apart from two pieces dev ported from 4.0.x and a handful of fixes both sides made on their own. defl's 4.x also moved the server from `webserver/hokku_server/` to `python/hokku/webserver/`, so dev can't simply be merged; features have to be re-ported one at a time.
+Both grew from the same 3.1.0 alpha 1 (`27d4cbf`, 2026-05-30) and have moved apart since: **86 commits on dev, 376 on defl's main**. Neither contains the other, apart from two pieces dev ported from 4.0.x and a handful of fixes both sides made on their own. defl's 4.x also moved the server from `webserver/hokku_server/` to `python/hokku/webserver/`, so dev can't simply be merged; features have to be re-ported one at a time.
 
 For dev's full feature list see [FORK_CHANGELOG.md](FORK_CHANGELOG.md).
 
@@ -42,6 +42,7 @@ Where the two overlap. For a port, the last column says which version to keep.
 - **Photo editor:** crop and rotate, live preview from a fast draft to full resolution, Fit / 100% zoom, and press and hold for the original.
 - **Frames:** drawer cards; a frame preview showing exactly what a frame renders, with a fit line; Skip up next per frame; send a photo to one specific frame.
 - **E1003 support:** firmware, the mono render path, tone profiles and a live tone editor.
+- **Refresh schedule:** an Interval mode (every 1 to 24 hours, with optional active hours) alongside specific times.
 - **Serving:** each frame's up next is committed ahead and is exactly what it serves, with fleet matching so frames don't repeat each other. Up next refreshes after deletes and conversions. Debug fast-refresh doesn't spend turns. An optional serve-decision log.
 - **Reliability:** power-cut-safe state (fsync, `.bak`, snapshots); mDNS ignores VPN adapters and has a self-healing watchdog; no phantom "unnamed" frame from health checks.
 

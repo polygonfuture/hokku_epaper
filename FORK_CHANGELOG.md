@@ -1,6 +1,6 @@
 # Fork changes: `dev` vs upstream 3.1.0 alpha 1
 
-**Fork:** polygonfuture/hokku_epaper, branch `dev` · **Base:** defl/hokku_epaper `main` at `27d4cbf` (3.1.0 alpha 1, 2026-05-30) · **82 commits**, 2026-07-16 to 2026-10-03
+**Fork:** polygonfuture/hokku_epaper, branch `dev` · **Base:** defl/hokku_epaper `main` at `27d4cbf` (3.1.0 alpha 1, 2026-05-30) · **86 commits**, 2026-07-16 to 2026-10-03
 
 The fork's own `main` is an untouched mirror of that base. Nothing here has been merged with 4.x; the plan is to re-port features one at a time onto a stable 4.x release rather than merge. Two pieces were ported *from* 4.0.x verbatim (face-aware cropping, the manager's `retire()`), so a later port sees them as no-ops.
 
@@ -24,6 +24,7 @@ Mobile-first, alongside the classic page; `"default_ui"` picks which one `/` ope
 - **Send to a frame:** a chosen photo goes to one specific frame at its next refresh. (`cb58c28`)
 - **Uploads:** progress and conversion status in the header; a single photo opens in the editor as a draft. (`8367f95`, `fd176ff`)
 - **Settings:** four pages. Image Rendering uses 4.x's section and label names. (`7fa1855`)
+- **Refresh schedule:** besides specific times, an Interval mode (every 1 to 24 hours, optionally only during active hours). (`ced38d3`)
 - **Originals in any format:** a new `/display` serves a browser-safe render of TIFF / HEIC / JXL; `/original` stays raw. (`96fb2bb`)
 
 ## Per-image photo editor

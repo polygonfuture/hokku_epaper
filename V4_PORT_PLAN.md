@@ -4,7 +4,7 @@
 
 **Where things stand:**
 - **defl's `main`** is at `32e3640`: 4.0.0 beta 3, 376 commits past the shared base `27d4cbf` (3.1.0 alpha 1). There's no stable 4.0.0 yet.
-- **This fork's `dev`** carries 82 commits of changes on the same base.
+- **This fork's `dev`** carries 86 commits of changes on the same base.
 
 For what each side has, see [FORK_VS_UPSTREAM_MAIN.md](FORK_VS_UPSTREAM_MAIN.md); for dev's feature list, see [FORK_CHANGELOG.md](FORK_CHANGELOG.md).
 
@@ -50,6 +50,7 @@ Items 1–4 are written up in [UPSTREAM_BUGFIXES.md](UPSTREAM_BUGFIXES.md).
 
 - **Committed up next per frame,** with fleet matching, so the drawer's up next is exactly what is served (`1340119`). It's compatible with his random tiebreak.
 - **Skip up next** (`b15abc2`) and **send to a specific frame** (`cb58c28`). These sit next to his global Show next and per-frame labels.
+- **Interval refresh** (`ced38d3`): upstream has only specific times. `time_utils.py` is otherwise unchanged upstream, so it's a clean add.
 - **Smaller items:** debug fast-refresh that doesn't spend turns (`95e6325`), up-next refresh after delete and conversion (`0fcfd73`, `b140d20`), and the serve-decision log (`42a0f19`).
 
 ## Phase 3: editor and web app
@@ -65,6 +66,5 @@ Items 1–4 are written up in [UPSTREAM_BUGFIXES.md](UPSTREAM_BUGFIXES.md).
 
 ## Open items
 
-- **The Interval tab on `dev`:** the web app's Refresh Schedule page has had an Interval tab (with active hours) since July, but `dev`'s server has no interval settings, so choosing it changes nothing. Specific times, the schedule in use, works. Either hide the tab or build interval support fresh on `dev`.
 - **Timing:** wait for a stable 4.0.0 tag, or start an integration branch now on his latest main.
 - **Contact:** whether to raise the plan with defl before the first PR.
