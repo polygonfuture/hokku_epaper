@@ -482,20 +482,48 @@ function schedulePreview() {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(runPreview, 400);
 }
+// The render comes back letterboxed onto the panel canvas: pure-white bars on two sides
+// for some photos, none for others. This editor is for judging the dither, so trim the
+// bars off and let CSS frame every photo in the same even white mat instead.
+async function trimLetterbox(blobUrl) {
+  const im = new Image(); im.src = blobUrl; await im.decode();
+  const W = im.naturalWidth, H = im.naturalHeight;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, W, H).data;
+  const white = (x, y) => { const i = (y * W + x) * 4; return d[i] >= 250 && d[i + 1] >= 250 && d[i + 2] >= 250; };
+  const colWhite = (x) => { for (let y = 0; y < H; y++) if (!white(x, y)) return false; return true; };
+  const rowWhite = (y) => { for (let x = 0; x < W; x++) if (!white(x, y)) return false; return true; };
+  let l = 0, r = W, t = 0, b = H;
+  while (r - l > 1 && colWhite(l)) l++;
+  while (r - l > 1 && colWhite(r - 1)) r--;
+  while (b - t > 1 && rowWhite(t)) t++;
+  while (b - t > 1 && rowWhite(b - 1)) b--;
+  if (l === 0 && t === 0 && r === W && b === H) return { url: blobUrl, box: [0, 0, 1, 1] };
+  const o = document.createElement("canvas"); o.width = r - l; o.height = b - t;
+  o.getContext("2d").drawImage(c, l, t, r - l, b - t, 0, 0, r - l, b - t);
+  const blob = await new Promise((res) => o.toBlob(res, "image/png"));
+  URL.revokeObjectURL(blobUrl);
+  return { url: URL.createObjectURL(blob), box: [l / W, t / H, (r - l) / W, (b - t) / H] };
+}
 async function runPreview() {
   if (!editSample) return;
   if (previewCtrl) previewCtrl.abort();
-  previewCtrl = new AbortController();
+  const ctrl = previewCtrl = new AbortController();
   $("#dprev-stage").classList.add("busy");
   try {
-    const { blobUrl, faceBboxes } = await ditherPreview(editSample.name, editCfg, undefined, previewCtrl.signal);
+    const { blobUrl, faceBboxes } = await ditherPreview(editSample.name, editCfg, undefined, ctrl.signal);
+    const { url, box } = await trimLetterbox(blobUrl);
+    if (ctrl.signal.aborted) { URL.revokeObjectURL(url); return; }   // superseded while trimming
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    previewUrl = blobUrl;
-    const img = $("#dprev-img"); img.classList.remove("broken"); img.src = blobUrl;
+    previewUrl = url;
+    const img = $("#dprev-img"); img.classList.remove("broken"); img.src = url;
     const layer = $("#dprev-faces");
     if (faceBboxes && faceBboxes.length) {
+      // face boxes are normalised to the untrimmed render; re-normalise them to the trimmed one
+      const [bx, by, bw, bh] = box;
       layer.hidden = false;
-      layer.innerHTML = faceBboxes.map((b) => `<i style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%"></i>`).join("");
+      layer.innerHTML = faceBboxes.map((f) => `<i style="left:${(f[0] - bx) / bw * 100}%;top:${(f[1] - by) / bh * 100}%;width:${f[2] / bw * 100}%;height:${f[3] / bh * 100}%"></i>`).join("");
     } else { layer.hidden = true; layer.innerHTML = ""; }
     $("#dprev-stage").classList.remove("busy");
   } catch (e) {
