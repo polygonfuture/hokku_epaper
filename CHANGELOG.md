@@ -1,16 +1,92 @@
 # Changelog
 
-## Unreleased
+## 3.1.0 alpha 1 · Modern UI and Darkoom Fork
 
 ### New web app
 
-A redesigned, mobile-first web app is now available alongside the original page, served at `/hokku/app`. It works just as well on a phone as on a computer and talks to the same server, so nothing about your frames or photos changes when you switch. You get a photo gallery, a detail view that previews how each photo will look on the six-colour screen, connected-frame management, and every setting in one place.
+A redesigned, mobile-first web app now runs alongside the original page. It works as well on a phone as on a computer and uses the same server, so your frames and photos carry over unchanged.
 
-The plain address `/` opens whichever interface you set as the default — set `"default_ui": "modern"` in `config.json` for the new app, or `"classic"` (the default) for the original page, which stays at `/hokku/ui` and is unchanged. See the [user manual](docs/manual.md#1-the-web-app) for a full walkthrough with screenshots.
+- **Where** — `/hokku/app`. The classic page stays at `/hokku/ui`, unchanged.
+- **Default page** — set `"default_ui": "modern"` in `config.json` to make `/` open the new app (`"classic"` is the default).
+- **Guide** — the [user manual](docs/manual.md#1-the-web-app) walks through every screen with screenshots.
 
-### Send a photo to a specific frame
+### Photo editor
 
-You can now send a chosen photo to one particular frame for its next refresh, rather than only queuing it into the shared rotation. Open a photo's actions in the web app and pick the frame under "Send to a frame". The override is per-screen, survives a server restart, and is consumed the next time that frame checks in.
+Crop, rotate and fine-tune any photo with a live preview of the real six-colour render. Your original file is never changed.
+
+- **Live preview** — a quick draft while you adjust, then the full-resolution render a moment later.
+- **Zoom** — the magnifier button, `Z` or a double-click switches between Fit and 100%.
+- **Compare** — press and hold the preview to see the original.
+- **Per-photo settings** — each photo can have its own dither preset and conversion settings.
+- **Re-editable** — reopening a photo restores every edit.
+- **Upload and edit** — uploading a single photo opens it in the editor first; several at once convert straight away.
+- **Crops follow the frame's shape** — a crop applies to frames of the shape it was made for; other frames use the full original.
+
+### Frames
+
+- **Frames panel** — a card for each frame: the photo it's showing, battery, firmware, last seen and next check-in. The grid fits any screen and scales up on QHD and 4K displays.
+- **Frame preview** — tap a card's thumbnail, or a frame badge in the gallery, to see a photo exactly as that frame renders it, on **Now** or **Up next**.
+- **Fit line** — under the preview: **Exact fit**, **Zoomed** (edges cropped) or **Needs** (letterboxed, with the Zoom to fill value that would fill it).
+- **Skip up next** — swaps a frame's queued photo for another, dealt from a shuffled deck. Only that frame changes, and the skipped photo keeps its place in the rotation.
+- **Send to a frame** — send a chosen photo to one frame for its next refresh. The choice is per frame and survives a server restart.
+- **Rename** — give a frame a friendlier name in the app; the name it was set up with stays its internal ID.
+- **Frame colours** — each frame has its own colour, chosen to stay distinguishable with colour blindness.
+
+### Gallery and photo details
+
+- **Sort** — newest or oldest added, longest unseen, recently shown, or name. Appears from 60 photos.
+- **Show** — B&W, People or Non-People, from the server's own photo analysis. Appears from 60 photos.
+- **Longest unseen** — groups the grid into sections from *Never shown* to *This month*.
+- **Step through photos** — ← / → in the detail view.
+- **Any format** — TIFF, HEIC/HEIF and JPEG XL originals now show in the browser and open in the editor, through a browser-safe copy (`/hokku/api/display/<name>`).
+- **Download original** — the file exactly as uploaded (`/hokku/api/original/<name>`).
+
+### Settings
+
+- **Image Rendering** — one page with a section for each kind of image (Standard images, Portraits, Black & white images), each with its own dither preset, plus Cropping & framing. Settings goes from six pages to four.
+- **Zoom to fill** (`crop_to_fill_threshold`) — now the one rule for every photo on both panel types: zoom in to fill the frame, or letterbox. The ceiling rises from 100% to 150%, since a real 3:2 photo needs just over 100% to fill a portrait frame and 16:9 needs 137%.
+- **Face-aware cropping** (`classifier_face_aware_crop_enabled`, ported from 4.0) — aims a zoomed crop at detected faces. On by default.
+- **Interval refresh** — refresh every 1 to 24 hours, optionally only between set hours, as well as at specific times. New config keys `refresh_mode`, `refresh_interval_minutes`, `refresh_active_start` and `refresh_active_end` (schema v7; existing configs auto-migrate and keep their times).
+- **Custom dither editor** — previews keep their proportions inside an even white border, with the same Fit / 100% zoom as the photo editor.
+
+### Rotation and Up next
+
+- **Up next is what's served** — each frame's next photo is decided ahead of time and served exactly as the web app shows it. It updates when a photo is deleted or a conversion finishes.
+- **No duplicates across frames** — photos are assigned to all frames together, so two frames don't show the same photo unless the library is too small.
+- **No reshuffling** — serving one frame no longer changes another frame's Up next.
+- **Fairer order** — ties between equally shown photos break at random, not alphabetically, and a newly added photo joins the least-shown group instead of resetting everyone's history.
+- **Serve-decision log** — optional, for troubleshooting (Server & Storage, off by default).
+
+### Seeed reTerminal E1003 (monochrome)
+
+Support for the 10.3" reTerminal E1003, a 16-grey e-paper frame, alongside the Spectra 6 frames.
+
+- **Its own firmware** — see *Firmware* below.
+- **Mono render path** — runs only for frames that send `X-Panel-Type: mono16_e1003`, so colour renders and caches are unaffected.
+- **Mono 16 view** — in the photo details, next to Spectra 6 and Original.
+- **Tone profiles** — Faithful, B&W Contrast or Custom, under Image Rendering, with a live tone editor for Custom.
+- **Per-photo tuning** — the photo editor can adjust a photo's mono version and its crop separately.
+
+### Reliability and bug fixes
+
+- **Double refresh at scheduled times** — a frame that wakes a few minutes before a slot no longer refreshes that slot twice.
+- **Power cuts** — saved state is flushed to disk before it replaces the previous copy, a `.bak` and dated snapshots are kept, and the server refuses to start rather than overwrite an image database it can't read.
+- **`hokku.local` and VPNs** — mDNS ignores VPN and virtual adapters, answers only on the LAN address, and re-registers the name if a Wi-Fi or VPN reconnect leaves it unreachable.
+- **Slow requests** — requests are handled in parallel, so one slow render no longer holds up the frames and the web app.
+- **Phone portraits** — photos rotated by their EXIF tag are recorded with their real orientation.
+- **Near-exact photos** — a fraction of a pixel of rounding no longer makes a photo letterbox.
+- **Config reload** — saving settings can no longer revert the image database.
+- **Phantom frames** — health checks from the server's own machine no longer register an "unnamed" frame.
+- **Debug fast-refresh** — test refreshes no longer use up rotation turns.
+
+### Firmware: reTerminal E1003 1.2.1 (new)
+
+- **IT8951 panel driver** — 16-grey updates on the 1872×1404 panel; VCOM is read from the module and never written.
+- **Power** — deep sleep between refreshes, battery reporting, and a low-battery check before each update.
+- **Wake button** — the user LED confirms a press for two seconds.
+- **Keeps the last photo** when a fetch fails, instead of replacing it with an error screen.
+
+The Spectra 6 firmware is unchanged.
 
 ## 3.1.0 alpha 1
 
