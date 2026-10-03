@@ -428,7 +428,10 @@
         <!-- dither preview: server-rendered PNG matted like a framed print (replaces the
              mockup's client-dithered #dithCanvas — the client render ignored the LUT) -->
         <div class="pedit-dith-wrap" id="peditDithWrap" hidden><img id="peditDith" alt="Dithered preview"><img id="peditDithBefore" alt="Original (before dithering)"></div>
-        <div class="render-chip" id="renderChip"><span class="rspin"></span>rendering…</div>
+        <div class="render-chip" id="renderChip"><span class="rspin"></span><span class="rdot"></span><span id="renderChipT">rendering…</span></div>
+        <!-- Fit ↔ 100% zoom (Color only): outside #peditDithWrap so it never scales with the photo -->
+        <span class="pv-pct" id="pvPct" hidden></span>
+        <button class="pv-ctl pv-zoom" id="pvZoomBtn" type="button" aria-label="Zoom to 100%" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><span id="pvZoomT">1:1</span></button>
       </div>
       <div class="m-panel" id="mPanel">
         <div class="m-panel-inner">

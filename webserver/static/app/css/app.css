@@ -918,6 +918,20 @@
   .render-chip{position:absolute;z-index:5;bottom:.7rem;left:50%;transform:translateX(-50%);font-size:.66rem;letter-spacing:.05em;color:#F3F2EF;background:rgba(10,9,8,.72);padding:.24rem .6rem;border-radius:999px;display:flex;align-items:center;gap:.4rem;opacity:0;transition:.2s}
   .render-chip.show{opacity:1}
   .render-chip .rspin{width:9px;height:9px;border-radius:50%;border:2px solid #EDEBE5;border-right-color:transparent;animation:bspin .7s linear infinite}
+  /* two-step colour preview: the chip says which render you're looking at */
+  .render-chip .rdot{display:none;width:7px;height:7px;border-radius:50%}
+  .render-chip.st-draft .rspin,.render-chip.st-full .rspin{display:none}
+  .render-chip.st-draft .rdot{display:block;background:#E9B44C}
+  .render-chip.st-full .rdot{display:block;background:#46D07E}
+  /* Fit ↔ 100% zoom. Dots are drawn crisp only at ≥100% (nearest-neighbour DOWN-sampling would
+     invent patterns the panel doesn't have); --pv-lift keeps the controls above the phone sheet */
+  .pedit-dith-wrap.pv-px #peditDith,.pedit-dith-wrap.pv-px #peditDithBefore{image-rendering:pixelated}
+  .pedit-dith-wrap.pv-anim{transition:transform .22s cubic-bezier(.2,.8,.25,1)}
+  .pv-zoom{position:absolute;z-index:6;right:.8rem;bottom:calc(.7rem + var(--pv-lift,0px));display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px 0 10px;border-radius:16px;border:1px solid rgba(255,255,255,.12);background:rgba(16,17,21,.88);color:#F3F2EF;font:inherit;font-size:.72rem;font-weight:650;font-variant-numeric:tabular-nums;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:bottom .2s ease,border-color .15s}
+  .pv-zoom:hover{border-color:rgba(255,255,255,.24)}
+  .pv-zoom svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+  .pv-pct{position:absolute;z-index:6;left:.8rem;bottom:calc(.7rem + var(--pv-lift,0px));font-family:var(--mono);font-size:.66rem;color:#8C8B87;background:rgba(16,17,21,.85);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:4px 7px;pointer-events:none;font-variant-numeric:tabular-nums;transition:bottom .2s ease}
+  .pv-zoom[hidden],.pv-pct[hidden]{display:none}
   .m-panel{width:0;flex:none;overflow:hidden;background:#0B0C10;border-left:1px solid rgba(255,255,255,.07);transition:width .3s cubic-bezier(.32,.72,0,1)}
   .m-panel.open{width:312px;border-left-color:rgba(255,255,255,.09)}
   .m-panel-inner{width:312px;height:100%;display:flex;flex-direction:column;padding:1rem .55rem}
@@ -1101,6 +1115,7 @@
        no title bar, no border — rows run the FULL editor width */
     .m-panel { position: absolute; left: 0; right: 0; bottom: 96px; top: auto; z-index: 5; width: auto; height: 0; background: #0B0C10; border-left: 0; border-top: 0; transition: height .3s cubic-bezier(.32,.72,0,1); }
     .m-panel.open { width: auto; height: 158px; }
+    .pv-zoom { height: 38px; border-radius: 19px; padding: 0 13px 0 11px; font-size: .78rem; }
     .m-panel-inner { width: 100%; height: 100%; padding: 0 .3rem; }
     .crop-dock:not([hidden]) { display: block; }                         /* crop tools live HERE on touch, not in the bin */
     /* top bar per the prototype: plain-text Submit (no border), small EDIT, roomy ••• */

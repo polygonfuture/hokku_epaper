@@ -34,6 +34,10 @@ const dithWrap = $("#peditDithWrap");
 const dithImg = $("#peditDith");
 const beforeImg = $("#peditDithBefore");
 const renderChip = $("#renderChip");
+const renderChipT = $("#renderChipT");
+const pvBtn = $("#pvZoomBtn");
+const pvBtnT = $("#pvZoomT");
+const pvPct = $("#pvPct");
 const mPanel = $("#mPanel");
 const cropPanel = $("#cropPanel");
 const groupPanel = $("#groupPanel");
@@ -456,7 +460,7 @@ function setAppearance(a) {
   const from = ED.appearance;
   ED.appearance = a;
   ED.stage = 0;
-  endPeek(); pvReset();   // fresh view on each appearance
+  endPeek(); pvReset(); cancelFull();   // fresh view on each appearance
   // ── swap the crop workspace (Model A) ──
   if (from === "color" && a === "mono") {
     // leaving Spectra: remember its crop. Then show mono's framing:
@@ -732,6 +736,7 @@ function applyPanelState() {
   if (showCrop) { pTitleText.textContent = "Crop"; pReset.hidden = !cropEdited(); updateMonoCropChip(); updateSavedCropChip(); }
   else if (showGroup) renderPanel();
   if (open !== wasOpen || dockShow !== wasDock) startRelayout();
+  placePvCtl();
 }
 function openPanel() { ED.panelOpen = true; applyPanelState(); renderRail(); }
 function closePanel() { ED.panelOpen = false; applyPanelState(); renderRail(); }
@@ -743,13 +748,14 @@ function setMode(m) {
   cropCanvas.style.display = crop ? "block" : "none";
   cropOverlay.style.display = crop ? "block" : "none";
   dithWrap.hidden = crop;
-  if (crop) { ED.panelOpen = false; applyPanelState(); renderRail(); drawCrop(); }
+  if (crop) { cancelFull(); ED.panelOpen = false; applyPanelState(); renderRail(); drawCrop(); }
   else { applyPanelState(); renderRail(); schedulePreview(0); }
 }
 
 // slide-up bin (touch): tap the stage or the grabber to close it
 let suppressStageClick = false;
-edStage.addEventListener("click", () => {
+edStage.addEventListener("click", (e) => {
+  if (e.target.closest(".pv-ctl")) return;   // the zoom button isn't a tap on the photo
   if (suppressStageClick) { suppressStageClick = false; return; }
   if (isMobileVp() && ED.mode === "dither" && ED.panelOpen) closePanel();
 });
@@ -764,11 +770,33 @@ let peekTimer = null, peekAt = null, peeking = false;
 // preview stage does. Transform rides on #peditDithWrap so the peek "before" stays
 // pixel-aligned with the "after". ──
 const MAX_PV_ZOOM = 4;
+// The colour panel is 1600 × 1200 pixels (1200 × 1600 portrait). "100%" means one panel pixel
+// per screen point (CSS px): readable on a phone, where one per PHYSICAL pixel would be too
+// small to see.
+const PANEL_W = { landscape: 1600, portrait: 1200 };
 let pvZoom = 1, pvX = 0, pvY = 0, panStartX = 0, panStartY = 0;
 let pinching = false, pinchDist = 0, pinchCx = 0, pinchCy = 0;
+// the zoom (× Fit) at which the preview shows one panel pixel per screen point
+function z100() {
+  const cs = getComputedStyle(dithImg);
+  const w = dithImg.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  return w > 0 ? PANEL_W[target()] / w : MAX_PV_ZOOM;
+}
+// The Fit ↔ 100% shortcut is Color-only (the mono preview is ~900 px, so its 100% would be a
+// blurry upscale). Wheel/pinch keep their 4× ceiling everywhere; in Color it rises just enough
+// for a phone to reach 100% (~5× Fit on a 390 px screen).
+const pvColor = () => ED.mode === "dither" && !isMono();
+const pvMax = () => (pvColor() ? Math.max(MAX_PV_ZOOM, z100()) : MAX_PV_ZOOM);
 function applyPv() {
   dithWrap.style.transform = pvZoom === 1 ? "" : `translate(${pvX}px,${pvY}px) scale(${pvZoom})`;
   edStage.classList.toggle("pv-zoomed", pvZoom > 1);
+  const color = pvColor();
+  dithWrap.classList.toggle("pv-px", color && pvZoom >= z100() - 0.01);
+  pvBtn.hidden = !color || !previewUrl;
+  pvBtnT.textContent = pvZoom > 1 ? "Fit" : "1:1";
+  pvBtn.setAttribute("aria-label", pvZoom > 1 ? "Zoom to fit" : "Zoom to 100%");
+  pvPct.hidden = pvBtn.hidden || pvZoom === 1;
+  if (!pvPct.hidden) pvPct.textContent = Math.round((pvZoom / z100()) * 100) + "%";
 }
 function pvReset() { pvZoom = 1; pvX = 0; pvY = 0; applyPv(); }
 function pvClamp() {   // keep the scaled image from panning entirely out of view
@@ -776,8 +804,8 @@ function pvClamp() {   // keep the scaled image from panning entirely out of vie
   const mx = Math.max(0, (bw * pvZoom - sw) / 2), my = Math.max(0, (bh * pvZoom - sh) / 2);
   pvX = clamp(pvX, -mx, mx); pvY = clamp(pvY, -my, my);
 }
-function pvZoomAt(cx, cy, factor) {   // zoom toward a point (cursor / pinch centre)
-  const nz = clamp(pvZoom * factor, 1, MAX_PV_ZOOM);
+function pvZoomTo(z, cx, cy) {   // zoom to an absolute level, keeping the point (cx, cy) still
+  const nz = clamp(z, 1, pvMax());
   if (nz === pvZoom) return;
   const s = edStage.getBoundingClientRect();
   const ox = cx - s.left - s.width / 2, oy = cy - s.top - s.height / 2;
@@ -786,28 +814,83 @@ function pvZoomAt(cx, cy, factor) {   // zoom toward a point (cursor / pinch cen
   if (pvZoom === 1) { pvX = 0; pvY = 0; }
   pvClamp(); applyPv();
 }
+function pvZoomAt(cx, cy, factor) { pvZoomTo(pvZoom * factor, cx, cy); }   // cursor / pinch centre
+// Fit ↔ 100% (the magnifier button, double-click / double-tap, Z). Any zoom goes back to Fit.
+let pvAnimT = null;
+function pvToggle(cx, cy) {
+  dithWrap.classList.add("pv-anim");
+  clearTimeout(pvAnimT); pvAnimT = setTimeout(() => dithWrap.classList.remove("pv-anim"), 260);
+  if (pvZoom > 1) pvReset(); else pvZoomTo(z100(), cx, cy);
+}
+function pvToggleCentre() { const r = edStage.getBoundingClientRect(); pvToggle(r.left + r.width / 2, r.top + r.height / 2); }
+pvBtn.addEventListener("click", (e) => { e.stopPropagation(); pvToggleCentre(); });
+document.addEventListener("keydown", (e) => {
+  if (peditOverlay.hidden || !pvColor() || !previewUrl) return;
+  if ((e.key !== "z" && e.key !== "Z") || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;   // never Ctrl/⌘+Z
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  e.preventDefault(); pvToggleCentre();
+});
+// Phone: the controls sheet slides up OVER the bottom of the stage, so lift the zoom button and
+// readout above it while it's open (measured once the slide finishes).
+function placePvCtl() {
+  let lift = 0;
+  if (isMobileVp() && mPanel.classList.contains("open")) {
+    lift = Math.max(0, edStage.getBoundingClientRect().bottom - mPanel.getBoundingClientRect().top);
+  }
+  edStage.style.setProperty("--pv-lift", lift + "px");
+}
+mPanel.addEventListener("transitionend", (e) => { if (e.target === mPanel) placePvCtl(); });
+
+// Double-click / double-tap = the same toggle. Built on the PEEK's own press rules so
+// press-and-hold is untouched: a press is a TAP only if it's released within PEEK_HOLD_MS,
+// moved under PEEK_MOVE_TOL, fired no peek and never had a second finger down. Never the
+// browser's dblclick: that can fire after a HELD second press, i.e. right after a peek.
+const DBL_TAP_MS = 300, DBL_TAP_TOL = 24;
+let press = null, lastTap = null;
+const ptrsDown = new Set();
+function endPress(e) {
+  if (!ptrsDown.delete(e.pointerId) || ptrsDown.size || !press) return;   // wait for the last finger
+  const p = press; press = null;
+  const tap = e.type === "pointerup" && p.button === 0 && !p.multi && !p.held && !p.moved
+    && e.timeStamp - p.t < PEEK_HOLD_MS;
+  // a tap that closes the phone's controls sheet is used up by that, exactly as before
+  if (!tap || (isMobileVp() && ED.panelOpen)) { lastTap = null; return; }
+  if (lastTap && e.timeStamp - lastTap.t < DBL_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DBL_TAP_TOL) {
+    lastTap = null;
+    if (pvColor() && previewUrl) pvToggle(e.clientX, e.clientY);
+  } else lastTap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+}
 function cancelPeek() {   // hide the peek but keep the pointer session (so a drag can pan)
   clearTimeout(peekTimer); peekTimer = null;
   if (peeking) { peeking = false; suppressStageClick = true; dithWrap.classList.remove("peek"); }
 }
 function endPeek() { cancelPeek(); peekAt = null; }
 edStage.addEventListener("pointerdown", (e) => {
-  if (ED.mode !== "dither" || pinching) return;
+  if (ED.mode !== "dither" || e.target.closest(".pv-ctl")) return;   // the zoom button isn't the photo
+  // double-tap bookkeeping only; it never changes what the peek below does
+  ptrsDown.add(e.pointerId);
+  if (ptrsDown.size > 1) { if (press) press.multi = true; lastTap = null; }
+  else press = { t: e.timeStamp, x: e.clientX, y: e.clientY, button: e.button, multi: false, held: false, moved: false };
+  if (pinching) return;
   peekAt = { x: e.clientX, y: e.clientY }; panStartX = pvX; panStartY = pvY;
   try { edStage.setPointerCapture(e.pointerId); } catch (_) {}
   clearTimeout(peekTimer);
   // press-and-hold peek: only arm when there's a render to A/B against
   if (previewUrl && !dithImg.classList.contains("broken")) {
-    peekTimer = setTimeout(() => { peeking = true; dithWrap.classList.add("peek"); }, PEEK_HOLD_MS);
+    peekTimer = setTimeout(() => { peeking = true; if (press) press.held = true; dithWrap.classList.add("peek"); }, PEEK_HOLD_MS);
   }
 });
 edStage.addEventListener("pointermove", (e) => {
+  if (press && ptrsDown.has(e.pointerId) && Math.hypot(e.clientX - press.x, e.clientY - press.y) > PEEK_MOVE_TOL) press.moved = true;
   if (pinching || !peekAt) return;
   const dx = e.clientX - peekAt.x, dy = e.clientY - peekAt.y;
   if (Math.hypot(dx, dy) > PEEK_MOVE_TOL) cancelPeek();   // a drag is not a peek
   if (pvZoom > 1 && !peeking) { pvX = panStartX + dx; pvY = panStartY + dy; pvClamp(); applyPv(); }
 });
 ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => edStage.addEventListener(ev, endPeek));
+edStage.addEventListener("pointerup", endPress);
+edStage.addEventListener("pointercancel", endPress);
 // desktop wheel = zoom toward the cursor. Zoom PROPORTIONAL to the normalized scroll
 // delta, clamped per event: devices that fire many small wheel events per flick
 // (free-spin / high-res mice, trackpads) zoom smoothly instead of snapping, and a
@@ -848,22 +931,51 @@ edStage.addEventListener("dragstart", (e) => e.preventDefault());
 
 // ══════════════════════════ SERVER PREVIEW (debounced, one in flight) ══════════════════════════
 let previewTimer = null, previewCtrl = null, previewUrl = null, previewKey = null;
+// Two-step colour preview. The fast draft (the server's default 800 px: the whole pipeline,
+// dither included, at HALF the panel's resolution, so its dots are 2 × 2 panel pixels) answers
+// every change. FULL_PREVIEW_DELAY after the last one, the full 1600 × 1200 render replaces it
+// in place: the exact pixels the panel shows. Measured: draft 0.3–0.45 s, full 1.0–1.1 s
+// (76% of it the dither). Mono is unchanged.
+const FULL_PREVIEW_DELAY = 500, FULL_PREVIEW_SIDE = 1600;
+let fullTimer = null, fullCtrl = null, fullKey = null;
+
+// the render chip: busy | draft | fullbusy | full (shown briefly) | null (hidden)
+const CHIP_TEXT = { busy: "rendering…", draft: "draft · half resolution", fullbusy: "rendering full resolution…", full: "full resolution" };
+let chipState = null, chipHideT = null;
+function chip(st) {
+  clearTimeout(chipHideT);
+  chipState = st;
+  renderChip.classList.toggle("show", !!st);
+  renderChip.classList.toggle("st-draft", st === "draft");
+  renderChip.classList.toggle("st-full", st === "full");
+  if (st) renderChipT.textContent = CHIP_TEXT[st];
+  if (st === "full") chipHideT = setTimeout(() => chip(null), 1500);
+}
+function cancelFull() {
+  clearTimeout(fullTimer); fullTimer = null;
+  if (fullCtrl) { fullCtrl.abort(); fullCtrl = null; }
+  if (chipState === "draft" || chipState === "fullbusy") chip(null);
+}
 function schedulePreview(delay = 260) {
+  cancelFull();
   clearTimeout(previewTimer);
   previewTimer = setTimeout(runPreview, delay);
+}
+// Dedupe key: everything the render depends on for the active appearance.
+function previewKeyNow() {
+  return isMono()
+    ? "mono|" + ED.name + "|" + JSON.stringify(ED.mono) + "|" + target() + "|" + ED.rotation + "|" + JSON.stringify(normCrop())
+    : "color|" + ED.name + "|" + target() + "|" + ED.rotation + "|" + JSON.stringify(normCrop()) + "|" + JSON.stringify(ED.cfg);
 }
 async function runPreview() {
   if (!ED.name || ED.mode !== "dither") return;
   // Dedupe: skip the round-trip when the effective render request is unchanged (detent
-  // snaps, dbl-click resets to the current value, switching a tool without editing). Key
-  // captures everything the render depends on for the active appearance.
-  const key = isMono()
-    ? "mono|" + ED.name + "|" + JSON.stringify(ED.mono) + "|" + target() + "|" + ED.rotation + "|" + JSON.stringify(normCrop())
-    : "color|" + ED.name + "|" + target() + "|" + ED.rotation + "|" + JSON.stringify(normCrop()) + "|" + JSON.stringify(ED.cfg);
-  if (key === previewKey && previewUrl) return;
+  // snaps, dbl-click resets to the current value, switching a tool without editing).
+  const key = previewKeyNow();
+  if (key === previewKey && previewUrl) { armFull(key); return; }
   if (previewCtrl) previewCtrl.abort();
   previewCtrl = new AbortController();
-  renderChip.classList.add("show");
+  chip("busy");
   try {
     let blobUrl;
     if (isMono()) {
@@ -875,16 +987,48 @@ async function runPreview() {
       renderBefore();
       ({ blobUrl } = await editorPreview(ED.name, ED.cfg, { orientation: target(), crop: [nc.x, nc.y, nc.w, nc.h], rotation: ED.rotation }, previewCtrl.signal));
     }
-    previewKey = key;
+    previewKey = key; fullKey = null;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = blobUrl;
     dithImg.classList.remove("broken"); dithImg.src = blobUrl;
-    renderChip.classList.remove("show");
+    chip(null);
+    applyPv();          // the zoom button appears once there's a render
+    armFull(key);
   } catch (e) {
     if (e.name === "AbortError") return;
-    renderChip.classList.remove("show");
+    chip(null);
     dithImg.classList.add("broken");
     toast("Preview failed: " + e.message);
+  }
+}
+// queue the full-resolution render for the draft now on screen (Color only, once per key)
+function armFull(key) {
+  if (isMono() || fullKey === key) return;
+  clearTimeout(fullTimer);
+  chip("draft");
+  fullTimer = setTimeout(() => runFull(key), FULL_PREVIEW_DELAY);
+}
+async function runFull(key) {
+  if (!ED.name || ED.mode !== "dither" || isMono() || key !== previewKey || key !== previewKeyNow()) return;
+  const ctrl = (fullCtrl = new AbortController());
+  chip("fullbusy");
+  try {
+    const nc = normCrop();
+    const { blobUrl } = await editorPreview(ED.name, ED.cfg,
+      { orientation: target(), crop: [nc.x, nc.y, nc.w, nc.h], rotation: ED.rotation, maxSidePx: FULL_PREVIEW_SIDE }, ctrl.signal);
+    // decode before swapping, so the draft never blinks out in between
+    const probe = new Image(); probe.src = blobUrl;
+    try { await probe.decode(); } catch (_) { /* swap anyway; the <img> will decode it */ }
+    if (ctrl.signal.aborted || key !== previewKey) { URL.revokeObjectURL(blobUrl); return; }
+    const old = previewUrl;
+    previewUrl = blobUrl; fullKey = key;
+    dithImg.classList.remove("broken"); dithImg.src = blobUrl;
+    if (old) URL.revokeObjectURL(old);
+    chip("full");
+  } catch (e) {
+    if (e.name !== "AbortError") chip(null);   // keep the draft: still a valid, coarser preview
+  } finally {
+    if (fullCtrl === ctrl) fullCtrl = null;
   }
 }
 
@@ -898,7 +1042,8 @@ function renderBefore() {
   const key = ED.rotation + ":" + cr.x + ":" + cr.y + ":" + cr.w + ":" + cr.h;
   if (key === beforeKey) return;
   beforeKey = key;
-  const MAX = 900, scale = Math.min(1, MAX / Math.max(cr.w, cr.h));
+  // panel resolution (was 900), so the original stays as sharp as the full render at 100% zoom
+  const MAX = 1600, scale = Math.min(1, MAX / Math.max(cr.w, cr.h));
   const cw = Math.max(1, Math.round(cr.w * scale)), ch = Math.max(1, Math.round(cr.h * scale));
   const c = document.createElement("canvas");
   c.width = cw; c.height = ch;
@@ -1071,14 +1216,15 @@ export async function openEditor(name, { isDraft = false } = {}) {
   ED.rotation = 0; ED.zoom = 1; ED.panX = 0; ED.panY = 0; ED.stage = 0; ED.panelOpen = false; ED.mode = "dither";
   moreMenu.hidden = true;
   dithImg.removeAttribute("src"); previewKey = null; if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  cancelFull(); fullKey = null;
   syncAspectUI();
   syncAppearanceUI();
   setClassifierBadge(sc);
   peditOverlay.hidden = false;
-  renderChip.classList.add("show");
+  chip("busy");
   try { ED.srcCanvas = await loadSource(name); }
-  catch (e) { renderChip.classList.remove("show"); toast(e.message); closeEditor(); return; }
-  renderChip.classList.remove("show");
+  catch (e) { chip(null); toast(e.message); closeEditor(); return; }
+  chip(null);
   // open on the dithered preview with NO tool selected (clean starting view); restore a
   // saved crop when re-editing (Feature 2), else start from the default cover crop
   requestAnimationFrame(() => { if (sc.edit_crop) restoreCrop(sc.edit_crop); else initCrop(); setMode("dither"); });
@@ -1148,9 +1294,10 @@ function closeEditor() {
   peditOverlay.hidden = true; moreMenu.hidden = true; cropDock.hidden = true;
   peditCard.querySelectorAll(".choice-back,.choice-menu").forEach((n) => n.remove());
   clearTimeout(previewTimer); if (previewCtrl) previewCtrl.abort();
-  renderChip.classList.remove("show");
+  cancelFull(); fullKey = null; chip(null);
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   endPeek(); beforeKey = ""; beforeImg.removeAttribute("src");
+  ptrsDown.clear(); press = null; lastTap = null;   // a press cut off by closing can't linger
   monoBeforeKey = null; if (monoBeforeCtrl) monoBeforeCtrl.abort();
   if (monoBeforeUrl) { URL.revokeObjectURL(monoBeforeUrl); monoBeforeUrl = null; }
   const draftToDrop = ED.isDraft ? ED.name : null;
