@@ -184,7 +184,11 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 **Adding photos** — use the **Upload** button, or drag files anywhere onto the page; you can add many at once. Hokku accepts JPEG, PNG, HEIC/HEIF, AVIF, WebP, and JPEG XL, and rotates phone photos to their correct orientation automatically. On a phone, Upload opens your camera roll.
 
+&nbsp; 
+
 > **Note:  On iPhone - a pause after you tap "Add"** — *if you pick many photos and your iPhone uses iCloud **"Optimize iPhone Storage"**, iOS downloads the full-resolution originals from iCloud before handing them over, which can make the picker sit for a while before upload starts. It's iOS fetching your photos, not Hokku. To avoid it, add fewer at a time, let photos finish downloading first, or turn off the optimize storage feature (set Settings → Photos → Download and Keep Originals.)*
+&nbsp; 
+
 &nbsp; 
 
 **One photo opens the editor** — add a **single** photo and it opens straight in the [editor](#15-editing-a-photo), so you can crop it and preview the six-colour conversion before it's added. Add **several** at once and they skip the editor, converting right away with the server's automatic settings. Either way, your originals are kept.
@@ -221,13 +225,15 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 &nbsp;
 
-**Two ways in - Upload Button and *Edit Photo...* from image context menu (right click or hold press)** 
+**Two ways in** - **Upload Button** and **Edit Photo...**  *from image context menu (right click or hold press)*
 
 
 
-- **Upload Button:** Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft. Cancel discards it, Submit adds it. Adding or drag-and-drop multiple photos will bypass the editor and use the server's built-in automatic settings (controllable from the settings page) 
+- **Upload Button:** — Add a **single** photo — from Upload or by dropping one file — and it opens straight in the editor as a draft. 
+   - Cancel discards it, Submit adds it. 
+   - Adding or drag-and-drop multiple photos will bypass the editor and use the server's built-in automatic settings (controllable from the settings page) 
 
-- For a photo already in your library, use its **Edit photo…** action — right-click it (or the **⋯** in its corner) on a computer, press and hold it on a phone, or find it in the detail view's actions.
+- **For a photo already in your library** — use its **Edit photo…** action — right-click it (or the **⋯** in its corner) on a computer, press and hold it on a phone, or find it in the detail view's actions.
 
 &nbsp;
 
@@ -251,7 +257,10 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 &nbsp; 
 
-**Press and hold to see the original.** The preview always shows the **dithered** six-colour result. To compare it with the untouched photo, **press and hold** the preview: it swaps to the original for as long as you hold, and snaps back when you let go. A quick tap does nothing, so you can't trigger it by accident. It's the fastest way to judge how faithfully a photo survived the conversion.
+**Press and hold to see the original.** — The preview always shows the **dithered** six-colour result. 
+- To compare it with the untouched photo, **press and hold** the preview: it swaps to the original for as long as you hold, and snaps back when you let go. 
+- A quick tap does nothing, so you can't trigger it by accident. 
+- It's the fastest way to judge how faithfully a photo survived the conversion.
 
 <a href="../images/ui_v2_editor_peek.png"><img src="../images/ui_v2_editor_peek.png" width="560" alt="Holding the preview swaps in the un-dithered original for a before-and-after."></a>
 
@@ -403,7 +412,9 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 &nbsp; 
 
-> #### **Looking after a frame**
+#### **Looking after a frame**
+
+---
 
 **How frames connect** — a frame doesn't hold a live connection; it wakes on schedule, fetches an image, and returns to deep sleep. The panel only updates when a frame checks in, so “last seen 12 hours ago” is normal, not a fault.
 
@@ -437,7 +448,9 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 &nbsp;
 
-> #### **Several frames, and B&W frames**
+#### **Several frames, and B&W frames**
+
+---
 
 **Multiple frames** — you can run as many frames as you like from one server. Each is tracked separately, keeps its own orientation, and draws from the same photo library. The panel fits as many columns of cards as the screen has room for, down to one on a phone.
 
