@@ -51,7 +51,7 @@ Your photos, frames, and settings are shared between them.
 
 <a href="../images/ui_v2_gallery.png"><img src="../images/ui_v2_gallery.png" width="560" alt="The gallery — the app's home screen, on a computer."></a>
 
-*The gallery — the app's home screen, on a computer.*
+> *The gallery — the app's home screen, on a computer.*
 
 The modern app gives you a photo gallery, a detail view that previews how each photo will look on the six-colour screen, management of your connected frames, and every setting in one place. Because it shares the same server as the classic page, nothing about your frames or library changes when you move between them.
 
@@ -74,7 +74,7 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 <a href="../images/ui_v2_mobile.png"><img src="../images/ui_v2_mobile.png" height="720" alt="The same gallery on a phone; pinch to resize the grid."></a>
 
-*The same gallery on a phone; pinch to resize the grid.*
+> *The same gallery on a phone; pinch to resize the grid.*
 
 &nbsp;
 
@@ -93,13 +93,18 @@ The gallery is the app's home screen, and it looks and works the same on a phone
 
 <a href="../images/ui_v2_gallery_find.png"><img src="../images/ui_v2_gallery_find.png" width="760" alt="The gallery bar: thumbnail size, Sort, Show (All, B&W, People, Non-People), and the shape tabs."></a>
 
-*The gallery bar: thumbnail size, Sort, Show, and the shape tabs. Sort and Show appear from 60 photos.*
+> *The gallery bar: thumbnail size, Sort, Show, and the shape tabs. Sort and Show appear from 60 photos.*
 
 &nbsp;
 
 **Frame chips** — a photo that is currently on a frame carries a small coloured chip with that frame's name in its corner (a blue “Kitchen” chip, an orange “Living Room” chip, and so on), so you can see at a glance which photo is on which wall.
 
 Every frame has its own colour, chosen to stay easy to tell apart with colour blindness, and used consistently throughout the app.
+
+<a href="../images/ui_v2_frame_gallery_chip.png"><img src="../images/ui_v2_frame_gallery_chip.png" width="250" alt="The gallery bar: thumbnail size, Sort, Show (All, B&W, People, Non-People), and the shape tabs."></a>
+
+> *Closeup of a frame chip on a gallery thumbnail.*
+
 
 **Status badges** — a photo still being converted shows a **Converting** badge; anything that failed to convert is set aside in the failed panel (see [1.4](#14-uploading-photos-and-watching-progress)).
 
@@ -113,7 +118,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_detail.png"><img src="../images/ui_v2_detail.png" width="560" alt="The detail view: the six-colour E-ink render, photo info, and actions."></a>
 
-*The detail view: the six-colour E-ink render, photo info, and actions.*
+> *The detail view: the six-colour E-ink render, photo info, and actions.*
 
 &nbsp;
 
@@ -121,7 +126,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_two_views.png"><img src="../images/ui_v2_two_views.png" width="560" alt="Two buttons let you swap between dithered image and orignal photo."></a>
 
-*Two buttons at the top of 'View Image Details...' panel lets you switch between E-Ink Preview and Original Image*
+> *Two buttons at the top of 'View Image Details...' panel lets you switch between E-Ink Preview and Original Image*
 
 
 &nbsp;
@@ -136,7 +141,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_detail_nav.png"><img src="../images/ui_v2_detail_nav.png" width="560" alt="The arrows either side of the detail view step to the previous and next photo."></a>
 
-*The arrows either side of the detail view (or the ← and → keys) step through your photos.*
+> *The arrows either side of the detail view (or the ← and → keys) step through your photos.*
 
 &nbsp;
 
@@ -145,7 +150,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_on_display.png"><img src="../images/ui_v2_on_display.png" width="430" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>  &nbsp; &nbsp; &nbsp; &nbsp;   &nbsp; &nbsp; &nbsp; &nbsp;  <a href="../images/ui_v2_up_next.png"><img src="../images/ui_v2_up_next.png" height="340" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>
 
-*Photo details page shows you what frame a photo is displaying on (right) and when a photo is up next on a frame. (left)* 
+> *Photo details page shows you what frame a photo is displaying on (right) and when a photo is up next on a frame. (left)* 
 
 &nbsp;
 
@@ -161,7 +166,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_ctxmenu.png"><img src="../images/ui_v2_ctxmenu.png" width="560" alt="Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame."></a>
 
-*Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame.*
+> *Right-click a photo (or use its ⋯ button) for the actions, including Send to a frame.*
 
 &nbsp;
 
@@ -169,7 +174,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_mobile_sheet.png"><img src="../images/ui_v2_mobile_sheet.png" height="720" alt="On a phone, press and hold a photo for the same actions."></a> &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_detail.png"><img src="../images/ui_v2_mobile_detail.png" height="720" alt="The detail view on a phone."></a>
 
-*On a phone, press and hold a photo for the context menu. (left)* &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp;  *The "view details" menu on a phone.  (right)*
+> *On a phone, press and hold a photo for the context menu. (left)* &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp;&nbsp; &nbsp;  *The "view details" menu on a phone.  (right)*
 
 
 &nbsp; 
@@ -190,7 +195,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_upload.png"><img src="../images/ui_v2_upload.png" width="560" alt="Uploading: the progress tile and its popover at the top of the header."></a>
 
-*Uploading: the progress tile and its popover at the top of the header.*
+> *Uploading: the progress tile and its popover at the top of the header.*
 
 &nbsp;
 
@@ -198,7 +203,7 @@ Every frame has its own colour, chosen to stay easy to tell apart with colour bl
 
 <a href="../images/ui_v2_progress.png"><img src="../images/ui_v2_progress.png" width="560" alt="Converting: the same tile counts down each photo with a time estimate."></a>
 
-*Converting: the same tile counts down each photo with a time estimate.*
+> *Converting: the same tile counts down each photo with a time estimate.*
 
 &nbsp;
 
@@ -212,7 +217,7 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 <a href="../images/ui_v2_editor.png"><img src="../images/ui_v2_editor.png" width="560" alt="The photo editor: the live six-colour preview, the Auto pipeline badge, the three-dot presets, and the crop and adjustment tools."></a>
 
-*The editor opens on the live six-colour preview, with the tools down the side.*
+> *The editor opens on the live six-colour preview, with the tools down the side.*
 
 &nbsp;
 
@@ -228,11 +233,11 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 <a href="../images/ui_v2_mobile_editor_sheet.png"><img src="../images/ui_v2_mobile_editor_sheet.png" height="470" alt="Edit photo… in the press-and-hold action sheet on a phone."></a>
 
-*Every ready photo carries an Edit photo… action — here in the desktop menu.*
+> *Every ready photo carries an Edit photo… action — here in the desktop menu.*
 
 <a href="../images/ui_v2_upload_btn.png"><img src="../images/ui_v2_upload_btn.png" width="300" alt="Edit photo… in a photo's right-click menu on a computer."></a>
 
-*Adding a single photo from the upload button*
+> *Adding a single photo from the upload button*
 
 &nbsp;
 
@@ -242,7 +247,7 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 <a href="../images/ui_v2_editor_crop.png"><img src="../images/ui_v2_editor_crop.png" width="560" alt="Crop mode: the aspect toggle, rotate, and zoom controls over the crop grid."></a>
 
-*Crop mode — set the shape, straighten, and frame the shot.*
+> *Crop mode — set the shape, straighten, and frame the shot.*
 
 &nbsp; 
 
@@ -250,7 +255,7 @@ Any photo can be **cropped, straightened, and fine-tuned** — before it goes on
 
 <a href="../images/ui_v2_editor_peek.png"><img src="../images/ui_v2_editor_peek.png" width="560" alt="Holding the preview swaps in the un-dithered original for a before-and-after."></a>
 
-*Hold the preview for the before; release for the six-colour after.*
+> *Hold the preview for the before; release for the six-colour after.*
 
 &nbsp;
 
@@ -260,11 +265,11 @@ Scroll or pinch to zoom anywhere in between, and drag to move around. Press and 
 
 <a href="../images/ui_v2_editor_zoom_btn.png"><img src="../images/ui_v2_editor_zoom_btn.png" width="132" alt="The magnifier button in the preview's corner, reading 1:1."></a>
 
-*The magnifier button: **1:1** zooms to 100%; zoomed in, it reads **Fit**.*
+> *The magnifier button: **1:1** zooms to 100%; zoomed in, it reads **Fit**.*
 
 <a href="../images/ui_v2_editor_zoom.png"><img src="../images/ui_v2_editor_zoom.png" height="360" alt="The editor zoomed to 100% on a computer: the magnifier reads Fit, with the zoom level and the full-resolution note along the bottom."></a> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_editor_zoom.png"><img src="../images/ui_v2_mobile_editor_zoom.png" height="360" alt="The editor zoomed to 100% on a phone."></a>
 
-*At 100% on a computer … (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  *… and on a phone. (right)*
+> *At 100% on a computer … (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  *… and on a phone. (right)*
 
 &nbsp;
 
@@ -272,7 +277,7 @@ Scroll or pinch to zoom anywhere in between, and drag to move around. Press and 
 
 <a href="../images/ui_v2_editor_preset.png"><img src="../images/ui_v2_editor_preset.png" height="400" alt="The three-dot menu swaps the whole pipeline: Default, Face, B&W, Auto best-guess, and Reset all."></a> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; <a href="../images/ui_v2_mobile_editor_preset.png"><img src="../images/ui_v2_mobile_editor_preset.png" height="400" alt="The same three-dot preset menu opened in the editor on a phone."></a>
 
-*The ••• pipeline presets on a computer … (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  *… and the same menu on a phone. (right)*
+> *The ••• pipeline presets on a computer … (left)* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  *… and the same menu on a phone. (right)*
 
 &nbsp;
 
@@ -283,7 +288,7 @@ Scroll or pinch to zoom anywhere in between, and drag to move around. Press and 
 
 <a href="../images/ui_v2_mobile_editor.png"><img src="../images/ui_v2_mobile_editor.png" height="720" alt="The editor on a phone: the preview fills the screen with the tools along the bottom."></a>
 
-*On a phone the preview fills the screen and the tools sit along the bottom.*
+> *On a phone the preview fills the screen and the tools sit along the bottom.*
 
 &nbsp; 
 
@@ -293,7 +298,7 @@ Its crop follows the colour crop until you choose **Frame separately**; **↺ Ma
 
 <a href="../images/ui_v2_editor_mono.png"><img src="../images/ui_v2_editor_mono.png" width="560" alt="The editor switched to E1003 Mono: a 16-grey preview in the B&W frame's shape, with the Tone controls."></a>
 
-*Editing for the B&W frame: its own 16-grey preview and Tone controls.*
+> *Editing for the B&W frame: its own 16-grey preview and Tone controls.*
 
 &nbsp; 
 
@@ -301,7 +306,7 @@ Its crop follows the colour crop until you choose **Frame separately**; **↺ Ma
 
 <a href="../images/ui_v2_editor_detail.png"><img src="../images/ui_v2_editor_detail.png" width="560" alt="A photo's detail view, with Edit photo… among its actions and its full info."></a>
 
-*Edit photo… also lives in the detail view, beside the photo's info.*
+> *Edit photo… also lives in the detail view, beside the photo's info.*
 
 **After you submit.** The server re-renders the photo in the background, and its **gallery thumbnail becomes the new six-colour render** — so what you see in the grid is always what the frame will actually display. If the photo is currently on a frame, it updates there on that frame's next refresh.
 
@@ -315,7 +320,7 @@ Its crop follows the colour crop until you choose **Frame separately**; **↺ Ma
 
 <a href="../images/ui_v2_frames.png"><img src="../images/ui_v2_frames.png" width="760" alt="The Frames panel: one card per connected frame, with the Frame orientation and Refresh schedule shortcuts above them."></a>
 
-*The Frames panel: one card per connected frame, with two Settings shortcuts above them.*
+> *The Frames panel: one card per connected frame, with two Settings shortcuts above them.*
 
 &nbsp; 
 
@@ -323,7 +328,7 @@ Its crop follows the colour crop until you choose **Frame separately**; **↺ Ma
 
 <a href="../images/ui_v2_frame_shortcuts.png"><img src="../images/ui_v2_frame_shortcuts.png" width="432" alt="The Frame orientation and Refresh schedule buttons, above the top of a frame card."></a>
 
-*The two shortcuts, above the frame cards.*
+> *The two shortcuts, above the frame cards.*
 
 &nbsp;
 
@@ -338,7 +343,7 @@ Its crop follows the colour crop until you choose **Frame separately**; **↺ Ma
 
 <a href="../images/ui_v2_frame_card.png"><img src="../images/ui_v2_frame_card.png" width="436" alt="A frame card: the photo the frame is showing, its name and colour dot, IP address, firmware, battery, next check-in and last seen."></a>
 
-*A frame card: the photo it's showing, and how the frame is doing.*
+> *A frame card: the photo it's showing, and how the frame is doing.*
 
 &nbsp; 
 
@@ -348,7 +353,7 @@ An **Up next** thumbnail shows what it will display next — or **Pinned**, if y
 
 <a href="../images/ui_v2_frame_card_next.png"><img src="../images/ui_v2_frame_card_next.png" width="436" alt="A frame card showing a thumbnail of whats up next."></a>
 
-*Frame card displaying what photos up next via its thumbnail.*
+> *Frame card displaying what photos up next via its thumbnail.*
 
 
 
@@ -361,7 +366,7 @@ Switch between **Now** and **Up next**, or jump to the photo in your library. No
 
 <a href="../images/ui_v2_frame_preview.png"><img src="../images/ui_v2_frame_preview.png" width="300" alt="The frame preview on Now: the photo inside the frame's shape, with the photo, panel and fit line underneath."></a> &nbsp; &nbsp; <a href="../images/ui_v2_frame_preview_next.png"><img src="../images/ui_v2_frame_preview_next.png" width="300" alt="The frame preview on Up next, with Skip up next underneath."></a>
 
-*The preview on Now (left) and on Up next (right), with Skip up next underneath.*
+> *The preview on Now (left) and on Up next (right), with Skip up next underneath.*
 
 &nbsp; 
 
@@ -381,7 +386,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_frame_fit.png"><img src="../images/ui_v2_frame_fit.png" width="360" alt="The bottom of the frame preview: the photo, and the line under it reading the photo's name, Spectra 6, and Zoomed 13%."></a>
 
-*The line under the preview: this photo was zoomed 13% to fill its frame.*
+> *The line under the preview: this photo was zoomed 13% to fill its frame.*
 
 &nbsp;
 
@@ -389,11 +394,11 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_frame_modal_see_photo_in_library.png"><img src="../images/ui_v2_frame_modal_see_photo_in_library.png" width="360" alt="The bottom of the frame preview: the photo, and the line under it reading the photo's name, Spectra 6, and Zoomed 13%."></a>
 
-*Photo is focused on and highlighted after clickinkg the "See photo in library" button. *
+> *Photo is focused on and highlighted after clickinkg the "See photo in library" button. *
 
 <a href="../images/ui_v2_frame_modal_library_photo_button.png"><img src="../images/ui_v2_frame_modal_library_photo_button.png" width="370" alt="The bottom of the frame preview: the photo, and the line under it reading the photo's name, Spectra 6, and Zoomed 13%."></a>
 
-*Photo is focused on and highlighted after clickinkg the "See photo in library" button. *
+> *Photo is focused on and highlighted after clickinkg the "See photo in library" button. *
 
 
 &nbsp; 
@@ -408,7 +413,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_frame_menu.png"><img src="../images/ui_v2_frame_menu.png" width="190" alt="A frame card's ⋯ menu: Preview Frame, Rename, Skip up next, View diagnostics, Remove frame."></a>
 
-*A card's ⋯ button opens the frame's menu.*
+> *A card's ⋯ button opens the frame's menu.*
 
 &nbsp; 
 
@@ -416,7 +421,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_diagnostics.png"><img src="../images/ui_v2_diagnostics.png" width="560" alt="View diagnostics: the frame's full self-reported state."></a>
 
-*View diagnostics: the frame's full self-reported state.*
+> *View diagnostics: the frame's full self-reported state.*
 
 &nbsp; 
 &nbsp; 
@@ -438,7 +443,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_mobile_frames.png"><img src="../images/ui_v2_mobile_frames.png" height="540" alt="The Frames panel on a phone."></a>
 
-*The Frames panel on a phone.*
+> *The Frames panel on a phone.*
 
 &nbsp;
 
@@ -452,11 +457,11 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_gear.png"><img src="../images/ui_v2_gear.png" width="347" alt="The header's Upload, Frames and gear buttons; the gear opens Settings."></a>
 
-*The gear, at the right end of the header.*
+> *The gear, at the right end of the header.*
 
 <a href="../images/ui_v2_settings.png"><img src="../images/ui_v2_settings.png" width="560" alt="Settings on a computer — the refresh schedule."></a>
 
-*Settings on a computer — the refresh schedule.*
+> *Settings on a computer — the refresh schedule.*
 
 &nbsp; 
 
@@ -472,7 +477,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_mobile_settings.png"><img src="../images/ui_v2_mobile_settings.png" height="480" alt="On a phone, Settings is a list you drill into."></a>
 
-*On a phone, Settings is a list you drill into.*
+> *On a phone, Settings is a list you drill into.*
 
 &nbsp;
 
@@ -480,7 +485,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_settings_rendering.png"><img src="../images/ui_v2_settings_rendering.png" width="560" alt="Settings, Image Rendering: Standard images, Portraits and Black & white images, each with its own dither preset."></a>
 
-*Image Rendering: a section for each kind of photo, each with its own dither preset.*
+> *Image Rendering: a section for each kind of photo, each with its own dither preset.*
 
 &nbsp; 
 
@@ -498,7 +503,7 @@ An outline before the label is the photo's own shape, shown only when it differs
 
 <a href="../images/ui_v2_dither.png"><img src="../images/ui_v2_dither.png" width="560" alt="The custom dither editor, with a live six-colour preview and the magnifier in its corner."></a>
 
-*The custom dither editor, with a live six-colour preview.*
+> *The custom dither editor, with a live six-colour preview.*
 
 &nbsp; 
 
@@ -524,7 +529,7 @@ Its controls sit on three pages — **Tone**, **Advanced Local Contrast**, and *
 
 <a href="../images/ui_v2_tone.png"><img src="../images/ui_v2_tone.png" width="560" alt="The E1003 tone editor: the Tone controls beside a live 16-grey preview of the B&W frame."></a>
 
-*The E1003 tone editor, with a live 16-grey preview.*
+> *The E1003 tone editor, with a live 16-grey preview.*
 
 &nbsp; 
 
@@ -546,7 +551,7 @@ Nothing is kept until you press **Use these settings** and then **Save**. The Im
 
 <a href="../images/ui_v2_wordmark_closeup.png"><img src="../images/ui_v2_wordmark_closeup.png" width="200" alt="Clicking the wordmark opens server info — a drawer on a computer."></a>
 
-*Zoomed view of Hokku wordmark*
+> *Zoomed view of Hokku wordmark*
 
 &nbsp; 
 
@@ -555,7 +560,7 @@ Nothing is kept until you press **Use these settings** and then **Save**. The Im
 
 <a href="../images/ui_v2_server.png"><img src="../images/ui_v2_server.png" width="560" alt="Clicking the wordmark opens server info — a drawer on a computer."></a>
 
-*Clicking the wordmark opens server info — a drawer on a computer.*
+> *Clicking the wordmark opens server info — a drawer on a computer.*
 
 &nbsp;
 
@@ -563,7 +568,7 @@ Nothing is kept until you press **Use these settings** and then **Save**. The Im
 
 <a href="../images/ui_v2_mobile_server.png"><img src="../images/ui_v2_mobile_server.png" height="480" alt="On a phone the same information opens as a panel."></a>
 
-*On a phone the same information opens as a panel.*
+> *On a phone the same information opens as a panel.*
 
 &nbsp; 
 
